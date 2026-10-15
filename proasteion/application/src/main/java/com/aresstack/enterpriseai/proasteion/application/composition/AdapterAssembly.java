@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.proasteion.application.knowledge.SourcePartiti
 import com.aresstack.enterpriseai.proasteion.application.net.LiveNetwork;
 import com.aresstack.enterpriseai.proasteion.application.net.NetworkServices;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.application.security.KeePassAccess;
 import com.aresstack.enterpriseai.proasteion.application.security.RetryingSecretProvider;
 import com.aresstack.enterpriseai.proasteion.application.security.ClientCertificateFactory;
@@ -138,8 +139,13 @@ public final class AdapterAssembly {
      */
     public static KeePassAccess keePassAccess(final KeePassConfig keePass, PairingPrompt pairing,
                                               AskedSecretProvider.CredentialPrompt prompt) {
-        if (keePass == null || !keePass.enabled()) {
+        if (keePass == null) {
             return KeePassAccess.unavailable();
+        }
+        if (!keePass.enabled()) {
+            // Zugang „Manuell“ braucht kein KeePass: ask:-Referenzen gehen an die Sitzung, alles andere scheitert.
+            return KeePassAccess.manualOnly(new AskedSecretProvider(new UnavailableSecretProvider(
+                    "KeePassRPC ist deaktiviert (security.keepass.enabled=false)"), prompt));
         }
         return new KeePassAccess(new RetryingSecretProvider(secrets(keePass, pairing, prompt), keePass::retry),
                 keePass.address());
@@ -227,6 +233,16 @@ public final class AdapterAssembly {
     public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
                                               SourcePartitionSelection partitions,
                                               Supplier<LocalFileAccessPolicy> fileAccess) {
+        return createWith(config, network, secrets, partitions, fileAccess, new ManualCredentials());
+    }
+
+    /**
+     * Wie {@link #createWith(AppConfig, LiveNetwork, SecretProvider, SourcePartitionSelection, Supplier)}; vorgemerkte
+     * Benutzernamen manueller Quellen gehen in die Sitzung {@code manual} der Eingabe.
+     */
+    public static ApplicationPorts createWith(AppConfig config, LiveNetwork network, SecretProvider secrets,
+                                              SourcePartitionSelection partitions,
+                                              Supplier<LocalFileAccessPolicy> fileAccess, ManualCredentials manual) {
         if (config == null || network == null || secrets == null) {
             throw new IllegalArgumentException("config, network and secrets must not be null");
         }
@@ -242,7 +258,7 @@ public final class AdapterAssembly {
 
         // Ein Quellen-Port je Quelltyp; die Typverzweigung gibt es nur noch hier, als Liste der Adapter.
         for (KnowledgeSourceProvider provider : sourceProviders(secrets, network, fileAccess)) {
-            KnowledgeSourceProvider wrapped = new LoggingSourceProvider(new VaultSourceProvider(provider, secrets));
+            KnowledgeSourceProvider wrapped = new LoggingSourceProvider(new VaultSourceProvider(provider, secrets, manual));
             ports.sourceProvider(partitions == null ? wrapped
                     : new PartitionSelectingSourceProvider(wrapped, partitions));
         }

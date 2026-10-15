@@ -358,6 +358,66 @@ final class WizardFakes {
                     SetupCheck.ok("Konfiguration lädt", "")));
         }
 
+        /** Zugang „Manuell“: die Sitzung (Referenz → Benutzer|Geheimnis) und die geschützte Ablage. */
+        final Map<String, String> session = new LinkedHashMap<String, String>();
+        final Map<String, String> storedKeys = new LinkedHashMap<String, String>();
+        boolean canStore = true;
+        final List<String> confluenceTests = new ArrayList<String>();
+        /** Fehler des nächsten manuellen Confluence-Tests; {@code null}: erfolgreich. */
+        String confluenceFailure;
+        final List<String> storeCalls = new ArrayList<String>();
+
+        @Override
+        public void testConfluence(SettingsForm form, String url, String user, char[] password, String alias,
+                                   BiConsumer<String, String> done) {
+            confluenceTests.add(url + "|" + user + "|" + new String(password) + "|" + alias);
+            String failure = confluenceFailure;
+            confluenceFailure = null;
+            done.accept(failure == null ? "Verbindung erfolgreich: 2 Spaces sichtbar." : null, failure);
+        }
+
+        @Override
+        public void rememberManual(String ref, String user, char[] secret) {
+            session.put(ref, user + "|" + new String(secret));
+        }
+
+        @Override
+        public void forgetManual(String ref) {
+            session.remove(ref);
+        }
+
+        @Override
+        public boolean knowsManual(String ref) {
+            return session.containsKey(ref);
+        }
+
+        @Override
+        public boolean canStoreManualKey() {
+            return canStore;
+        }
+
+        @Override
+        public String manualKeyStorage() {
+            return canStore ? "Geschützt (Test)." : "Hier nicht möglich.";
+        }
+
+        @Override
+        public boolean manualKeyStored(String ref) {
+            return storedKeys.containsKey(ref);
+        }
+
+        @Override
+        public void storeManualKey(String ref, boolean keep, Consumer<String> done) {
+            storeCalls.add(ref + "=" + keep);
+            if (keep) {
+                String entry = session.get(ref);
+                storedKeys.put(ref, entry.substring(entry.indexOf('|') + 1));
+            } else {
+                storedKeys.remove(ref);
+            }
+            done.accept(null);
+        }
+
         @Override
         public SettingsForm editNetwork(Component parent, SettingsForm form) {
             return null;

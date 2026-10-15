@@ -11,6 +11,7 @@ import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.text.JTextComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JScrollPane;
@@ -29,6 +30,7 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -43,6 +45,7 @@ public final class ComicComboBoxUI extends BasicComboBoxUI {
     private static final int HEIGHT = 28;
     private static final int ARROW_WIDTH = 26;
     private static final int TEXT_INSET = 10;
+    private static final String EDITOR_KEY = "comic.combo.editor";
 
     private boolean hovered;
 
@@ -85,6 +88,53 @@ public final class ComicComboBoxUI extends BasicComboBoxUI {
                 comboBox.repaint();
             }
         });
+    }
+
+    /**
+     * An editable combo box keeps its real text field (typing, selection, caret, keyboard), only without its own
+     * square background and border, so the rounded comic surface shows through and the text lines up with the
+     * rendered value of a non-editable box.
+     */
+    @Override
+    protected void configureEditor() {
+        super.configureEditor();
+        if (editor instanceof JTextComponent) {
+            JTextComponent field = (JTextComponent) editor;
+            field.setOpaque(false);
+            field.setBorder(BorderFactory.createEmptyBorder(0, TEXT_INSET - 2, 0, 2));
+            field.setFont(comboBox.getFont());
+            field.setForeground(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+            field.setCaretColor(ResearchUiPalette.LIGHT_CONTROL_TEXT);
+            field.setDisabledTextColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
+        }
+        if (editor instanceof JComponent) {
+            // One listener per editor, bound to this UI: a reinstalled UI replaces the one of the old UI, whose
+            // comboBox is already cleared.
+            JComponent component = (JComponent) editor;
+            Object previous = component.getClientProperty(EDITOR_KEY);
+            if (previous instanceof FocusListener) {
+                component.removeFocusListener((FocusListener) previous);
+            }
+            FocusListener repaint = new FocusAdapter() {
+                @Override
+                public void focusGained(FocusEvent event) {
+                    repaintCombo();
+                }
+
+                @Override
+                public void focusLost(FocusEvent event) {
+                    repaintCombo();
+                }
+            };
+            component.putClientProperty(EDITOR_KEY, repaint);
+            component.addFocusListener(repaint);
+        }
+    }
+
+    private void repaintCombo() {
+        if (comboBox != null) {
+            comboBox.repaint();
+        }
     }
 
     @Override
@@ -146,7 +196,9 @@ public final class ComicComboBoxUI extends BasicComboBoxUI {
             int arc = ResearchUiMetrics.RADIUS_CONTROL;
             g2.setColor(ResearchUiPalette.LIGHT_CONTROL_BG);
             g2.fillRoundRect(0, 0, w - 1, h - 1, arc, arc);
-            boolean active = component.isEnabled() && (hovered || comboBox.hasFocus() || comboBox.isPopupVisible());
+            boolean editing = comboBox.isEditable() && editor != null && editor.isFocusOwner();
+            boolean active = component.isEnabled() && (hovered || editing || comboBox.hasFocus()
+                    || comboBox.isPopupVisible());
             g2.setColor(active ? ResearchUiPalette.ACCENT_BLUE : component.isEnabled()
                     ? ResearchUiPalette.LIGHT_CONTROL_BORDER : ResearchUiPalette.LIGHT_TEXT_MUTED);
             g2.setStroke(new BasicStroke(active ? 1.6f : 1.2f));

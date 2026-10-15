@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra;
 
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationStart;
+import com.aresstack.enterpriseai.proasteion.application.security.DpapiSecretStore;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts;
 import com.aresstack.enterpriseai.proasteion.application.composition.ModelCatalogs;
@@ -87,15 +89,21 @@ public final class EnterpriseAiClientMain {
         LOG.info("Enterprise AI Client startet: Java " + System.getProperty("java.version") + " ("
                 + System.getProperty("java.vendor") + "), " + System.getProperty("os.name") + " "
                 + System.getProperty("os.version"));
+        // „API-Key speichern“ (Zugang „Manuell“): geschützte Ablage für alle Wege, schon für den Einrichtungsassistenten.
+        // Eine Sitzung der manuellen Zugangsdaten für Assistent, Einstellungen-Proben und Chat.
+        final ManualCredentials manual = new ManualCredentials();
+        manual.persistent(DpapiSecretStore.forDirectory(
+                AppPaths.appDirectory().resolve(DpapiSecretStore.DIRECTORY_NAME)));
         final ConfigurationFile file = new ConfigurationFile(AppPaths.configFile());
         final boolean headless = GraphicsEnvironment.isHeadless();
         final ModelCatalogs modelCatalogs = SettingsAssembly.modelCatalogs(
-                AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME));
-        final LocalVoices localVoices = new LocalVoices(new SwingUserPrompts());
+                AppPaths.appDirectory().resolve(AppPaths.MODEL_CATALOG_FILE_NAME), manual);
+        final SwingUserPrompts prompts = new SwingUserPrompts(manual);
+        final LocalVoices localVoices = new LocalVoices(prompts);
         final SettingsDialogActions settingsActions = headless ? null
-                : SettingsAssembly.create(file, modelCatalogs, localVoices);
+                : SettingsAssembly.create(file, modelCatalogs, localVoices, manual);
         final SetupActions setupActions = headless ? null
-                : SettingsAssembly.setup(settingsActions, ComicPalette.defaultPalette(), modelCatalogs);
+                : SettingsAssembly.setup(settingsActions, ComicPalette.defaultPalette(), modelCatalogs, manual);
         // Anwendungszustand (askai arch / MainframeMate): Fenster, Drawer, angehakte Spaces je Quelle und der
         // Einrichtungsstand (setup.completed). Er liegt neben der Konfigurationsdatei und braucht sie nicht, deshalb
         // entsteht er vor ihr: der Erststart entscheidet mit ihm, ob der Einrichtungsassistent erscheint.
@@ -123,7 +131,7 @@ public final class EnterpriseAiClientMain {
         // die Schale liefert nur ihre Dialoge (Pairing, Zugang „Manuell“) und den UI-Executor.
         final ApplicationStart application;
         try {
-            application = ApplicationStart.start(file, config, new SwingUserPrompts(), localVoices, modelCatalogs,
+            application = ApplicationStart.start(file, config, prompts, localVoices, modelCatalogs,
                     partitions, SwingUtilities::invokeLater, System::currentTimeMillis, null);
         } catch (AppConfigException | IOException e) {
             LOG.log(Level.SEVERE, "Konfiguration unvollständig", e);

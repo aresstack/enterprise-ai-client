@@ -105,6 +105,13 @@ public final class SetupWizardPanel extends JPanel {
     static final String DEFAULT_CONFLUENCE_ENTRY = "Confluence";
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
     private static final String KEEPASS_PREFIX = "keepass:";
+    /** Zugang wie im Einstellungen-Dialog ({@code VaultAccess}): KeePass oder Manuell. */
+    static final String MODE_KEEPASS = "KeePass";
+    static final String MODE_MANUAL = "Manuell";
+    /** Die manuelle Referenz des KI-Dienstes, dieselbe wie im Reiter „KI-Dienst“ der Einstellungen. */
+    static final String MANUAL_SERVICE_REF = "ask:KI-Dienst";
+    static final String SAVE_API_KEY = "API-Key speichern";
+    static final String REMEMBER_USER = "Benutzername merken";
     /** Ohne Stimme bleibt eine Zeile der Übergabe so lange stehen: je Zeichen, mindestens {@link #MIN_READING_MILLIS}. */
     private static final int READING_MILLIS_PER_CHARACTER = 60;
     private static final int MIN_READING_MILLIS = 1800;
@@ -186,7 +193,19 @@ public final class SetupWizardPanel extends JPanel {
     private String entriesProblem;
 
     // Schritt 2: KI-Dienst
-    private final JComboBox<String> serviceEntry = new JComboBox<String>();
+    private final JComboBox<String> serviceAccess = accessChoice();
+    /** Beschriftung und Felder des Zugangs „KeePass“ bzw. „Manuell“, je Modus ein- und ausgeblendet. */
+    private final List<JComponent> serviceKeePassParts = new ArrayList<JComponent>();
+    private final List<JComponent> serviceManualParts = new ArrayList<JComponent>();
+    private final JTextField manualServiceUrl = new JTextField(28);
+    private final JPasswordField manualServiceKey = new JPasswordField(28);
+    private final JCheckBox saveApiKey = new JCheckBox(SAVE_API_KEY);
+    private final JLabel saveApiKeyNote = statusLabel();
+    /** Die Basis-URL, die beim Zugang „KeePass“ die des Eintrags überschreibt (aus den Einstellungen übernommen). */
+    private String keePassBaseUrl = "";
+    /** KeePass wurde in diesem Assistenten gekoppelt bzw. gelesen: dann bleibt es eingeschaltet. */
+    private boolean keePassUsed;
+    private final JComboBox<String> serviceEntry = comic(new JComboBox<String>());
     private final JLabel serviceEntryStatus = statusLabel();
     private final JTextField serviceUrl = new JTextField(28);
     private final JPasswordField serviceKey = new JPasswordField(28);
@@ -211,13 +230,13 @@ public final class SetupWizardPanel extends JPanel {
     private boolean serviceNetworkProblem;
 
     // Schritt 3: Modelle
-    private final JComboBox<String> chatModel = new JComboBox<String>();
-    private final JComboBox<String> embeddingModel = new JComboBox<String>();
+    private final JComboBox<String> chatModel = comic(new JComboBox<String>());
+    private final JComboBox<String> embeddingModel = comic(new JComboBox<String>());
     /** The chat's speech output ({@code model.tts}); never Merlin's own voice ({@code setup.merlin.*}). */
-    private final JComboBox<String> speechOutputModel = new JComboBox<String>();
-    private final JComboBox<String> visionModel = new JComboBox<String>();
+    private final JComboBox<String> speechOutputModel = comic(new JComboBox<String>());
+    private final JComboBox<String> visionModel = comic(new JComboBox<String>());
     /** Optional re-ranker ({@code model.rerank}); its use in the RAG pipeline is separate (#87). */
-    private final JComboBox<String> rerankModel = new JComboBox<String>();
+    private final JComboBox<String> rerankModel = comic(new JComboBox<String>());
     private final JTextField embeddingDimension = new JTextField(8);
     private final JLabel modelsStatus = statusLabel();
     private final ComposerButton modelsRefresh;
@@ -228,7 +247,12 @@ public final class SetupWizardPanel extends JPanel {
     private String measuredFor = "";
 
     // Schritt 4: Confluence
-    private final JComboBox<String> confluenceEntry = new JComboBox<String>();
+    private final JComboBox<String> confluenceAccess = accessChoice();
+    private final List<JComponent> confluenceKeePassParts = new ArrayList<JComponent>();
+    private final JCheckBox rememberUser = new JCheckBox(REMEMBER_USER);
+    /** Zählt Confluence-Tests; ein Ergebnis gilt nur, wenn seither kein Wechsel des Zugangs kam. */
+    private int confluenceGeneration;
+    private final JComboBox<String> confluenceEntry = comic(new JComboBox<String>());
     private final JLabel confluenceEntryStatus = statusLabel();
     /** Stand eines vollständigen Eintrags (ohne Secrets) und „Zugangsdaten ändern“. */
     private final JPanel confluenceSummary = transparent(new GridBagLayout());
@@ -263,7 +287,7 @@ public final class SetupWizardPanel extends JPanel {
     private List<SetupCheck> lastChecks = Collections.emptyList();
 
     // Schritt 6: Spracheingabe (optional)
-    private final JComboBox<String> speechModel = new JComboBox<String>();
+    private final JComboBox<String> speechModel = comic(new JComboBox<String>());
     private final ComposerButton speechInstall;
     /** Lädt die Angebote der Spracheingabe neu, wenn sie sich nicht ermitteln ließen (keine Installation). */
     private final ComposerButton speechRetry;
@@ -405,11 +429,13 @@ public final class SetupWizardPanel extends JPanel {
 
     private JPanel serviceStep() {
         Rows rows = new Rows("KI-Dienst");
-        rows.note("Der KeePass-Eintrag des KI-Dienstes trägt den API-Key im Passwortfeld und die Basis-URL im "
-                + "URL-Feld. Der API-Key wird nie in die Konfiguration geschrieben.");
+        rows.note("KeePass: Der Eintrag des KI-Dienstes trägt den API-Key im Passwortfeld und die Basis-URL im "
+                + "URL-Feld. Manuell: Basis-URL und API-Key hier eingeben. Der API-Key wird nie in die "
+                + "Konfiguration geschrieben.");
+        rows.field("Zugang", serviceAccess);
         serviceEntry.setEditable(true);
-        rows.field("KeePass-Eintrag", serviceEntry);
-        rows.field("", serviceEntryStatus);
+        serviceKeePassParts.addAll(rows.field("KeePass-Eintrag", serviceEntry));
+        serviceKeePassParts.addAll(rows.field("", serviceEntryStatus));
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.WEST;
         c.insets = new Insets(2, 0, 2, 8);
@@ -435,6 +461,12 @@ public final class SetupWizardPanel extends JPanel {
         serviceMissing.add(buttonRow(serviceSave), c);
         serviceMissing.setVisible(false);
         rows.wide(serviceMissing);
+        manualServiceUrl.setToolTipText("Absolute http(s)-URL ohne Zugangsdaten, Query oder Fragment; meist bis /v1");
+        serviceManualParts.addAll(rows.field("Basis-URL", manualServiceUrl));
+        serviceManualParts.addAll(rows.field("API-Key", manualServiceKey));
+        comicCheckBox(saveApiKey);
+        serviceManualParts.addAll(rows.field("", saveApiKey));
+        serviceManualParts.addAll(rows.field("", saveApiKeyNote));
         rows.field("", buttonRow(serviceTest));
         rows.field("", serviceStatus);
         return rows.panel();
@@ -493,9 +525,25 @@ public final class SetupWizardPanel extends JPanel {
         rows.note("Confluence wird als Wissensquelle eingerichtet; alle Spaces stehen danach unter Wissensquellen "
                 + "zur Auswahl. Mit Benutzername meldet sich der Client mit Passwort an, ohne Benutzername mit "
                 + "einem persönlichen Zugriffstoken.");
+        confluenceAccess.setToolTipText("Manuell: Passwort bzw. Token gilt nur für diese Sitzung und wird nie "
+                + "gespeichert; der Benutzername darf vorgemerkt werden.");
+        // Zugang und KeePass-Eintrag in einer Zeile, damit der Schritt nicht höher wird als ohne Wahl.
         confluenceEntry.setEditable(true);
-        rows.field("KeePass-Eintrag", confluenceEntry);
-        rows.field("", confluenceEntryStatus);
+        JPanel access = transparent(new GridBagLayout());
+        GridBagConstraints at = new GridBagConstraints();
+        at.anchor = GridBagConstraints.WEST;
+        access.add(confluenceAccess, at);
+        JLabel entryCaption = fieldLabel("Eintrag");
+        at.insets = new Insets(0, 10, 0, 6);
+        access.add(entryCaption, at);
+        at.insets = new Insets(0, 0, 0, 0);
+        at.fill = GridBagConstraints.HORIZONTAL;
+        at.weightx = 1;
+        access.add(confluenceEntry, at);
+        confluenceKeePassParts.add(entryCaption);
+        confluenceKeePassParts.add(confluenceEntry);
+        rows.field("Zugang", access);
+        confluenceKeePassParts.addAll(rows.field("", confluenceEntryStatus));
         int line = 0;
         for (JLabel state : new JLabel[] {confluenceHasUrl, confluenceHasUser, confluenceHasSecret}) {
             GridBagConstraints c = new GridBagConstraints();
@@ -520,14 +568,16 @@ public final class SetupWizardPanel extends JPanel {
         manualRow(3, "", confluencePasswordHint);
         confluenceManual.setVisible(false);
         rows.wide(confluenceManual);
+        comicCheckBox(rememberUser);
+        rememberUser.setSelected(true);
+        rememberUser.setToolTipText("Nur der Benutzername wird bei der Quelle gespeichert und beim nächsten Start "
+                + "vorbelegt; Passwort bzw. Token nie");
+        rows.field("", rememberUser);
         JPanel certificate = transparent(new FlowLayout(FlowLayout.LEFT, 8, 0));
         certificate.add(certificateLabel);
         certificate.add(certificateChoose);
         rows.field("Client-Zertifikat", certificate);
-        withoutCertificate.setOpaque(false);
-        withoutCertificate.setIcon(new ResearchCheckIcon());
-        withoutCertificate.setSelectedIcon(new ResearchCheckIcon());
-        withoutCertificate.setForeground(palette.getInk());
+        comicCheckBox(withoutCertificate);
         rows.field("", withoutCertificate);
         rows.field("", buttonRow(confluenceTest));
         rows.field("", confluenceStatus);
@@ -571,7 +621,6 @@ public final class SetupWizardPanel extends JPanel {
         rows.note("Optional. Spracheingabe ohne Cloud-STT und Text- und Sprachanalyse mit OpenNLP laufen im Client. "
                 + "Liegt ein Offline-Paket neben dem Jar, wird daraus installiert, sonst heruntergeladen. "
                 + "Später unter Einstellungen → Modelle → Lokale Modelle.");
-        ComicComboBoxUI.install(speechModel);
         speechCheck.setToolTipText("Das gewählte Modell der Spracheingabe zum Installieren vormerken");
         JPanel speechRow = transparent(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
@@ -613,6 +662,25 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         serviceSave.addActionListener(e -> saveServiceEntry());
+        serviceAccess.addActionListener(e -> {
+            if (!busy) {
+                serviceModeChanged();
+            }
+        });
+        SimpleDocumentListener manualServiceEdited = new SimpleDocumentListener(() -> {
+            if (!busy && manualService()) {
+                invalidateServiceCheck();
+                updateButtons();
+            }
+        });
+        manualServiceUrl.getDocument().addDocumentListener(manualServiceEdited);
+        manualServiceKey.getDocument().addDocumentListener(manualServiceEdited);
+        saveApiKey.addActionListener(e -> showServiceMode());
+        confluenceAccess.addActionListener(e -> {
+            if (!busy) {
+                confluenceModeChanged();
+            }
+        });
         serviceTest.addActionListener(e -> testService());
         modelsRefresh.addActionListener(e -> refreshModels());
         embeddingModel.addActionListener(e -> {
@@ -895,13 +963,17 @@ public final class SetupWizardPanel extends JPanel {
         if (merlinAwake) {
             narrator.say(guide.enteredStep(index));
         }
-        if (index == STEP_SERVICE && serviceRead == null && !done[STEP_SERVICE]) {
+        if (index == STEP_SERVICE && manualService()) {
+            showServiceMode();
+        } else if (index == STEP_SERVICE && serviceRead == null && !done[STEP_SERVICE]) {
             withEntries(this::preselectServiceEntry);
         } else if (index == STEP_SERVICE && !done[STEP_SERVICE] && serviceEntryComplete && !serviceChecking
                 && !busy) {
             testService(); // der letzte Test ist nicht bestanden: neu prüfen statt den alten Fehler stehen zu lassen
         } else if (index == STEP_MODELS && !modelsLoaded && !modelsPreparing) {
             refreshModels();
+        } else if (index == STEP_CONFLUENCE && manualConfluence()) {
+            showConfluenceCredentials();
         } else if (index == STEP_CONFLUENCE && confluenceRead == null && !confluenceOk) {
             withEntries(this::preselectConfluenceEntry);
         } else if (index == STEP_FINISH) {
@@ -921,6 +993,8 @@ public final class SetupWizardPanel extends JPanel {
         trail.show(step, done);
         boolean speech = step == STEP_SPEECH;
         backButton.setEnabled(step > 0 && !busy && !installing());
+        serviceAccess.setEnabled(!busy);
+        confluenceAccess.setEnabled(!busy);
         nextButton.setVisible(!speech);
         finishButton.setVisible(speech);
         nextButton.setEnabled(!speech && done[step] && !busy);
@@ -1030,6 +1104,7 @@ public final class SetupWizardPanel extends JPanel {
         entries = list == null ? Collections.<PasswordEntry>emptyList() : list;
         entriesLoaded = true;
         entriesProblem = null;
+        keePassUsed = true;
         done[STEP_KEEPASS] = true;
         keePassStatus.setText("Gekoppelt; " + entries.size() + " Einträge lesbar.");
         fillEntryChoices();
@@ -1169,7 +1244,105 @@ public final class SetupWizardPanel extends JPanel {
     private void testService() {
         stopServiceRecheck();
         serviceRechecks = 0;
+        if (manualService() && !takeManualServiceKey()) {
+            return;
+        }
         runServiceCheck(false);
+    }
+
+    // --- Schritt 2, Zugang „Manuell“
+
+    private boolean manualService() {
+        return MODE_MANUAL.equals(serviceAccess.getSelectedItem());
+    }
+
+    /** Ein neuer Test ist nötig: laufende und geplante Prüfungen zählen nicht mehr. */
+    private void invalidateServiceCheck() {
+        stopServiceRecheck();
+        serviceCheckGeneration++;
+        serviceChecking = false;
+        serviceRechecks = 0;
+        serviceNetworkProblem = false;
+        done[STEP_SERVICE] = false;
+    }
+
+    /**
+     * Wechsel KeePass ↔ Manuell: nichts vom alten Zugang bleibt stehen (Test, Fehler, eingegebener Key); KeePass liest
+     * danach seinen Eintrag, Manuell zeigt URL und API-Key.
+     */
+    private void serviceModeChanged() {
+        invalidateServiceCheck();
+        serviceEntryComplete = false;
+        serviceRead = null;
+        clearError(STEP_SERVICE);
+        serviceStatus.setText("");
+        serviceKey.setText("");
+        manualServiceKey.setText("");
+        setup.forgetManual(MANUAL_SERVICE_REF);
+        showServiceMode();
+        if (!manualService()) {
+            withEntries(this::preselectServiceEntry);
+        }
+        updateButtons();
+    }
+
+    /** Blendet die Felder des gewählten Zugangs ein; Manuell zeigt, ob und wie der API-Key gespeichert würde. */
+    private void showServiceMode() {
+        boolean manual = manualService();
+        for (JComponent part : serviceKeePassParts) {
+            part.setVisible(!manual);
+        }
+        if (manual) {
+            serviceMissing.setVisible(false);
+        }
+        for (JComponent part : serviceManualParts) {
+            part.setVisible(manual);
+        }
+        boolean storable = setup.canStoreManualKey();
+        saveApiKey.setEnabled(storable && !busy);
+        if (!storable) {
+            saveApiKey.setSelected(false);
+        }
+        saveApiKeyNote.setText(!storable ? setup.manualKeyStorage()
+                : saveApiKey.isSelected() ? setup.manualKeyStorage() + " Gespeichert wird erst nach der bestandenen "
+                + "Abschlussprüfung."
+                : setup.manualKeyStored(MANUAL_SERVICE_REF) ? "Ein API-Key ist gespeichert; ohne Häkchen wird er "
+                + "beim Abschluss entfernt."
+                : "Ohne Häkchen gilt der API-Key nur für diese Sitzung; nach einem Neustart wird er erneut abgefragt.");
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Übernimmt den eingegebenen API-Key in die Sitzung (das Feld wird geleert, nichts wird gespeichert); ohne Eingabe
+     * genügt ein Key, der in dieser Sitzung schon eingegeben oder ausdrücklich gespeichert wurde.
+     */
+    private boolean takeManualServiceKey() {
+        clearError(STEP_SERVICE);
+        if (manualServiceUrl.getText().trim().isEmpty()) {
+            fail(STEP_SERVICE, "Bitte die Basis-URL des KI-Dienstes eintragen.");
+            return false;
+        }
+        char[] typed = manualServiceKey.getPassword();
+        try {
+            if (typed.length > 0) {
+                setup.rememberManual(MANUAL_SERVICE_REF, "", typed);
+                boolean was = busy;
+                busy = true;
+                try {
+                    manualServiceKey.setText("");
+                } finally {
+                    busy = was;
+                }
+            } else if (!setup.knowsManual(MANUAL_SERVICE_REF) && !setup.manualKeyStored(MANUAL_SERVICE_REF)) {
+                fail(STEP_SERVICE, "Bitte den API-Key eingeben.");
+                return false;
+            }
+        } finally {
+            wipe(typed);
+        }
+        serviceEntryComplete = true;
+        return true;
     }
 
     /**
@@ -1179,7 +1352,8 @@ public final class SetupWizardPanel extends JPanel {
      */
     private void runServiceCheck(final boolean automatic) {
         if (!serviceEntryComplete) {
-            fail(STEP_SERVICE, "Im KeePass-Eintrag fehlen noch API-Key oder Basis-URL.");
+            fail(STEP_SERVICE, manualService() ? "Bitte Basis-URL und API-Key eingeben."
+                    : "Im KeePass-Eintrag fehlen noch API-Key oder Basis-URL.");
             return;
         }
         form = collect();
@@ -1227,7 +1401,8 @@ public final class SetupWizardPanel extends JPanel {
             serviceNetworkProblem = false;
             clearError(STEP_SERVICE);
             done[STEP_SERVICE] = true;
-            serviceStatus.setText("Der KI-Dienst ist erreichbar; der API-Key wurde gelesen.");
+            serviceStatus.setText(manualService() ? "Der KI-Dienst ist erreichbar; der API-Key gilt für diese Sitzung."
+                    : "Der KI-Dienst ist erreichbar; der API-Key wurde gelesen.");
             updateButtons();
             prepareModelsAndWakeMerlin();
             return;
@@ -1252,6 +1427,11 @@ public final class SetupWizardPanel extends JPanel {
         } else {
             serviceStatus.setText(temporary ? "Weiterhin nicht erreichbar; „Verbindung testen“ prüft erneut."
                     : "Verbindung fehlgeschlagen.");
+        }
+        if (manualService() && !temporary) {
+            // ein abgelehnter Key bleibt nicht in der Sitzung; der nächste Test braucht eine neue Eingabe
+            setup.forgetManual(MANUAL_SERVICE_REF);
+            serviceEntryComplete = false;
         }
         if (automatic) { // Merlin meldet denselben Ausfall nicht bei jeder Wiederprüfung neu
             errors[STEP_SERVICE] = message.toString().trim();
@@ -1575,6 +1755,21 @@ public final class SetupWizardPanel extends JPanel {
      * eingetragen wird, schreibt „Verbindung testen“ in den KeePass-Eintrag, wie den Zertifikatsalias.
      */
     private void showConfluenceCredentials() {
+        boolean manualAccess = manualConfluence();
+        for (JComponent part : confluenceKeePassParts) {
+            part.setVisible(!manualAccess);
+        }
+        rememberUser.setVisible(manualAccess);
+        if (manualAccess) {
+            for (int row = 0; row < manualRows.size(); row++) {
+                manualRowVisible(row, true);
+            }
+            confluencePasswordHint.setText("Gilt nur für diese Sitzung und wird nie gespeichert.");
+            confluenceSummary.setVisible(false);
+            confluenceManual.setVisible(true);
+            updateButtons();
+            return;
+        }
         String title = text(confluenceEntry);
         boolean existing = confluenceRead != null;
         boolean complete = complete(confluenceRead);
@@ -1626,6 +1821,10 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     private void testConfluence() {
+        if (manualConfluence()) {
+            testManualConfluence();
+            return;
+        }
         final String title = text(confluenceEntry);
         final String url = confluenceUrl.getText().trim();
         final String user = confluenceUser.getText().trim();
@@ -1704,6 +1903,100 @@ public final class SetupWizardPanel extends JPanel {
         });
     }
 
+    // --- Schritt 4, Zugang „Manuell“
+
+    private boolean manualConfluence() {
+        return MODE_MANUAL.equals(confluenceAccess.getSelectedItem());
+    }
+
+    /**
+     * Wechsel KeePass ↔ Manuell: Test, Ergebnis, Fehler und Passwort bzw. Token des alten Zugangs gelten nicht mehr;
+     * URL und Benutzer (nicht geheim) bleiben stehen. KeePass liest danach seinen Eintrag.
+     */
+    private void confluenceModeChanged() {
+        confluenceGeneration++;
+        confluenceOk = false;
+        confluence = null;
+        confluenceRead = null;
+        clearError(STEP_CONFLUENCE);
+        confluenceStatus.setText("");
+        boolean was = busy;
+        busy = true;
+        try {
+            confluencePassword.setText("");
+        } finally {
+            busy = was;
+        }
+        String url = confluenceUrl.getText().trim();
+        if (!url.isEmpty()) {
+            setup.forgetManual(ConfluenceSetup.manualRef(url));
+        }
+        if (manualConfluence()) {
+            showConfluenceCredentials();
+        } else {
+            withEntries(this::preselectConfluenceEntry);
+        }
+        updateButtons();
+    }
+
+    /**
+     * Test mit den eingegebenen Werten, ohne KeePass: Spaces abrufen wie beim KeePass-Weg. Passwort bzw. Token kommt
+     * in die Sitzung (für Abschlussprüfung und Anwendung), nie in eine Datei; scheitert der Test, wird es vergessen.
+     */
+    private void testManualConfluence() {
+        final String url = confluenceUrl.getText().trim();
+        final String user = confluenceUser.getText().trim();
+        char[] password = confluencePassword.getPassword();
+        if (url.isEmpty() || password.length == 0) {
+            wipe(password);
+            fail(STEP_CONFLUENCE, "Für Confluence werden die URL und Passwort bzw. Token gebraucht; der "
+                    + "Benutzername ist optional (ohne: Anmeldung mit Token).");
+            return;
+        }
+        if (certificateAlias.isEmpty() && !withoutCertificate.isSelected()) {
+            wipe(password);
+            fail(STEP_CONFLUENCE, "Bitte ein Client-Zertifikat wählen oder ausdrücklich ohne Zertifikat fortfahren.");
+            return;
+        }
+        final String ref = ConfluenceSetup.manualRef(url);
+        final String alias = certificateAlias;
+        final int generation = ++confluenceGeneration;
+        clearError(STEP_CONFLUENCE);
+        confluenceOk = false;
+        confluence = null;
+        form = collect();
+        confluenceStatus.setText("Teste Confluence (Spaces abrufen) …");
+        setBusy(true);
+        try {
+            setup.rememberManual(ref, user, password);
+            setup.testConfluence(form, url, user, password, alias, (message, error) -> {
+                setBusy(false);
+                if (closed || generation != confluenceGeneration) {
+                    return; // Zugang gewechselt oder neuer Test
+                }
+                if (error != null) {
+                    setup.forgetManual(ref);
+                    confluenceStatus.setText("Verbindung fehlgeschlagen.");
+                    fail(STEP_CONFLUENCE, error);
+                    return;
+                }
+                confluenceOk = true;
+                confluence = ConfluenceSetup.manual(url, user, alias, rememberUser.isSelected());
+                boolean was = busy;
+                busy = true;
+                try {
+                    confluencePassword.setText("");
+                } finally {
+                    busy = was;
+                }
+                confluenceStatus.setText(message == null ? "Verbindung erfolgreich." : message);
+                updateButtons();
+            });
+        } finally {
+            wipe(password);
+        }
+    }
+
     // --- Schritt 5: Abschluss
 
     private void runFinalCheck() {
@@ -1712,10 +2005,15 @@ public final class SetupWizardPanel extends JPanel {
         checkRows.removeAll();
         // Confluence ist optional: übersprungen ({@code null}) prüft der Abschluss es nicht und legt keine Quelle an.
         final boolean withoutConfluence = confluence == null;
+        ConfluenceSetup chosen = confluence;
+        if (chosen != null && chosen.isManual()) { // „Benutzername merken“ zählt, wie es beim Abschluss steht
+            chosen = ConfluenceSetup.manual(chosen.baseUrl(), chosen.userName(), chosen.certificateAlias(),
+                    rememberUser.isSelected());
+        }
         form = collect();
         finishStatus.setText("Speichere und prüfe …");
         setBusy(true);
-        setup.finish(form, confluence, checks -> {
+        setup.finish(form, chosen, checks -> {
             setBusy(false);
             lastChecks = checks == null ? Collections.<SetupCheck>emptyList() : checks;
             showChecks(lastChecks);
@@ -1733,9 +2031,32 @@ public final class SetupWizardPanel extends JPanel {
             if (!allOk) {
                 fail(STEP_FINISH, failed.length() == 0 ? "Die Prüfung lieferte kein Ergebnis."
                         : failed.toString().trim());
+            } else if (manualService()) {
+                keepManualKey();
             } else {
                 updateButtons();
             }
+        });
+    }
+
+    /**
+     * „API-Key speichern“ erst nach bestandener Abschlussprüfung: mit Häkchen geschützt speichern, ohne ein früher
+     * gespeichertes gezielt entfernen. Ein Fehler steht beim Abschluss, die Einrichtung bleibt gültig (der Key gilt
+     * dann nur für diese Sitzung).
+     */
+    private void keepManualKey() {
+        final boolean keep = saveApiKey.isSelected() && setup.canStoreManualKey();
+        setBusy(true);
+        setup.storeManualKey(MANUAL_SERVICE_REF, keep, error -> {
+            setBusy(false);
+            if (error != null) {
+                errors[STEP_FINISH] = (keep ? "Der API-Key wurde nicht gespeichert: "
+                        : "Der gespeicherte API-Key ließ sich nicht entfernen: ") + error;
+            } else if (keep) {
+                finishStatus.setText(finishStatus.getText() + " Der API-Key ist geschützt gespeichert.");
+            }
+            showServiceMode();
+            updateButtons();
         });
     }
 
@@ -2397,6 +2718,11 @@ public final class SetupWizardPanel extends JPanel {
         keePassClient.setText(initial.keePassClientDisplayName());
         busy = true;
         try {
+            boolean manual = isManualRef(initial.chatApiKeyRef());
+            serviceAccess.setSelectedItem(manual ? MODE_MANUAL : MODE_KEEPASS);
+            manualServiceUrl.setText(manual ? initial.chatBaseUrl() : "");
+            keePassBaseUrl = manual ? "" : initial.chatBaseUrl();
+            saveApiKey.setSelected(manual && setup.canStoreManualKey() && setup.manualKeyStored(MANUAL_SERVICE_REF));
             setText(serviceEntry, stripPrefix(initial.chatApiKeyRef()));
             setText(chatModel, initial.chatModel());
             setText(embeddingModel, initial.embeddingModel());
@@ -2408,19 +2734,30 @@ public final class SetupWizardPanel extends JPanel {
             busy = false;
         }
         certificateLabel.setText("kein Zertifikat");
+        showServiceMode();
+        showConfluenceCredentials();
     }
 
-    /** Der Entwurf mit den Werten der Schritte; Pairing-Schlüssel immer dauerhaft in der Datei, KeePass an. */
+    /**
+     * Der Entwurf mit den Werten der Schritte; Pairing-Schlüssel immer dauerhaft in der Datei. KeePass bleibt an, wenn
+     * ein gewählter Zugang es braucht oder es hier gekoppelt wurde; ein vollständig manueller Zugang verlangt es nicht.
+     */
     private SettingsForm collect() {
+        boolean keePass = form.keePassEnabled() || !manualService() || !manualConfluence() || keePassUsed;
         SettingsForm.Builder b = form.toBuilder()
-                .keePassEnabled(true)
+                .keePassEnabled(keePass)
                 .keePassHost(keePassHost.getText())
                 .keePassPort(keePassPort.getText())
                 .keePassClientDisplayName(keePassClient.getText())
                 .keePassPairingKeyStore(SettingsForm.PAIRING_KEY_STORE_FILE);
         String entry = text(serviceEntry);
-        if (!entry.isEmpty()) {
-            b.chatApiKeyRef(KEEPASS_PREFIX + entry);
+        if (manualService()) {
+            b.chatApiKeyRef(MANUAL_SERVICE_REF).chatBaseUrl(manualServiceUrl.getText().trim());
+        } else {
+            if (!entry.isEmpty()) {
+                b.chatApiKeyRef(KEEPASS_PREFIX + entry);
+            }
+            b.chatBaseUrl(keePassBaseUrl);
         }
         b.chatModel(text(chatModel)).embeddingModel(text(embeddingModel))
                 .embeddingDimension(embeddingDimension.getText());
@@ -2520,6 +2857,11 @@ public final class SetupWizardPanel extends JPanel {
         return text != null && text.toLowerCase(Locale.ROOT).contains(needle);
     }
 
+    /** {@code true} für eine manuelle Referenz ({@code ask:…}), wie {@code VaultAccess.isManual}. */
+    static boolean isManualRef(String ref) {
+        return ref != null && ref.trim().regionMatches(true, 0, "ask:", 0, "ask:".length());
+    }
+
     private static String stripPrefix(String ref) {
         String value = ref == null ? "" : ref.trim();
         return value.toLowerCase(Locale.ROOT).startsWith(KEEPASS_PREFIX) ? value.substring(KEEPASS_PREFIX.length()).trim()
@@ -2562,6 +2904,24 @@ public final class SetupWizardPanel extends JPanel {
         } finally {
             busy = was;
         }
+    }
+
+    /** Eine Auswahl im Comic-Look wie die Spracheingabe des letzten Schritts; editierbar bleibt sie eintippbar. */
+    private static JComboBox<String> comic(JComboBox<String> combo) {
+        return ComicComboBoxUI.install(combo);
+    }
+
+    private static JComboBox<String> accessChoice() {
+        JComboBox<String> combo = comic(new JComboBox<String>(new String[] {MODE_KEEPASS, MODE_MANUAL}));
+        combo.setToolTipText("KeePass: Zugangsdaten aus dem KeePass-Eintrag. Manuell: hier eingeben, ohne KeePass.");
+        return combo;
+    }
+
+    private void comicCheckBox(JCheckBox box) {
+        box.setOpaque(false);
+        box.setIcon(new ResearchCheckIcon());
+        box.setSelectedIcon(new ResearchCheckIcon());
+        box.setForeground(palette.getInk());
     }
 
     private static void wipe(char[] secret) {
@@ -2777,7 +3137,48 @@ public final class SetupWizardPanel extends JPanel {
         return speechStatus.getText();
     }
 
-    ComposerButton serviceTestButton() {
+    JComboBox<String> serviceAccessChoice() {
+        return serviceAccess;
+    }
+
+    JComboBox<String> confluenceAccessChoice() {
+        return confluenceAccess;
+    }
+
+    JTextField manualServiceUrlField() {
+        return manualServiceUrl;
+    }
+
+    JPasswordField manualServiceKeyField() {
+        return manualServiceKey;
+    }
+
+    JCheckBox saveApiKeyBox() {
+        return saveApiKey;
+    }
+
+    String saveApiKeyNoteText() {
+        return saveApiKeyNote.getText();
+    }
+
+    JCheckBox rememberUserBox() {
+        return rememberUser;
+    }
+
+    /** Für Tests: ob die Felder des Zugangs „KeePass“ im Schritt KI-Dienst sichtbar sind. */
+    boolean serviceKeePassShown() {
+        return serviceEntry.isVisible();
+    }
+
+    boolean serviceManualShown() {
+        return manualServiceUrl.isVisible();
+    }
+
+    boolean confluenceKeePassShown() {
+        return confluenceEntry.isVisible();
+    }
+
+        ComposerButton serviceTestButton() {
         return serviceTest;
     }
 
@@ -2840,11 +3241,16 @@ public final class SetupWizardPanel extends JPanel {
             row++;
         }
 
-        void field(String label, JComponent component) {
+        /** Beschriftung (falls vorhanden) und Feld, damit ein Schritt sie zusammen ein- und ausblenden kann. */
+        List<JComponent> field(String label, JComponent component) {
+            List<JComponent> parts = new ArrayList<JComponent>();
+            parts.add(component);
             GridBagConstraints c = constraints(0);
             c.insets = new Insets(3, 0, 3, 10);
             if (!label.isEmpty()) {
-                panel.add(fieldLabel(label), c);
+                JLabel caption = fieldLabel(label);
+                parts.add(caption);
+                panel.add(caption, c);
             }
             c = constraints(1);
             c.insets = new Insets(3, 0, 3, 0);
@@ -2853,6 +3259,7 @@ public final class SetupWizardPanel extends JPanel {
             c.weightx = 1;
             panel.add(component, c);
             row++;
+            return parts;
         }
 
         /** Like {@link #field}, but the component fills the field column, flush with the fields above it. */
@@ -2864,7 +3271,7 @@ public final class SetupWizardPanel extends JPanel {
             layout.setConstraints(component, c);
         }
 
-        void wide(JComponent component) {
+        List<JComponent> wide(JComponent component) {
             GridBagConstraints c = constraints(0);
             c.gridwidth = 2;
             c.fill = GridBagConstraints.HORIZONTAL;
@@ -2872,6 +3279,7 @@ public final class SetupWizardPanel extends JPanel {
             c.insets = new Insets(3, 0, 3, 0);
             panel.add(component, c);
             row++;
+            return Collections.<JComponent>singletonList(component);
         }
 
         private GridBagConstraints constraints(int column) {
