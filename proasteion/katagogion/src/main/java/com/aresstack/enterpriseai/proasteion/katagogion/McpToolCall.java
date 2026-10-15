@@ -1,7 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.katagogion;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,6 +36,35 @@ public final class McpToolCall {
     public String getString(String name) {
         Object value = arguments.get(name);
         return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * @return der Wert als Liste von Texten in Aufrufreihenfolge: eine Liste oder ein Array bleibt eine Liste
+     *         ({@code null}-Elemente entfallen), ein einzelner Wert wird zur einelementigen Liste, ein fehlendes
+     *         Argument zur leeren Liste. Nie {@code null}.
+     */
+    public List<String> getStrings(String name) {
+        Object value = arguments.get(name);
+        List<String> values = new ArrayList<String>();
+        if (value == null) {
+            return values;
+        }
+        if (value instanceof Collection) {
+            for (Object element : (Collection<?>) value) {
+                if (element != null) {
+                    values.add(String.valueOf(element));
+                }
+            }
+        } else if (value instanceof Object[]) {
+            for (Object element : (Object[]) value) {
+                if (element != null) {
+                    values.add(String.valueOf(element));
+                }
+            }
+        } else {
+            values.add(String.valueOf(value));
+        }
+        return values;
     }
 
     /** @return der Wert als Ganzzahl, sonst {@code defaultValue} (fehlend oder nicht numerisch). */

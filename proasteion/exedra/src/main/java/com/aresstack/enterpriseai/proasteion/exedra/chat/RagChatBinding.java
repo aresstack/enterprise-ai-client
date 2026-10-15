@@ -152,6 +152,7 @@ public final class RagChatBinding implements ChatShellActions {
     static final String READING_ACTIVITY = "Liest Anhang";
     static final String SEARCHING_ACTIVITY = "Durchsucht Anhang";
     static final String READING_PAGE_ACTIVITY = "Liest Seite";
+    static final String READING_PAGES_ACTIVITY = "Liest Seiten";
     static final String SEARCHING_KNOWLEDGE_ACTIVITY = "Internes Wissen durchsuchen";
     static final String RESEARCHING_KNOWLEDGE_ACTIVITY = "Internes Wissen recherchieren";
     static final String SEARCHING_HELP_ACTIVITY = "Anwendungshilfe prüfen";
@@ -767,6 +768,7 @@ public final class RagChatBinding implements ChatShellActions {
         return ReadAttachmentTool.NAME.equals(toolName) ? READING_ACTIVITY
                 : SearchAttachmentTool.NAME.equals(toolName) ? SEARCHING_ACTIVITY
                 : ChatBookmark.READ_TOOL.equals(toolName) ? READING_PAGE_ACTIVITY
+                : KnowledgeMcpTools.KNOWLEDGE_READ_MANY.equals(toolName) ? READING_PAGES_ACTIVITY
                 : KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName) ? SEARCHING_KNOWLEDGE_ACTIVITY
                 : ResearchDelegationTool.NAME.equals(toolName) ? RESEARCHING_KNOWLEDGE_ACTIVITY
                 : AppHelpMcpTools.APP_HELP_SEARCH.equals(toolName) ? SEARCHING_HELP_ACTIVITY
@@ -776,6 +778,7 @@ public final class RagChatBinding implements ChatShellActions {
 
     private static String toolKind(String toolName) {
         return ReadAttachmentTool.NAME.equals(toolName) || ChatBookmark.READ_TOOL.equals(toolName)
+                || KnowledgeMcpTools.KNOWLEDGE_READ_MANY.equals(toolName)
                 || AppHelpMcpTools.APP_HELP_READ.equals(toolName) ? "read"
                 : SearchAttachmentTool.NAME.equals(toolName) || KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(toolName)
                 || ResearchDelegationTool.NAME.equals(toolName)
@@ -813,6 +816,15 @@ public final class RagChatBinding implements ChatShellActions {
                 }
             }
             return quoted(id);
+        }
+        if (KnowledgeMcpTools.KNOWLEDGE_READ_MANY.equals(toolName)) {
+            List<String> ids;
+            try {
+                ids = args.texts("ids");
+            } catch (IllegalArgumentException unreadable) {
+                return "";
+            }
+            return ids == null || ids.isEmpty() ? "" : ids.size() == 1 ? quoted(ids.get(0)) : ids.size() + " Seiten";
         }
         if (ReadAttachmentTool.NAME.equals(toolName)) {
             String id = args.text("attachment_id");

@@ -43,6 +43,11 @@ public final class McpToolParameter {
         return new McpToolParameter(name, McpToolType.BOOLEAN, required, description, null);
     }
 
+    /** Eine Liste von Texten (JSON Schema {@code array} von {@code string}), nie eine kommaseparierte Zeichenkette. */
+    public static McpToolParameter stringArray(String name, boolean required, String description) {
+        return new McpToolParameter(name, McpToolType.STRING_ARRAY, required, description, null);
+    }
+
     public static McpToolParameter enumeration(String name, boolean required, String description,
                                                List<String> values) {
         if (values == null || values.isEmpty()) {

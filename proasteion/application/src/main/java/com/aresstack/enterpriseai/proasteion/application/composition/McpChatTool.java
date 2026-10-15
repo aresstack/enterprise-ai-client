@@ -80,6 +80,13 @@ final class McpChatTool implements AiTool {
         ToolArguments args = ToolArguments.parse(arguments);
         Map<String, Object> values = new LinkedHashMap<String, Object>();
         for (McpToolParameter parameter : tool.getParameters()) {
+            if (parameter.getType() == McpToolType.STRING_ARRAY) {
+                List<String> list = args.texts(parameter.getName());
+                if (list != null) {
+                    values.put(parameter.getName(), list);
+                }
+                continue;
+            }
             String value = args.text(parameter.getName());
             if (value != null) {
                 values.put(parameter.getName(), value);
@@ -97,6 +104,9 @@ final class McpChatTool implements AiTool {
             }
             properties.append(quote(parameter.getName())).append(":{\"type\":")
                     .append(quote(jsonType(parameter.getType())));
+            if (parameter.getType() == McpToolType.STRING_ARRAY) {
+                properties.append(",\"items\":{\"type\":\"string\"}");
+            }
             if (parameter.getType() == McpToolType.ENUM && !parameter.getEnumValues().isEmpty()) {
                 properties.append(",\"enum\":[");
                 for (int i = 0; i < parameter.getEnumValues().size(); i++) {
@@ -121,6 +131,8 @@ final class McpChatTool implements AiTool {
                 return "integer";
             case BOOLEAN:
                 return "boolean";
+            case STRING_ARRAY:
+                return "array";
             default:
                 return "string";
         }

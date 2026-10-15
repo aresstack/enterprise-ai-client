@@ -1,7 +1,11 @@
 package com.aresstack.enterpriseai.astu.acropolis.tool;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Liest die Argumente eines Werkzeugaufrufs: ein flaches JSON-Objekt mit Text-, Zahl-, Wahrheits- oder
@@ -11,21 +15,48 @@ import java.util.Map;
 public final class ToolArguments {
 
     private final Map<String, String> values;
+    /** Schlüssel, deren Wert ein JSON-Array war (Rohtext), nicht ein Text, der zufällig mit '[' beginnt. */
+    private final Set<String> rawArrays;
 
-    private ToolArguments(Map<String, String> values) {
+    private ToolArguments(Map<String, String> values, Set<String> rawArrays) {
         this.values = values;
+        this.rawArrays = rawArrays;
     }
 
     /** @throws IllegalArgumentException wenn {@code json} kein JSON-Objekt ist */
     public static ToolArguments parse(String json) {
         Parser parser = new Parser(json == null ? "{}" : json);
-        return new ToolArguments(parser.object());
+        Map<String, String> values = parser.object();
+        return new ToolArguments(values, parser.rawArrays);
     }
 
     /** Der Wert als Text oder {@code null}, wenn er fehlt oder {@code null} ist. */
     public String text(String name) {
         String value = values.get(name);
         return value == null || value.trim().isEmpty() ? null : value;
+    }
+
+    /**
+     * Der Wert als Liste von Texten: ein JSON-Array von Texten (oder Zahlen/Wahrheitswerten) in seiner Reihenfolge,
+     * ein einzelner Wert als einelementige Liste; {@code null}, wenn das Argument fehlt.
+     *
+     * @throws IllegalArgumentException wenn das Array kein gültiges JSON ist oder verschachtelte Werte enthält
+     */
+    public List<String> texts(String name) {
+        String value = values.get(name);
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        List<String> result = new ArrayList<String>();
+        if (!trimmed.startsWith("[") || !rawArrays.contains(name)) {
+            if (!trimmed.isEmpty()) {
+                result.add(value);
+            }
+            return result;
+        }
+        Parser parser = new Parser(trimmed);
+        return parser.stringArray();
     }
 
     /** Der Wert als Pflichttext. */
@@ -53,6 +84,7 @@ public final class ToolArguments {
     private static final class Parser {
         private final String text;
         private int pos;
+        private final Set<String> rawArrays = new HashSet<String>();
 
         Parser(String text) {
             this.text = text;
@@ -73,10 +105,44 @@ public final class ToolArguments {
                 skip();
                 expect(':');
                 skip();
+                if (peek() == '[') {
+                    rawArrays.add(key);
+                }
                 result.put(key, value());
                 skip();
                 char next = next();
                 if (next == '}') {
+                    return result;
+                }
+                if (next != ',') {
+                    throw error();
+                }
+            }
+        }
+
+        /** Ein JSON-Array flacher Werte; {@code null}-Elemente entfallen. */
+        List<String> stringArray() {
+            List<String> result = new ArrayList<String>();
+            skip();
+            expect('[');
+            skip();
+            if (peek() == ']') {
+                pos++;
+                return result;
+            }
+            while (true) {
+                skip();
+                char c = peek();
+                if (c == '{' || c == '[') {
+                    throw error();
+                }
+                String element = value();
+                if (element != null) {
+                    result.add(element);
+                }
+                skip();
+                char next = next();
+                if (next == ']') {
                     return result;
                 }
                 if (next != ',') {
