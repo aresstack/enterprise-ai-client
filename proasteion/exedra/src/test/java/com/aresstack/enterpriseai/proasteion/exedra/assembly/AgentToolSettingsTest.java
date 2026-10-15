@@ -77,14 +77,14 @@ public class AgentToolSettingsTest {
             awaitPublished(1);
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL,
-                KnowledgeTermLookupTool.NAME, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
+                KnowledgeTermLookupTool.NAME, KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                     last());
 
             file.get().setProperty("tools.disabled", KnowledgeMcpTools.KNOWLEDGE_SEARCH);
             settings.reload();
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL,
-                KnowledgeTermLookupTool.NAME, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), last());
+                KnowledgeTermLookupTool.NAME, KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), last());
 
             int before = published.size();
             file.get().remove("tools.disabled");
@@ -92,7 +92,7 @@ public class AgentToolSettingsTest {
             assertTrue("neu veröffentlicht", published.size() > before);
             assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL,
-                KnowledgeTermLookupTool.NAME, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
+                KnowledgeTermLookupTool.NAME, KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                     last());
         } finally {
             root.agentService().close();

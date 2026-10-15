@@ -115,6 +115,7 @@ public final class CompositionRoot {
 
     /** Herkunft der Werkzeuge im {@link ToolCatalog} (Anzeige im Einstellungen-Reiter „Tools“). */
     static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
+    static final String ORIGIN_INDEX_SEARCH = "Lokaler Wissensindex für den Recherche-Agenten (KnowledgeMcpTools)";
     static final String ORIGIN_TERM_LOOKUP = "Begriffe im Metadatenkatalog (KnowledgeTermLookupTool)";
     static final String ORIGIN_RESEARCH_DELEGATION = "Recherche-Agent für den Chat (ResearchDelegationTool)";
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
@@ -340,6 +341,9 @@ public final class CompositionRoot {
         final KnowledgeTermLookupTool termLookup = new KnowledgeTermLookupTool(ports.facts());
         toolCatalog.register(ORIGIN_TERM_LOOKUP, EnumSet.of(ToolChannel.AGENT),
                 () -> Collections.singletonList(termLookup.contribution()));
+        // Second stage of the Research Agent: the local index alone, before any live source (agent only).
+        toolCatalog.register(ORIGIN_INDEX_SEARCH, EnumSet.of(ToolChannel.AGENT),
+                () -> Collections.singletonList(offered.knowledgeIndexSearch()));
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT), () -> {
             boolean viaResearch = researchUsable.getAsBoolean();
             List<McpToolContribution> tools = new ArrayList<McpToolContribution>();

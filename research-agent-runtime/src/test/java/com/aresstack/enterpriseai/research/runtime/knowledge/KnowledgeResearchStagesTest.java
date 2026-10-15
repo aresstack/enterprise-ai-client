@@ -175,21 +175,35 @@ public class KnowledgeResearchStagesTest {
 
     private static final String IRR_TASK = "Finde heraus, welche Bedeutung IRR im internen Unternehmenswissen hat.";
 
-    /** A term lookup over stored findings plus a lexical search, both over the same two pages. */
+    /** A term lookup over stored findings, the local index and a lexical search over a few pages. */
     private static final class AcronymTools implements ToolInvoker {
         final List<String> calls = new ArrayList<String>();
         boolean defined = true;
+        boolean indexed = false;
+        boolean indexOffered = true;
 
         @Override
-        public String call(String toolName, Map<String, Object> args) throws ToolFailure {
+        public String call(String toolName, Map<String, Object> args) throws ToolFailure, EndpointUnavailable {
             if (TermLookupStrategy.TOOL.equals(toolName)) {
                 calls.add(toolName + ":" + args.get(TermLookupStrategy.PARAM_TERM));
                 return defined ? "Term: IRR\n\n[1] wiki:42\nid: wiki:42\nInterne Revisionsrichtlinie (IRR).\n"
                         : "Term: IRR\nNo resource states a long form of this term.";
             }
+            if (LocalIndexStrategy.TOOL.equals(toolName) && !indexOffered) {
+                throw new EndpointUnavailable(toolName + " is not offered");
+            }
             calls.add(toolName + ":" + (args.containsKey("query") ? args.get("query") : args.get("id")));
+            if (LocalIndexStrategy.TOOL.equals(toolName)) {
+                return indexed ? "Query: " + args.get("query") + "\n\n[1] Revisionshandbuch\nid: files:9\n"
+                        + "source: files\nDie IRR wird jährlich überprüft.\n" : "Query: " + args.get("query")
+                        + "\nNo hits.";
+            }
             if (KnowledgeResearch.SEARCH_TOOL.equals(toolName)) {
                 return "Query: IRR\n\n[1] Prüfplan 2026\nid: wiki:7\nsource: wiki\nDie IRR gilt ab Mai.\n";
+            }
+            if ("files:9".equals(args.get("id"))) {
+                return "title: Revisionshandbuch\nid: files:9\nurl: file:///docs/revision.md\n\n"
+                        + "Die IRR wird jährlich überprüft.";
             }
             if ("wiki:42".equals(args.get("id"))) {
                 return "title: Richtlinien\nid: wiki:42\nurl: https://wiki.example/42\n\n"
@@ -226,11 +240,71 @@ public class KnowledgeResearchStagesTest {
 
         KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
 
-        assertEquals(Arrays.asList("knowledge_term_lookup:IRR", "knowledge_search:IRR", "knowledge_read:wiki:7"),
-                tools.calls);
-        assertEquals(Arrays.asList("term: IRR", "IRR"), result.queries());
+        assertEquals("term lookup, both index lookups without hits, then the live search",
+                Arrays.asList("knowledge_term_lookup:IRR", "knowledge_index_search:" + IRR_TASK,
+                        "knowledge_index_search:IRR", "knowledge_search:IRR", "knowledge_read:wiki:7"), tools.calls);
+        assertEquals(Arrays.asList("term: IRR", "index: " + IRR_TASK, "index: IRR", "IRR"), result.queries());
         assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
         assertEquals("wiki:7", result.sources().get(0).id);
+    }
+
+    @Test
+    public void aTaskAnsweredFromTheLocalIndexNeverReachesTheLiveSource() throws Exception {
+        AcronymTools tools = new AcronymTools();
+        tools.defined = false;
+        tools.indexed = true;
+        Model model = new Model("JA", "Die IRR wird jährlich überprüft [1].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals("the task itself goes to the index first, then the hit is read; no live search",
+                Arrays.asList("knowledge_term_lookup:IRR", "knowledge_index_search:" + IRR_TASK,
+                        "knowledge_read:files:9"), tools.calls);
+        assertEquals("no planning: evidence check and answer", 2, model.calls);
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+        KnowledgeHit source = result.sources().get(0);
+        assertEquals("files:9", source.id);
+        assertEquals("Revisionshandbuch", source.title);
+        assertEquals("file:///docs/revision.md", source.url);
+    }
+
+    @Test
+    public void insufficientLocalEvidenceFallsThroughToTheLexicalLiveStage() throws Exception {
+        AcronymTools tools = new AcronymTools();
+        tools.defined = false;
+        tools.indexed = true;
+        Model model = new Model("NEIN", "NEIN", "{\"queries\": [\"IRR\"]}", "Die IRR gilt ab Mai [2].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals("the local hit is read once; the live search follows",
+                Arrays.asList("knowledge_term_lookup:IRR", "knowledge_index_search:" + IRR_TASK,
+                        "knowledge_read:files:9", "knowledge_index_search:IRR", "knowledge_search:IRR",
+                        "knowledge_read:wiki:7"), tools.calls);
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+        assertEquals(Arrays.asList("files:9", "wiki:7"), Arrays.asList(result.sources().get(0).id,
+                result.sources().get(1).id));
+    }
+
+    @Test
+    public void withoutTheIndexToolTheLocalStageIsSkipped() throws Exception {
+        AcronymTools tools = new AcronymTools();
+        tools.defined = false;
+        tools.indexOffered = false;
+        Model model = new Model("{\"queries\": [\"IRR\"]}", "Die IRR gilt ab Mai [1].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals(Arrays.asList("knowledge_term_lookup:IRR", "knowledge_search:IRR", "knowledge_read:wiki:7"),
+                tools.calls);
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+    }
+
+    @Test
+    public void theLocalStageAsksWithTheTaskAndWithItsLiteralTerms() {
+        assertEquals(Arrays.asList(IRR_TASK, "IRR"), new LocalIndexStrategy().directQueries(IRR_TASK));
+        assertEquals(Arrays.asList("IRR"), new LocalIndexStrategy().directQueries("IRR"));
+        assertTrue(new LocalIndexStrategy().directQueries("  ").isEmpty());
     }
 
     @Test
@@ -258,7 +332,8 @@ public class KnowledgeResearchStagesTest {
         KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
 
         assertEquals(KnowledgeResearchResult.Outcome.NO_EVIDENCE, result.outcome());
-        assertEquals(Arrays.asList("IRR failed: source timeout"), result.notes());
+        assertEquals(Arrays.asList("index: " + IRR_TASK + " failed: source timeout",
+                "index: IRR failed: source timeout", "IRR failed: source timeout"), result.notes());
         String rendered = result.render();
         assertTrue(rendered, rendered.contains("not every knowledge source could be searched"));
         assertTrue(rendered, !rendered.contains("No hits in the enabled knowledge sources"));

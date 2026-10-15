@@ -40,6 +40,8 @@ import java.util.function.Predicate;
 public final class KnowledgeMcpTools {
 
     public static final String KNOWLEDGE_SEARCH = KnowledgeSearchTool.NAME;
+    /** The local index alone, for the Research Agent's local stage; not part of {@link #contributions()}. */
+    public static final String KNOWLEDGE_INDEX_SEARCH = KnowledgeIndexSearchTool.NAME;
     public static final String KNOWLEDGE_TREE = KnowledgeTreeTool.NAME;
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
     public static final String KNOWLEDGE_READ_MANY = KnowledgeReadManyTool.NAME;
@@ -54,6 +56,7 @@ public final class KnowledgeMcpTools {
 
     private final KnowledgeToolSettings settings;
     private final KnowledgeSearchTool search;
+    private final KnowledgeIndexSearchTool indexSearch;
     private final KnowledgeTreeTool tree;
     private final KnowledgeReadTool read;
     private final KnowledgeReadManyTool readMany;
@@ -94,6 +97,7 @@ public final class KnowledgeMcpTools {
         }
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
         this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
+        this.indexSearch = new KnowledgeIndexSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
         ResolveKnowledgeAddressUseCase addresses = new ResolveKnowledgeAddressUseCase(documents::catalog);
         KnowledgeResourceReader reader = new KnowledgeResourceReader(documents, live, addresses);
         this.read = new KnowledgeReadTool(reader, this.settings);
@@ -131,6 +135,14 @@ public final class KnowledgeMcpTools {
 
     public McpToolContribution knowledgeAttachments() {
         return attachments.contribution();
+    }
+
+    /**
+     * {@value #KNOWLEDGE_INDEX_SEARCH}: the hybrid search of the local index without live sources. Offered to the
+     * Research Agent only, so it is not among {@link #contributions()}.
+     */
+    public McpToolContribution knowledgeIndexSearch() {
+        return indexSearch.contribution();
     }
 
     public McpToolContribution knowledgeSearch() {

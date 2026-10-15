@@ -94,6 +94,26 @@ public class KnowledgeMcpToolsTest {
     }
 
     @Test
+    public void indexSearchAnswersFromTheIndexWithoutAskingTheSource() throws Exception {
+        assertEquals("knowledge_index_search", tools.knowledgeIndexSearch().getName());
+        assertFalse("agent only, not among the common tools",
+                tools.contributions().contains(tools.knowledgeIndexSearch()));
+        String empty = call(tools.knowledgeIndexSearch(), "query", "Drucker").getText();
+        assertTrue(empty, empty.contains("No hits"));
+        indexing.indexDocumentIfChanged(wiki.load(wiki.idOf("Drucker")));
+        int before = wiki.calls().size();
+
+        String text = call(tools.knowledgeIndexSearch(), "query", "Wie richte ich den Drucker ein?").getText();
+
+        assertTrue(text, text.contains("Drucker einrichten"));
+        assertTrue(text, text.contains("id: " + wiki.idOf("Drucker").value()));
+        assertTrue(text, text.contains("source: wiki"));
+        for (String sourceCall : wiki.calls().subList(before, wiki.calls().size())) {
+            assertFalse("no live search: " + sourceCall, sourceCall.startsWith("search:"));
+        }
+    }
+
+    @Test
     public void readLoadsAndIndexesOnDemand() {
         McpToolResult read = call(tools.knowledgeRead(), "id", wiki.idOf("Kaffee").value());
         assertFalse(read.getText(), read.isError());
