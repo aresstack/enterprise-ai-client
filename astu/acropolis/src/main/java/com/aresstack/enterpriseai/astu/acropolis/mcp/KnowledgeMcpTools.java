@@ -42,6 +42,12 @@ public final class KnowledgeMcpTools {
     public static final String KNOWLEDGE_READ = KnowledgeReadTool.NAME;
     public static final String KNOWLEDGE_ATTACHMENTS = KnowledgeAttachmentsTool.NAME;
     public static final String KNOWLEDGE_RESOLVE_URL = KnowledgeResolveUrlTool.NAME;
+    /**
+     * Name of the research boundary of the normal chat; the tool itself lives in the composition root (it runs the
+     * Research Agent over these tools) and delivers the read resources as context like {@value #KNOWLEDGE_READ}.
+     */
+    public static final String KNOWLEDGE_RESEARCH =
+            com.aresstack.enterpriseai.astu.acropolis.rag.KnowledgeAcquisition.RESEARCH_TOOL;
 
     private final KnowledgeToolSettings settings;
     private final KnowledgeSearchTool search;

@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.chat;
 
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 
 import java.util.Collection;
@@ -35,6 +36,14 @@ public final class ToolUsePolicy {
             + "irgendeine Bedeutung kennst, ersetzt die Suche nicht. Findet sie nichts, sag das und nenne eine "
             + "öffentliche Bedeutung nur als mögliche Lesart, nie stillschweigend.";
 
+    static final String RESEARCH = ResearchDelegationTool.NAME + " nutzt du, wenn der Nutzer etwas über einen "
+            + "Begriff wissen will, der im Kontext nicht eindeutig aufgelöst ist und organisationsspezifisch sein könnte "
+            + "(Abkürzung, interner System- oder Projektname, Organisationseinheit, Dokument, interner Prozess, "
+            + "unbekannter Fachbegriff), und wenn er ausdrücklich ums Suchen oder Nachschlagen bittet. Beschreibe den "
+            + "Auftrag in natürlicher Sprache; Suchbegriffe wählt der Recherche-Agent. Dass du irgendeine Bedeutung "
+            + "kennst, ersetzt die Recherche nicht. Antworte nur aus den Befunden und nenne ihre Quellen; findet sie "
+            + "nichts, sag das und nenne eine öffentliche Bedeutung nur als mögliche Lesart, nie stillschweigend.";
+
     private ToolUsePolicy() {
     }
 
@@ -50,7 +59,9 @@ public final class ToolUsePolicy {
         if (offered.contains(AppHelpMcpTools.APP_HELP_SEARCH)) {
             text.append(' ').append(HELP_FIRST);
         }
-        if (offered.contains(KnowledgeMcpTools.KNOWLEDGE_SEARCH)) {
+        if (offered.contains(ResearchDelegationTool.NAME)) {
+            text.append(' ').append(RESEARCH);
+        } else if (offered.contains(KnowledgeMcpTools.KNOWLEDGE_SEARCH)) {
             text.append(' ').append(KNOWLEDGE);
         }
         return text.toString();

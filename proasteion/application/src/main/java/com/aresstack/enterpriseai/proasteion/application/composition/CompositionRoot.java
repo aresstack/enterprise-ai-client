@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.proasteion.application.agent.ResearchAgentHost
 import com.aresstack.enterpriseai.proasteion.application.agent.ChatPortMainModelChat;
 import com.aresstack.enterpriseai.proasteion.application.agent.PhaseToolSetController;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchControlTools;
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
@@ -113,6 +114,7 @@ public final class CompositionRoot {
 
     /** Herkunft der Werkzeuge im {@link ToolCatalog} (Anzeige im Einstellungen-Reiter „Tools“). */
     static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
+    static final String ORIGIN_RESEARCH_DELEGATION = "Recherche-Agent für den Chat (ResearchDelegationTool)";
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
@@ -306,10 +308,42 @@ public final class CompositionRoot {
                 selection::isSearchable, config.agent().toolSettings(),
                 () -> settings.current().agent().toolSettings().treeChildLimit());
         // Die zentrale Werkzeug-Registry: Chat, Agenten und der Einstellungen-Reiter „Tools“ lesen nur hier. Der
-        // Wissens-Werkzeugsatz (knowledge_search, knowledge_read) steht als ein Satz für Chat und Agent darin.
+        // Wissens-Werkzeugsatz (knowledge_search, knowledge_read) steht als ein Satz für den Agenten darin.
         final KnowledgeMcpTools offered = knowledgeTools;
-        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT),
-                offered::contributions);
+        // Der normale Chat recherchiert über die Research-Grenze: knowledge_research(task) übergibt den Auftrag in
+        // natürlicher Sprache dem Recherche-Agenten, der die Suchanfragen formuliert und knowledge_search/
+        // knowledge_read selbst nutzt. Das direkte knowledge_search bekommt der Chat nur, solange
+        // knowledge_research fehlt oder abgeschaltet ist; Lesen, Seitenbaum und Anhänge bleiben im Chat.
+        final boolean delegated = ports.chat() != null;
+        final ToolCatalog chatCatalog = toolCatalog;
+        // Ohne knowledge_search oder knowledge_read (abgeschaltet) kann der Recherche-Agent nicht recherchieren; dann
+        // bietet der Chat knowledge_research nicht an und bekommt, soweit aktiv, die Low-Level-Werkzeuge zurück.
+        final java.util.function.BooleanSupplier researchUsable = () -> delegated
+                && chatCatalog.isEnabled(ResearchDelegationTool.NAME)
+                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ);
+        if (delegated) {
+            final ToolCatalog catalog = toolCatalog;
+            final ResearchDelegationTool research = new ResearchDelegationTool(
+                    name -> catalog.find(name, ToolChannel.AGENT),
+                    new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()));
+            toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
+                    () -> chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                            && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                            ? Collections.singletonList(research.contribution())
+                            : Collections.<McpToolContribution>emptyList());
+        }
+        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT), offered::contributions);
+        toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT), () -> {
+            boolean viaResearch = researchUsable.getAsBoolean();
+            List<McpToolContribution> tools = new ArrayList<McpToolContribution>();
+            for (McpToolContribution tool : offered.contributions()) {
+                if (!viaResearch || !KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(tool.getName())) {
+                    tools.add(tool);
+                }
+            }
+            return tools;
+        });
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
         registerHelpTools(toolCatalog, config.agent().toolSettings());

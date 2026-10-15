@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
@@ -238,7 +239,8 @@ public class ApplicationCompositionTest {
             assertFalse(tool.name(), tool.origin().isEmpty());
         }
         // Wissenswerkzeuge: Name und Beschreibung aus der McpToolContribution, Verfügbarkeit aus der Registrierung.
-        assertEquals("Chat + Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).availability());
+        assertEquals("Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_SEARCH).availability());
+        assertEquals("Chat", shown.get(ResearchDelegationTool.NAME).availability());
         assertEquals("Chat + Agent", shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).availability());
         assertEquals(root.knowledgeTools().knowledgeRead().getDescription(),
                 shown.get(KnowledgeMcpTools.KNOWLEDGE_READ).description());
@@ -261,11 +263,11 @@ public class ApplicationCompositionTest {
         }
         assertEquals(shownForAgent, agent);
         List<String> chat = new ArrayList<String>();
-        // Der Chat bekommt den Wissens-Werkzeugsatz aus derselben Registry (Bug 1: auch knowledge_search).
+        // Der Chat bekommt den Wissens-Werkzeugsatz aus derselben Registry; recherchiert wird über knowledge_research.
         for (AiTool tool : root.knowledgeChatTools()) {
             chat.add(tool.name());
         }
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(ResearchDelegationTool.NAME, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chat);
     }
 
@@ -310,7 +312,7 @@ public class ApplicationCompositionTest {
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 names(root.agentTools()));
-        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(ResearchDelegationTool.NAME, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
     }

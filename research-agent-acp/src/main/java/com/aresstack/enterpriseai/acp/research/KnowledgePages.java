@@ -1,10 +1,10 @@
 package com.aresstack.enterpriseai.acp.research;
 
-import com.aresstack.enterpriseai.research.runtime.json.MiniJson;
+import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeHit;
+import com.aresstack.enterpriseai.research.runtime.knowledge.KnowledgeToolOutput;
 import com.aresstack.enterpriseai.research.runtime.loop.ToolInvoker;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,32 +181,12 @@ final class KnowledgePages implements ToolInvoker {
         return id;
     }
 
-    /** Kopfzeilen von {@code knowledge_read} vor dem Seitentext (Metadaten, nie Inhalt). */
-    private static final java.util.regex.Pattern HEADER = java.util.regex.Pattern.compile(
-            "(?i)^(title|id|url|source|version|contenthash|from|passages|passage|note):.*$");
-    /** Die Marke einer Passage ({@code [passage <id>] Überschrift}); die Überschrift bleibt. */
-    private static final java.util.regex.Pattern PASSAGE_MARK = java.util.regex.Pattern.compile(
-            "^\\[passage [^\\]]*\\]\\s*");
-
     /**
-     * Der Seitentext einer {@code knowledge_read}-Antwort ohne Kopfzeilen und Passagen-Marken: nur was auf der Seite
-     * steht, damit Auszüge für das Modell keine IDs, Hashes oder Versionen tragen. Ohne Kopf bleibt der Text, wie er ist.
+     * Der Seitentext einer {@code knowledge_read}-Antwort ohne Kopfzeilen und Passagen-Marken (gemeinsames Format der
+     * Runtime, {@link KnowledgeToolOutput#pageText}).
      */
     static String pageText(String readOutput) {
-        if (readOutput == null) {
-            return "";
-        }
-        String[] lines = readOutput.split("\\r?\\n", -1);
-        int start = 0;
-        while (start < lines.length && HEADER.matcher(lines[start].trim()).matches()) {
-            start++;
-        }
-        StringBuilder text = new StringBuilder();
-        for (int i = start; i < lines.length; i++) {
-            String line = PASSAGE_MARK.matcher(lines[i]).replaceFirst("");
-            text.append(line).append('\n');
-        }
-        return text.toString().trim();
+        return KnowledgeToolOutput.pageText(readOutput);
     }
 
     /**
@@ -287,131 +267,14 @@ final class KnowledgePages implements ToolInvoker {
     }
 
     /**
-     * Liest die Treffer von {@code knowledge_search}: Blöcke {@code [n] Titel – Abschnitt}, direkt darunter die
-     * Metadatenzeilen {@code id: …}, {@code url: …}, {@code passage: …}, {@code source: …} (nur {@code id:} ist
-     * Pflicht), danach der Auszug. Metadaten gehen nie in den Auszug. Tolerant auch für JSON (Array oder {@code
-     * hits}/{@code results} mit {@code id}, {@code title}, {@code snippet}, {@code url}).
+     * Liest die Treffer von {@code knowledge_search} über das gemeinsame Format der Runtime
+     * ({@link KnowledgeToolOutput#parseHits}).
      */
     static List<Hit> parseHits(String text) {
-        String trimmed = text == null ? "" : text.trim();
-        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-            try {
-                return fromJson(MiniJson.parse(trimmed));
-            } catch (RuntimeException notJson) {
-                // fällt auf das Zeilenformat zurück
-            }
-        }
         List<Hit> hits = new ArrayList<Hit>();
-        HitLines current = null;
-        for (String line : trimmed.split("\\r?\\n")) {
-            java.util.regex.Matcher header = HIT_HEADER.matcher(line);
-            if (header.matches()) {
-                addHit(hits, current);
-                current = new HitLines(header.group(1).trim());
-            } else if (current != null) {
-                current.accept(line);
-            }
-        }
-        addHit(hits, current);
-        return hits;
-    }
-
-    private static final java.util.regex.Pattern HIT_HEADER = java.util.regex.Pattern.compile("^\\[\\d+\\]\\s+(.*)$");
-
-    /** Die Zeilen eines Treffers: erst der Metadatenkopf, ab der ersten anderen Zeile der Auszug. */
-    private static final class HitLines {
-        final String title;
-        String id = "";
-        String url = "";
-        String passage = "";
-        String source = "";
-        boolean inSnippet;
-        final StringBuilder snippet = new StringBuilder();
-
-        HitLines(String title) {
-            this.title = title;
-        }
-
-        void accept(String line) {
-            if (line.startsWith("Read a hit completely")) {
-                return;
-            }
-            if (!inSnippet) {
-                if (line.startsWith("id: ")) {
-                    id = value(line, "id: ");
-                    return;
-                }
-                if (line.startsWith("url: ")) {
-                    url = value(line, "url: ");
-                    return;
-                }
-                if (line.startsWith("passage: ")) {
-                    passage = value(line, "passage: ");
-                    return;
-                }
-                if (line.startsWith("source: ")) {
-                    source = value(line, "source: ");
-                    return;
-                }
-                if (id.isEmpty() || line.trim().isEmpty()) {
-                    return;
-                }
-                inSnippet = true;
-            }
-            if (line.trim().isEmpty()) {
-                return;
-            }
-            if (snippet.length() > 0) {
-                snippet.append(' ');
-            }
-            snippet.append(line.trim());
-        }
-
-        private static String value(String line, String key) {
-            return line.substring(key.length()).trim();
-        }
-    }
-
-    private static void addHit(List<Hit> hits, HitLines lines) {
-        if (lines != null && !lines.id.isEmpty()) {
-            hits.add(new Hit(lines.id, lines.title, lines.snippet.toString(), lines.url, lines.passage,
-                    lines.source));
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Hit> fromJson(Object parsed) {
-        Object list = parsed;
-        if (parsed instanceof Map) {
-            Map<String, Object> object = (Map<String, Object>) parsed;
-            list = object.containsKey("hits") ? object.get("hits") : object.get("results");
-        }
-        if (!(list instanceof List)) {
-            return Collections.emptyList();
-        }
-        List<Hit> hits = new ArrayList<Hit>();
-        for (Object element : (List<Object>) list) {
-            if (!(element instanceof Map)) {
-                continue;
-            }
-            Map<String, Object> hit = (Map<String, Object>) element;
-            String id = first(hit, "id", "documentId", "resourceId");
-            if (id.isEmpty()) {
-                continue;
-            }
-            hits.add(new Hit(id, first(hit, "title", "name"), first(hit, "snippet", "excerpt", "text"),
-                    first(hit, "url", "link"), first(hit, "passage", "passageId"), first(hit, "source", "sourceId")));
+        for (KnowledgeHit hit : KnowledgeToolOutput.parseHits(text)) {
+            hits.add(new Hit(hit.id, hit.title, hit.snippet, hit.url, hit.passage, hit.source));
         }
         return hits;
-    }
-
-    private static String first(Map<String, Object> map, String... keys) {
-        for (String key : keys) {
-            Object value = map.get(key);
-            if (value != null && !String.valueOf(value).trim().isEmpty()) {
-                return String.valueOf(value).trim();
-            }
-        }
-        return "";
     }
 }

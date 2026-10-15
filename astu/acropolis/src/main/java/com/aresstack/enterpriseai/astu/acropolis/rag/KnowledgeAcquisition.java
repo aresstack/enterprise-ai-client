@@ -83,9 +83,20 @@ public final class KnowledgeAcquisition {
         return new KnowledgeAcquisition(status, Collections.unmodifiableSet(failed), toolContext);
     }
 
+    /** Name der Research-Grenze des Chats ({@code KnowledgeMcpTools.KNOWLEDGE_RESEARCH}). */
+    public static final String RESEARCH_TOOL = "knowledge_research";
+
     /** Liefert dieses Werkzeug bei Erfolg Wissenskontext für den Turn? */
     public static boolean deliversContext(String toolName) {
-        return ChatBookmark.READ_TOOL.equals(toolName);
+        return ChatBookmark.READ_TOOL.equals(toolName) || isResearch(toolName);
+    }
+
+    /**
+     * Die Research-Grenze ({@code knowledge_research}) liefert Kontext nur über die tatsächlich gelesenen Ressourcen:
+     * ein Erfolg ohne Belege (nichts gefunden) ist kein Wissenskontext.
+     */
+    public static boolean isResearch(String toolName) {
+        return RESEARCH_TOOL.equals(toolName);
     }
 
     public Status status() {
