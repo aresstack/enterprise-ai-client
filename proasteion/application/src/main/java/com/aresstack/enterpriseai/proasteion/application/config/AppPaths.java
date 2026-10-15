@@ -61,11 +61,6 @@ public final class AppPaths {
         return appDirectory().resolve(FACT_DIRECTORY_NAME);
     }
 
-    /** Persistent memories (#144): {@code <app directory>/memories}. */
-    public static Path defaultMemoryDirectory() {
-        return appDirectory().resolve(MEMORY_DIRECTORY_NAME);
-    }
-
     public static Path defaultPairingKeyFile() {
         return appDirectory().resolve(PAIRING_KEY_FILE_NAME);
     }
