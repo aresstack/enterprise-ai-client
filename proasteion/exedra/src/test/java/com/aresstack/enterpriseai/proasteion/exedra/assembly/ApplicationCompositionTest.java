@@ -284,7 +284,7 @@ public class ApplicationCompositionTest {
         // Abgeschaltet: weder Chat noch Agent bekommen es, die Registry zeigt es weiter (als aus).
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
-        assertEquals(Arrays.asList(ResearchDelegationTool.NAME, KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_TREE, KnowledgeMcpTools.KNOWLEDGE_READ,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), chatNames(root.knowledgeChatTools()));
         assertFalse(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));
         assertTrue(root.toolCatalog().isEnabled(SearchAttachmentTool.NAME));
@@ -302,7 +302,7 @@ public class ApplicationCompositionTest {
         settings.reload();
         assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ), names(root.agentTools()));
-        assertEquals(Arrays.asList(ResearchDelegationTool.NAME, KnowledgeMcpTools.KNOWLEDGE_TREE,
+        assertEquals(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH, KnowledgeMcpTools.KNOWLEDGE_TREE,
                 KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, AppHelpMcpTools.APP_HELP_SEARCH, AppHelpMcpTools.APP_HELP_READ),
                 chatNames(root.knowledgeChatTools()));
         assertTrue(root.toolCatalog().isEnabled(ReadAttachmentTool.NAME));

@@ -114,6 +114,24 @@ public class KnowledgeResearchTest {
     }
 
     @Test
+    public void aSourceOutageIsReportedAndNotPresentedAsNoHits() throws Exception {
+        ToolInvoker outage = new ToolInvoker() {
+            @Override
+            public String call(String toolName, Map<String, Object> args) {
+                return "Query: IRR\nNote: source confluence could not be searched (timeout).\n"
+                        + "No hits. Do not retry with variants.";
+            }
+        };
+
+        KnowledgeResearchResult result = new KnowledgeResearch(outage, new ScriptedModel()).research("Was ist IRR?");
+
+        assertEquals(Arrays.asList("source confluence could not be searched (timeout)."), result.notes());
+        String rendered = result.render();
+        assertTrue(rendered, rendered.contains("Note: source confluence could not be searched"));
+        assertTrue(rendered, rendered.contains("not every knowledge source could be searched"));
+    }
+
+    @Test
     public void theEvidenceDecisionIsASeam() throws Exception {
         ScriptedModel model = new ScriptedModel("{\"queries\": [\"Vault Glossar\", \"PIMA Hashicorp Vault\"]}",
                 "Antwort [1].");

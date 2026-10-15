@@ -85,12 +85,15 @@ public final class KnowledgeResearch {
         List<String> excerpts = new ArrayList<String>();
         Set<String> tried = new HashSet<String>();
         String failure = null;
+        java.util.LinkedHashSet<String> notes = new java.util.LinkedHashSet<String>();
         for (int index = 0; index < planned.size() && searched.size() < MAX_SEARCHES; index++) {
             String query = planned.get(index);
             searched.add(query);
             List<KnowledgeHit> hits;
             try {
-                hits = search(query);
+                String output = searchOutput(query);
+                notes.addAll(KnowledgeToolOutput.notes(output));
+                hits = KnowledgeToolOutput.parseHits(output);
             } catch (ToolInvoker.ToolFailure failed) {
                 failure = failed.getMessage();
                 continue;
@@ -129,17 +132,20 @@ public final class KnowledgeResearch {
         }
         if (read.isEmpty()) {
             if (found.isEmpty() && failure != null) {
-                return new KnowledgeResearchResult(request, searched, read, unread,
+                return new KnowledgeResearchResult(request, searched, notes, read, unread,
                         "The knowledge search failed: " + failure, KnowledgeResearchResult.Outcome.FAILED);
             }
-            String text = found.isEmpty()
+            String text = found.isEmpty() && !notes.isEmpty()
+                    ? "No hits, but not every knowledge source could be searched (see notes). This is no evidence "
+                    + "that nothing exists; say that the search was incomplete."
+                    : found.isEmpty()
                     ? "No hits in the enabled knowledge sources. Do not answer from general knowledge; say that "
                     + "nothing was found and ask for other terms if useful."
                     : "Hits were found but none could be read; they are listed below as unverified hits.";
-            return new KnowledgeResearchResult(request, searched, read, unread, text,
+            return new KnowledgeResearchResult(request, searched, notes, read, unread, text,
                     KnowledgeResearchResult.Outcome.NO_EVIDENCE);
         }
-        return new KnowledgeResearchResult(request, searched, read, unread, answer(request, read, excerpts),
+        return new KnowledgeResearchResult(request, searched, notes, read, unread, answer(request, read, excerpts),
                 KnowledgeResearchResult.Outcome.ANSWERED);
     }
 
@@ -197,11 +203,11 @@ public final class KnowledgeResearch {
         return sources.toString();
     }
 
-    private List<KnowledgeHit> search(String query) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
+    private String searchOutput(String query) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
         Map<String, Object> args = new LinkedHashMap<String, Object>();
         args.put("query", query);
         args.put("limit", Integer.valueOf(HITS_PER_QUERY));
-        return KnowledgeToolOutput.parseHits(tools.call(SEARCH_TOOL, args));
+        return tools.call(SEARCH_TOOL, args);
     }
 
     /** The page text of a hit; {@code null} when this one hit cannot be read (the next one gets its chance). */

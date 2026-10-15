@@ -57,6 +57,23 @@ public final class KnowledgeToolOutput {
     }
 
     /**
+     * The diagnostic {@code Note:} lines of a {@code knowledge_search} answer (a source or the index could not be
+     * searched): outages, never evidence and never to be mistaken for "no hits".
+     */
+    public static List<String> notes(String text) {
+        List<String> notes = new ArrayList<String>();
+        if (text == null) {
+            return notes;
+        }
+        for (String line : text.split("\\r?\\n")) {
+            if (line.startsWith("Note: ")) {
+                notes.add(line.substring("Note: ".length()).trim());
+            }
+        }
+        return notes;
+    }
+
+    /**
      * The page text of a {@code knowledge_read} answer without header lines and passage marks: only what is on the
      * page, so excerpts for the model carry no ids, hashes or versions. Without a header the text stays as it is.
      */

@@ -23,15 +23,18 @@ public final class KnowledgeResearchResult {
 
     private final String task;
     private final List<String> queries;
+    private final List<String> notes;
     private final List<KnowledgeHit> sources;
     private final List<KnowledgeHit> unread;
     private final String answer;
     private final Outcome outcome;
 
-    public KnowledgeResearchResult(String task, List<String> queries, List<KnowledgeHit> sources,
+    public KnowledgeResearchResult(String task, List<String> queries, java.util.Collection<String> notes,
+                                   List<KnowledgeHit> sources,
                                    List<KnowledgeHit> unread, String answer, Outcome outcome) {
         this.task = task == null ? "" : task;
         this.queries = Collections.unmodifiableList(new ArrayList<String>(queries));
+        this.notes = Collections.unmodifiableList(new ArrayList<String>(notes));
         this.sources = Collections.unmodifiableList(new ArrayList<KnowledgeHit>(sources));
         this.unread = Collections.unmodifiableList(new ArrayList<KnowledgeHit>(unread));
         this.answer = answer == null ? "" : answer;
@@ -45,6 +48,11 @@ public final class KnowledgeResearchResult {
     /** The search expressions sent to {@code knowledge_search}, in order. */
     public List<String> queries() {
         return queries;
+    }
+
+    /** Diagnostics of the search (a source or the index could not be searched); never evidence. */
+    public List<String> notes() {
+        return notes;
     }
 
     /** The resources that were read; the answer cites them as {@code [n]} in this order. */
@@ -74,6 +82,9 @@ public final class KnowledgeResearchResult {
             out.append(i == 0 ? "" : ", ").append('"').append(queries.get(i)).append('"');
         }
         out.append('\n');
+        for (String note : notes) {
+            out.append("Note: ").append(note).append('\n');
+        }
         if (outcome == Outcome.ANSWERED) {
             out.append("\nFindings (only from the sources below; cite them as [n]):\n").append(answer.trim())
                     .append("\n\nSources:\n");

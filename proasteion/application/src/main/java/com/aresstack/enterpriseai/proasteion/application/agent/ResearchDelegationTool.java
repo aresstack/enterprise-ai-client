@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
+import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
@@ -30,7 +31,7 @@ import java.util.function.Function;
  */
 public final class ResearchDelegationTool implements McpToolHandler {
 
-    public static final String NAME = "knowledge_research";
+    public static final String NAME = KnowledgeMcpTools.KNOWLEDGE_RESEARCH;
     static final String PARAM_TASK = "task";
 
     private final Function<String, McpToolContribution> knowledgeTools;

@@ -315,18 +315,27 @@ public final class CompositionRoot {
         // knowledge_read selbst nutzt. Das direkte knowledge_search bekommt der Chat nur, solange
         // knowledge_research fehlt oder abgeschaltet ist; Lesen, Seitenbaum und Anhänge bleiben im Chat.
         final boolean delegated = ports.chat() != null;
+        final ToolCatalog chatCatalog = toolCatalog;
+        // Ohne knowledge_search oder knowledge_read (abgeschaltet) kann der Recherche-Agent nicht recherchieren; dann
+        // bietet der Chat knowledge_research nicht an und bekommt, soweit aktiv, die Low-Level-Werkzeuge zurück.
+        final java.util.function.BooleanSupplier researchUsable = () -> delegated
+                && chatCatalog.isEnabled(ResearchDelegationTool.NAME)
+                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ);
         if (delegated) {
             final ToolCatalog catalog = toolCatalog;
             final ResearchDelegationTool research = new ResearchDelegationTool(
                     name -> catalog.find(name, ToolChannel.AGENT),
                     new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()));
             toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
-                    () -> Collections.singletonList(research.contribution()));
+                    () -> chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_SEARCH)
+                            && chatCatalog.isEnabled(KnowledgeMcpTools.KNOWLEDGE_READ)
+                            ? Collections.singletonList(research.contribution())
+                            : Collections.<McpToolContribution>emptyList());
         }
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT), offered::contributions);
-        final ToolCatalog chatCatalog = toolCatalog;
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT), () -> {
-            boolean viaResearch = delegated && chatCatalog.isEnabled(ResearchDelegationTool.NAME);
+            boolean viaResearch = researchUsable.getAsBoolean();
             List<McpToolContribution> tools = new ArrayList<McpToolContribution>();
             for (McpToolContribution tool : offered.contributions()) {
                 if (!viaResearch || !KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(tool.getName())) {

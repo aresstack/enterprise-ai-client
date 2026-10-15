@@ -690,7 +690,11 @@ public final class RagChatBinding implements ChatShellActions {
                 if (support.diagnostics() != null) {
                     support.diagnostics().onToolResult(toolName, succeeded);
                 }
-                if (KnowledgeAcquisition.deliversContext(toolName)) {
+                if (KnowledgeAcquisition.isResearch(toolName)) {
+                    if (!succeeded) {
+                        request.toolReadFails.incrementAndGet(); // reads count in onToolContext
+                    }
+                } else if (KnowledgeAcquisition.deliversContext(toolName)) {
                     (succeeded ? request.toolReads : request.toolReadFails).incrementAndGet();
                 }
                 final String key = runningKey;
@@ -704,6 +708,12 @@ public final class RagChatBinding implements ChatShellActions {
             public void onToolContext(String toolName, List<ToolContextResource> resources) {
                 if (!KnowledgeAcquisition.deliversContext(toolName)) {
                     return;
+                }
+                if (KnowledgeAcquisition.isResearch(toolName)) {
+                    if (resources.isEmpty()) {
+                        return; // researched without evidence: no knowledge context
+                    }
+                    request.toolReads.incrementAndGet();
                 }
                 final List<SourceReference> read = describeToolContext(resources);
                 // Record the read pages as sources of the answer, also when the answer completed meanwhile; the
