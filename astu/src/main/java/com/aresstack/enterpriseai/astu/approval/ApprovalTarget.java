@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
 /**
  * What a tool call actually acts on, as resolved from trusted runtime data (never copied unchecked from model

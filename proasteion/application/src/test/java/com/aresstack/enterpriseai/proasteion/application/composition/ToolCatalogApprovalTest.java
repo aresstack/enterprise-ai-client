@@ -4,10 +4,10 @@ import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalDecision;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRequest;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRules;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ToolApprovalGate;
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import org.junit.Test;
 
 import java.util.Collections;

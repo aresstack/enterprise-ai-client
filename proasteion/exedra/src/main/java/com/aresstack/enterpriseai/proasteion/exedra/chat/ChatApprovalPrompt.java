@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalDecision;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalPromptPort;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRequest;
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;

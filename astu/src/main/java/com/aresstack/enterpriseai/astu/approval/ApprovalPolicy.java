@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
 /** What happens with a tool call before it runs. */
 public enum ApprovalPolicy {

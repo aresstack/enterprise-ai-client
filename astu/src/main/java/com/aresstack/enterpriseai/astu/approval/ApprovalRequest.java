@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
 import java.util.UUID;
 

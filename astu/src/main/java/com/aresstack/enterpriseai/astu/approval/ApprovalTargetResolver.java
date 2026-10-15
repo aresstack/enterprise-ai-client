@@ -1,6 +1,6 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
+import java.util.Map;
 
 /**
  * Determines, without side effects, what a tool call would act on: action, scope, owner-checked target id and
@@ -10,7 +10,8 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 public interface ApprovalTargetResolver {
 
     /** Every call is the plain {@link ApprovalTarget#INVOKE} of the tool. */
-    ApprovalTargetResolver INVOKE = call -> ApprovalTarget.invoke();
+    ApprovalTargetResolver INVOKE = (toolName, arguments) -> ApprovalTarget.invoke();
 
-    ApprovalTarget resolve(McpToolCall call);
+    /** @param arguments the call's arguments as sent by the model; never {@code null} */
+    ApprovalTarget resolve(String toolName, Map<String, Object> arguments);
 }

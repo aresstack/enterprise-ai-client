@@ -1,6 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
-
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
+package com.aresstack.enterpriseai.astu.approval;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -77,33 +75,33 @@ public final class ToolApprovalGate {
     }
 
     /** The effective policy of this call (for display); a resolver error counts as {@link ApprovalPolicy#DENY}. */
-    public ApprovalPolicy policy(McpToolCall call) {
+    public ApprovalPolicy policy(String toolName, Map<String, Object> arguments) {
         try {
-            return currentRules().policy(call.getToolName(), resolve(call));
+            return currentRules().policy(toolName, resolve(toolName, arguments));
         } catch (RuntimeException e) {
             return ApprovalPolicy.DENY;
         }
     }
 
     /** Decides whether {@code call} may run now; on ASK this blocks until the user answers. */
-    public Verdict check(McpToolCall call) {
-        if (call == null) {
+    public Verdict check(String toolName, Map<String, Object> arguments) {
+        if (toolName == null || toolName.trim().isEmpty()) {
             return Verdict.refused("kein Aufruf");
         }
         ApprovalTarget target;
         try {
-            target = resolve(call);
+            target = resolve(toolName, arguments);
         } catch (RuntimeException e) {
             return Verdict.refused("Ziel des Aufrufs ließ sich nicht bestimmen");
         }
-        ApprovalPolicy policy = currentRules().policy(call.getToolName(), target);
+        ApprovalPolicy policy = currentRules().policy(toolName, target);
         if (policy == ApprovalPolicy.ALLOW) {
             return Verdict.PERMITTED;
         }
         if (policy == ApprovalPolicy.DENY) {
             return Verdict.refused("in den Einstellungen verboten");
         }
-        ApprovalRequest request = new ApprovalRequest(call.getToolName(), target);
+        ApprovalRequest request = new ApprovalRequest(toolName, target);
         ApprovalDecision decision;
         try {
             decision = prompt.ask(request, timeoutMillis);
@@ -121,9 +119,10 @@ public final class ToolApprovalGate {
         return current == null ? ApprovalRules.NONE : current;
     }
 
-    private ApprovalTarget resolve(McpToolCall call) {
-        ApprovalTargetResolver resolver = resolvers.get(call.getToolName());
-        ApprovalTarget target = (resolver == null ? ApprovalTargetResolver.INVOKE : resolver).resolve(call);
+    private ApprovalTarget resolve(String toolName, Map<String, Object> arguments) {
+        ApprovalTargetResolver resolver = resolvers.get(toolName);
+        Map<String, Object> args = arguments == null ? Collections.<String, Object>emptyMap() : arguments;
+        ApprovalTarget target = (resolver == null ? ApprovalTargetResolver.INVOKE : resolver).resolve(toolName, args);
         if (target == null) {
             throw new IllegalStateException("resolver returned no target");
         }

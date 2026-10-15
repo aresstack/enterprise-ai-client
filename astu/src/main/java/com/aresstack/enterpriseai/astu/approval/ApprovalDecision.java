@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
 /** The answer to one {@link ApprovalRequest}. Only {@link Outcome#APPROVED} for the same request id runs the tool. */
 public final class ApprovalDecision {

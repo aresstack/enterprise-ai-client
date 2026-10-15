@@ -3,8 +3,8 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovingMcpToolHandler;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ToolApprovalGate;
+import com.aresstack.enterpriseai.proasteion.katagogion.ApprovingMcpToolHandler;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 
 import java.util.ArrayList;
 import java.util.Collections;

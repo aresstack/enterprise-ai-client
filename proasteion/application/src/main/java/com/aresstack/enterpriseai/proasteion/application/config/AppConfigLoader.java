@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;

@@ -1,7 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalPromptPort;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ToolApprovalGate;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.RetryingSourceAccess;
 import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;

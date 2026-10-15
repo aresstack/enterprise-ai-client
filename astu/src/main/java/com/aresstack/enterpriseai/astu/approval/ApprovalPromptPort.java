@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.astu.approval;
 
 /**
  * Asks the user to approve one tool call and waits for the answer. Called on the tool thread, never on the UI thread.

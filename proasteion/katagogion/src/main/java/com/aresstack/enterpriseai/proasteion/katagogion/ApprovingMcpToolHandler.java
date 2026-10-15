@@ -1,8 +1,6 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.proasteion.katagogion;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 
 /** Runs {@code delegate} only when the {@link ToolApprovalGate} permits the call; otherwise an error result. */
 public final class ApprovingMcpToolHandler implements McpToolHandler {
@@ -20,7 +18,7 @@ public final class ApprovingMcpToolHandler implements McpToolHandler {
 
     @Override
     public McpToolResult invoke(McpToolCall call) {
-        ToolApprovalGate.Verdict verdict = gate.check(call);
+        ToolApprovalGate.Verdict verdict = gate.check(call.getToolName(), call.getArguments());
         if (!verdict.permitted()) {
             return McpToolResult.error("Werkzeug " + call.getToolName() + " nicht ausgeführt: " + verdict.reason());
         }

@@ -1,8 +1,13 @@
-package com.aresstack.enterpriseai.proasteion.katagogion.approval;
+package com.aresstack.enterpriseai.proasteion.katagogion;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPolicy;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ApprovalTarget;
+import com.aresstack.enterpriseai.astu.approval.ApprovalTargetResolver;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -47,8 +52,8 @@ public class ToolApprovalGateTest {
         final Map<String, String> scopes = new HashMap<String, String>();
         scopes.put("m1", "chat");
         scopes.put("m2", "project");
-        return call -> {
-            String id = call.getString("id");
+        return (toolName, arguments) -> {
+            String id = (String) arguments.get("id");
             String scope = scopes.get(id);
             if (scope == null) {
                 throw new IllegalArgumentException("unknown memory");
@@ -124,7 +129,7 @@ public class ToolApprovalGateTest {
         assertTrue(new ApprovingMcpToolHandler(gate, counting).invoke(call("web_fetch", null, null)).isError());
         assertEquals(1, runs.get());
         assertFalse(new ToolApprovalGate(() -> ApprovalRules.parse("web_fetch=ASK"),
-                (request, timeout) -> null, 1000).check(call("web_fetch", null, null)).permitted());
+                (request, timeout) -> null, 1000).check("web_fetch", call("web_fetch", null, null).getArguments()).permitted());
     }
 
     @Test

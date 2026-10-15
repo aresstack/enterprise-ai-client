@@ -1,8 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalDecision;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRequest;
-import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalTarget;
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
+import com.aresstack.enterpriseai.astu.approval.ApprovalTarget;
 import org.junit.Test;
 
 import java.util.ArrayList;
