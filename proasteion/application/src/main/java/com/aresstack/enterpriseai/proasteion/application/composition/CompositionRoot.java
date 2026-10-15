@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.proasteion.application.agent.ResearchAgentHost
 import com.aresstack.enterpriseai.proasteion.application.agent.ChatPortMainModelChat;
 import com.aresstack.enterpriseai.proasteion.application.agent.PhaseToolSetController;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchControlTools;
+import com.aresstack.enterpriseai.proasteion.application.agent.KnowledgeTermLookupTool;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
@@ -114,6 +115,7 @@ public final class CompositionRoot {
 
     /** Herkunft der Werkzeuge im {@link ToolCatalog} (Anzeige im Einstellungen-Reiter „Tools“). */
     static final String ORIGIN_KNOWLEDGE = "Wissenswerkzeuge (KnowledgeMcpTools)";
+    static final String ORIGIN_TERM_LOOKUP = "Begriffe im Metadatenkatalog (KnowledgeTermLookupTool)";
     static final String ORIGIN_RESEARCH_DELEGATION = "Recherche-Agent für den Chat (ResearchDelegationTool)";
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
@@ -334,6 +336,10 @@ public final class CompositionRoot {
                             : Collections.<McpToolContribution>emptyList());
         }
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.AGENT), offered::contributions);
+        // First, cheap stage of the Research Agent: acronyms from the metadata catalog (agent only, not in the chat).
+        final KnowledgeTermLookupTool termLookup = new KnowledgeTermLookupTool(ports.facts());
+        toolCatalog.register(ORIGIN_TERM_LOOKUP, EnumSet.of(ToolChannel.AGENT),
+                () -> Collections.singletonList(termLookup.contribution()));
         toolCatalog.register(ORIGIN_KNOWLEDGE, EnumSet.of(ToolChannel.CHAT), () -> {
             boolean viaResearch = researchUsable.getAsBoolean();
             List<McpToolContribution> tools = new ArrayList<McpToolContribution>();

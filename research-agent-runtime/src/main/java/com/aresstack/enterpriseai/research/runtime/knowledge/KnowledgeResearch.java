@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.research.runtime.team.MainModelChat;
 import com.aresstack.enterpriseai.research.runtime.team.MainModelChatResult;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,11 +16,12 @@ import java.util.Set;
 /**
  * The Research Agent's mediation between a research task in natural language and the technical knowledge
  * operations. The caller (the normal chat, or the agent process) speaks natural language; this class speaks the
- * search language of the knowledge tools: its {@link DiscoveryStrategy} (today {@link LexicalDiscoveryStrategy}: one
- * concise query, literal identifiers kept) guides the model's query planning, it searches with {@code
- * knowledge_search}, reads the best hits with {@code knowledge_read}, lets the {@link EvidenceJudge} decide whether
- * the read evidence answers the task, searches once more with a materially different query when it does not, and
- * writes the answer exclusively from the read excerpts, each statement tied to its source.
+ * search language of the knowledge tools. It runs its {@link DiscoveryStrategy stages} in order (by default
+ * {@link LexicalDiscoveryStrategy}: one concise query, literal identifiers kept, planned by the model, searched with
+ * {@code knowledge_search}): after each lookup it reads the best hits with {@code knowledge_read} and lets the
+ * {@link EvidenceJudge} decide whether the read evidence answers the task; only when it does not, the next lookup or
+ * the next stage runs. A stage whose tool is not offered is skipped. The answer is written exclusively from the read
+ * excerpts, each statement tied to its source.
  *
  * <p>Fundamental rule: every task is searched. Model knowledge helps to understand the task, choose terms and write
  * up the evidence, but is never evidence itself; without read resources there is no model answer.
@@ -46,26 +48,44 @@ public final class KnowledgeResearch {
 
     private final ToolInvoker tools;
     private final MainModelChat model;
-    private final DiscoveryStrategy strategy;
+    private final List<DiscoveryStrategy> stages;
     private final EvidenceJudge judge;
 
-    /** With the current lexical strategy and the model as evidence judge. */
+    /** With the default stages ({@link #defaultStages()}) and the model as evidence judge. */
     public KnowledgeResearch(ToolInvoker tools, MainModelChat model) {
-        this(tools, model, new LexicalDiscoveryStrategy(), null);
+        this(tools, model, defaultStages(), null);
     }
 
     /**
-     * @param strategy how queries are formulated
+     * @param strategy how queries are formulated (the only stage)
      * @param judge    whether read evidence suffices; {@code null} for {@link #modelJudge}
      */
     public KnowledgeResearch(ToolInvoker tools, MainModelChat model, DiscoveryStrategy strategy, EvidenceJudge judge) {
-        if (tools == null || model == null || strategy == null) {
-            throw new IllegalArgumentException("tools, model and strategy must not be null");
+        this(tools, model, strategy == null ? null : Collections.singletonList(strategy), judge);
+    }
+
+    /**
+     * @param stages the discovery stages in the order they run, cheap ones first
+     * @param judge  whether read evidence suffices; {@code null} for {@link #modelJudge}
+     */
+    public KnowledgeResearch(ToolInvoker tools, MainModelChat model, List<DiscoveryStrategy> stages,
+                             EvidenceJudge judge) {
+        if (tools == null || model == null || stages == null || stages.isEmpty() || stages.contains(null)) {
+            throw new IllegalArgumentException("tools, model and stages must not be null or empty");
         }
         this.tools = tools;
         this.model = model;
-        this.strategy = strategy;
+        this.stages = Collections.unmodifiableList(new ArrayList<DiscoveryStrategy>(stages));
         this.judge = judge == null ? modelJudge() : judge;
+    }
+
+    /**
+     * The stages of the Research Agent today: first the cheap lookup of acronym-like terms in the structured findings
+     * ({@link TermLookupStrategy}), then the lexical search ({@link LexicalDiscoveryStrategy}).
+     */
+    public static List<DiscoveryStrategy> defaultStages() {
+        return Collections.unmodifiableList(java.util.Arrays.<DiscoveryStrategy>asList(new TermLookupStrategy(),
+                new LexicalDiscoveryStrategy()));
     }
 
     /**
@@ -78,7 +98,6 @@ public final class KnowledgeResearch {
         if (request.isEmpty()) {
             throw new IllegalArgumentException("task must not be blank");
         }
-        List<String> planned = plan(request);
         List<String> searched = new ArrayList<String>();
         Map<String, KnowledgeHit> found = new LinkedHashMap<String, KnowledgeHit>();
         List<KnowledgeHit> read = new ArrayList<KnowledgeHit>();
@@ -86,52 +105,81 @@ public final class KnowledgeResearch {
         Set<String> tried = new HashSet<String>();
         String failure = null;
         java.util.LinkedHashSet<String> notes = new java.util.LinkedHashSet<String>();
-        for (int index = 0; index < planned.size() && searched.size() < MAX_SEARCHES; index++) {
-            String query = planned.get(index);
-            searched.add(query);
-            List<KnowledgeHit> hits;
-            try {
-                String output = searchOutput(query);
-                notes.addAll(KnowledgeToolOutput.notes(output));
-                hits = KnowledgeToolOutput.parseHits(output);
-            } catch (ToolInvoker.ToolFailure failed) {
-                failure = failed.getMessage();
-                continue;
-            }
-            for (KnowledgeHit hit : hits) {
-                if (!found.containsKey(hit.id)) {
-                    found.put(hit.id, hit);
-                }
-            }
-            int readNow = 0;
-            for (KnowledgeHit hit : hits) {
-                if (readNow >= MAX_READS) {
-                    break;
-                }
-                if (!tried.add(hit.id)) {
+        ToolInvoker.EndpointUnavailable unavailable = null;
+        boolean reached = false;
+        boolean answered = false; // at least one lookup returned an answer (possibly without hits)
+        List<String> failures = new ArrayList<String>();
+        stages:
+        for (int stage = 0; stage < stages.size(); stage++) {
+            DiscoveryStrategy strategy = stages.get(stage);
+            List<String> lookups = lookups(strategy, request);
+            for (int index = 0; index < lookups.size(); index++) {
+                String query = lookups.get(index);
+                List<KnowledgeHit> hits;
+                try {
+                    String output = tools.call(strategy.tool(), strategy.arguments(query, HITS_PER_QUERY));
+                    reached = true;
+                    answered = true;
+                    searched.add(strategy.label(query));
+                    notes.addAll(KnowledgeToolOutput.notes(output));
+                    hits = KnowledgeToolOutput.parseHits(output);
+                } catch (ToolInvoker.ToolFailure failed) {
+                    reached = true;
+                    searched.add(strategy.label(query));
+                    failure = failed.getMessage();
+                    failures.add(strategy.label(query) + " failed: " + failed.getMessage());
                     continue;
+                } catch (ToolInvoker.EndpointUnavailable notOffered) {
+                    unavailable = notOffered; // this stage cannot run here; the next one may
+                    continue stages;
                 }
-                String page = readPage(hit.id);
-                if (page == null || page.isEmpty()) {
-                    continue;
+                for (KnowledgeHit hit : hits) {
+                    if (!found.containsKey(hit.id)) {
+                        found.put(hit.id, hit);
+                    }
                 }
-                read.add(hit);
-                readNow++;
-                excerpts.add(ResearchQueries.excerpt(page, request + " " + query));
+                int readNow = 0;
+                for (KnowledgeHit hit : hits) {
+                    if (readNow >= MAX_READS) {
+                        break;
+                    }
+                    if (!tried.add(hit.id)) {
+                        continue;
+                    }
+                    String output = readOutput(hit.id);
+                    String page = output == null ? "" : KnowledgeToolOutput.pageText(output);
+                    if (page.isEmpty()) {
+                        continue;
+                    }
+                    read.add(described(hit, output));
+                    readNow++;
+                    excerpts.add(ResearchQueries.excerpt(page, request + " " + query));
+                }
+                boolean lookupLeft = index + 1 < lookups.size() || stage + 1 < stages.size();
+                if (!read.isEmpty() && (!lookupLeft || judge.sufficient(request, read, excerpts))) {
+                    break stages; // a further lookup only when the evidence so far does not answer the task
+                }
             }
-            boolean refinementLeft = index + 1 < planned.size() && searched.size() < MAX_SEARCHES;
-            if (!read.isEmpty() && (!refinementLeft || judge.sufficient(request, read, excerpts))) {
-                break; // a refinement only when the evidence so far does not answer the task
-            }
+        }
+        if (!reached && unavailable != null) {
+            throw unavailable;
+        }
+        if (answered) {
+            // a failed lookup next to answered ones leaves the research incomplete, never "nothing found"
+            notes.addAll(failures);
+        }
+        Set<String> readIds = new HashSet<String>();
+        for (KnowledgeHit hit : read) {
+            readIds.add(hit.id);
         }
         List<KnowledgeHit> unread = new ArrayList<KnowledgeHit>();
         for (KnowledgeHit hit : found.values()) {
-            if (!read.contains(hit)) {
+            if (!readIds.contains(hit.id)) {
                 unread.add(hit);
             }
         }
         if (read.isEmpty()) {
-            if (found.isEmpty() && failure != null) {
+            if (found.isEmpty() && failure != null && !answered) {
                 return new KnowledgeResearchResult(request, searched, notes, read, unread,
                         "The knowledge search failed: " + failure, KnowledgeResearchResult.Outcome.FAILED);
             }
@@ -154,6 +202,30 @@ public final class KnowledgeResearch {
      * alternative; sentences the model may return are dropped; without a usable plan the literal terms of the task.
      */
     List<String> plan(String task) {
+        for (DiscoveryStrategy stage : stages) {
+            if (stage.planned()) {
+                return plan(task, stage);
+            }
+        }
+        return plan(task, stages.get(0));
+    }
+
+    /** The lookups of one stage: planned by the model, or derived from the task; at most {@link #MAX_SEARCHES}. */
+    private List<String> lookups(DiscoveryStrategy strategy, String task) {
+        if (strategy.planned()) {
+            return plan(task, strategy);
+        }
+        List<String> queries = new ArrayList<String>();
+        for (String query : strategy.directQueries(task)) {
+            if (query != null && !query.trim().isEmpty() && !containsIgnoreCase(queries, query.trim())
+                    && queries.size() < MAX_SEARCHES) {
+                queries.add(query.trim());
+            }
+        }
+        return queries;
+    }
+
+    private List<String> plan(String task, DiscoveryStrategy strategy) {
         String system = "Du bist der Recherche-Agent eines Unternehmens-Clients. Du formulierst Suchanfragen für die "
                 + "Wissensquellen des Unternehmens (z. B. Confluence, Dateien), beantwortest aber nichts selbst. "
                 + "Erkenne im Auftrag die starken wörtlichen Begriffe: Bezeichner, Abkürzungen, System-, Projekt- und "
@@ -203,19 +275,27 @@ public final class KnowledgeResearch {
         return sources.toString();
     }
 
-    private String searchOutput(String query) throws ToolInvoker.ToolFailure, ToolInvoker.EndpointUnavailable {
-        Map<String, Object> args = new LinkedHashMap<String, Object>();
-        args.put("query", query);
-        args.put("limit", Integer.valueOf(HITS_PER_QUERY));
-        return tools.call(SEARCH_TOOL, args);
+    /**
+     * The hit with title and address from the read header when the lookup named only the resource (a stage such as
+     * {@link TermLookupStrategy} knows ids, not titles), so the sources are cited by name.
+     */
+    private static KnowledgeHit described(KnowledgeHit hit, String readOutput) {
+        boolean untitled = hit.title.isEmpty() || hit.title.equals(hit.id);
+        String title = untitled ? KnowledgeToolOutput.header(readOutput, "title") : hit.title;
+        String url = hit.url.isEmpty() ? KnowledgeToolOutput.header(readOutput, "url") : hit.url;
+        if (title.equals(hit.title) && url.equals(hit.url)) {
+            return hit;
+        }
+        return new KnowledgeHit(hit.id, title.isEmpty() ? hit.title : title, hit.snippet, url, hit.passage,
+                hit.source);
     }
 
-    /** The page text of a hit; {@code null} when this one hit cannot be read (the next one gets its chance). */
-    private String readPage(String id) throws ToolInvoker.EndpointUnavailable {
+    /** The answer of {@code knowledge_read}; {@code null} when this one hit cannot be read (the next one gets its chance). */
+    private String readOutput(String id) throws ToolInvoker.EndpointUnavailable {
         Map<String, Object> args = new LinkedHashMap<String, Object>();
         args.put("id", id);
         try {
-            return KnowledgeToolOutput.pageText(tools.call(READ_TOOL, args));
+            return tools.call(READ_TOOL, args);
         } catch (ToolInvoker.ToolFailure unreadable) {
             return null;
         }
