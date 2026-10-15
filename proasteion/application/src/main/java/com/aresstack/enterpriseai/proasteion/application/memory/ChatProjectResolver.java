@@ -6,9 +6,6 @@ package com.aresstack.enterpriseai.proasteion.application.memory;
  */
 public interface ChatProjectResolver {
 
-    /** Until the project management (#143) exists, no chat belongs to a project. */
-    ChatProjectResolver NONE = chatId -> null;
-
     /** The id of the project {@code chatId} is assigned to now, or {@code null} if it has none. */
     String projectOf(String chatId);
 }

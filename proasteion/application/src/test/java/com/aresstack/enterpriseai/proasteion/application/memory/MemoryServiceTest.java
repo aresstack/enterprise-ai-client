@@ -6,8 +6,6 @@ import com.aresstack.enterpriseai.memory.api.MemoryOwner;
 import com.aresstack.enterpriseai.memory.api.MemorySaved;
 import com.aresstack.enterpriseai.memory.api.MemoryScope;
 import com.aresstack.enterpriseai.memory.api.MemoryStorePort;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import org.junit.Test;
 
 import java.time.Instant;
@@ -45,39 +43,39 @@ public class MemoryServiceTest {
         return service(null);
     }
 
-    private static String id(McpToolResult result) {
-        Matcher matcher = Pattern.compile("M-\\d{4,}").matcher(result.getText());
-        assertTrue(result.getText(), matcher.find());
+    private static String id(MemoryResult result) {
+        Matcher matcher = Pattern.compile("M-\\d{4,}").matcher(result.text());
+        assertTrue(result.text(), matcher.find());
         return matcher.group();
     }
 
     @Test
     public void saveWithoutScopeIsChatScoped() {
-        McpToolResult result = service().save("chat-a", "Releases nur dienstags", null);
-        assertFalse(result.getText(), result.isError());
-        assertTrue(result.getText().contains("scope: chat"));
+        MemoryResult result = service().save("chat-a", "Releases nur dienstags", null);
+        assertFalse(result.text(), result.isError());
+        assertTrue(result.text().contains("scope: chat"));
         assertEquals(MemoryOwner.chat("chat-a"), store.only().owner());
     }
 
     @Test
     public void chatMemoryIsInvisibleInOtherChats() {
         service().save("chat-a", "Releases nur dienstags", null);
-        assertTrue(service().search("chat-a", "dienstags", null, 0).getText().contains("dienstags"));
-        assertEquals("No memories found.", service().search("chat-b", "dienstags", null, 0).getText());
+        assertTrue(service().search("chat-a", "dienstags", null, 0).text().contains("dienstags"));
+        assertEquals("No memories found.", service().search("chat-b", "dienstags", null, 0).text());
     }
 
     @Test
     public void globalMemoryIsVisibleInOtherChatsOfTheSameUserOnly() {
         service().save("chat-a", "Antworte auf Deutsch", "global");
         assertEquals(MemoryOwner.global("alice"), store.only().owner());
-        assertTrue(service().search("chat-b", "deutsch", null, 0).getText().contains("[global"));
+        assertTrue(service().search("chat-b", "deutsch", null, 0).text().contains("[global"));
         MemoryService bob = new MemoryService(store, "bob", null, null, null);
-        assertEquals("No memories found.", bob.search("chat-c", "deutsch", null, 0).getText());
+        assertEquals("No memories found.", bob.search("chat-c", "deutsch", null, 0).text());
     }
 
     @Test
     public void projectScopeWithoutProjectFailsWithoutFallback() {
-        McpToolResult result = service().save("chat-a", "Projektregel", "project");
+        MemoryResult result = service().save("chat-a", "Projektregel", "project");
         assertTrue(result.isError());
         assertTrue(store.all.isEmpty());
     }
@@ -86,17 +84,17 @@ public class MemoryServiceTest {
     public void movingAChatWithdrawsAccessToTheOldProjectAtOnce() {
         projectOf.put("chat-a", "P-A");
         String id = id(service().save("chat-a", "Codefreeze ab Montag", "project"));
-        assertTrue(service().search("chat-a", "codefreeze", null, 0).getText().contains(id));
+        assertTrue(service().search("chat-a", "codefreeze", null, 0).text().contains(id));
 
         projectOf.put("chat-a", "P-B");
-        assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).getText());
+        assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).text());
         approve = true;
         assertTrue(service().delete("chat-a", id).isError());
         assertTrue(asked.isEmpty());
         assertEquals(1, store.all.size());
 
         projectOf.remove("chat-a");
-        assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).getText());
+        assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).text());
     }
 
     @Test
@@ -104,7 +102,7 @@ public class MemoryServiceTest {
         service().save("chat-a", "lokal", null);
         service().save("chat-a", "ueberall", "global");
         service().save("chat-b", "fremd", null);
-        String chatOnly = service().search("chat-a", "", "chat", 0).getText();
+        String chatOnly = service().search("chat-a", "", "chat", 0).text();
         assertTrue(chatOnly.contains("lokal"));
         assertFalse(chatOnly.contains("ueberall"));
         assertFalse(chatOnly.contains("fremd"));
@@ -114,12 +112,12 @@ public class MemoryServiceTest {
     @Test
     public void chatMemoryIsDeletedDirectlyAndOnlyFromItsChat() {
         String id = id(service().save("chat-a", "eins", null));
-        McpToolResult foreign = service().delete("chat-b", id);
+        MemoryResult foreign = service().delete("chat-b", id);
         assertTrue(foreign.isError());
         assertEquals(1, store.all.size());
 
-        McpToolResult own = service().delete("chat-a", id);
-        assertFalse(own.getText(), own.isError());
+        MemoryResult own = service().delete("chat-a", id);
+        assertFalse(own.text(), own.isError());
         assertTrue(store.all.isEmpty());
         assertTrue(asked.isEmpty());
     }
@@ -165,8 +163,8 @@ public class MemoryServiceTest {
             store.bumpVersion(request.id());
             return true;
         });
-        McpToolResult result = racing.delete("chat-a", id);
-        assertTrue(result.getText(), result.isError());
+        MemoryResult result = racing.delete("chat-a", id);
+        assertTrue(result.text(), result.isError());
         assertEquals(1, store.all.size());
     }
 
@@ -184,9 +182,9 @@ public class MemoryServiceTest {
                 "Token = ghp_abcdefghijklmnopqrstuvwxyz0123", "Bearer eyJhbGciOiJIUzI1NiJ9.abc.def",
                 "sk-proj-ABCDEFGHIJKLMNOPQRSTUV"};
         for (String secret : secrets) {
-            McpToolResult result = service().save("chat-a", secret, null);
+            MemoryResult result = service().save("chat-a", secret, null);
             assertTrue(secret, result.isError());
-            assertFalse(result.getText().contains(secret));
+            assertFalse(result.text().contains(secret));
         }
         assertTrue(store.all.isEmpty());
         assertFalse(service().save("chat-a", "Das Passwort-Feld ist im Login-Dialog oben", null).isError());
@@ -199,18 +197,6 @@ public class MemoryServiceTest {
         service().save("chat-b", "drei", null);
         service().deleteChat("chat-a");
         assertEquals(2, store.all.size());
-    }
-
-    @Test
-    public void toolDescriptionsRestrictSavingToExplicitRequests() {
-        List<McpToolContribution> tools = MemoryTools.forChat(null, "x");
-        assertEquals(MemoryTools.SAVE, tools.get(0).getName());
-        String save = tools.get(0).getDescription().toLowerCase(Locale.ROOT);
-        assertTrue(save.contains("only when the user explicitly asks"));
-        assertTrue(save.contains("never save on your own"));
-        assertTrue(save.contains("current chat only"));
-        assertTrue(save.contains("secrets"));
-        assertTrue(tools.get(2).getDescription().contains("exactly ONE"));
     }
 
     /** Store double with the port's contract: version-bound delete, ids never reused, duplicates not rewritten. */

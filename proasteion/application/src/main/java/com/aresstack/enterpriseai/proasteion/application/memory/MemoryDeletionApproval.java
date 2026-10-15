@@ -6,9 +6,6 @@ package com.aresstack.enterpriseai.proasteion.application.memory;
  */
 public interface MemoryDeletionApproval {
 
-    /** No host approval available: nothing that needs confirmation is deleted. */
-    MemoryDeletionApproval UNAVAILABLE = request -> false;
-
     /**
      * Blocks until the user decided. {@code true} only on explicit confirmation; reject, cancel and timeout are
      * {@code false}.

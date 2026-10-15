@@ -1,7 +1,10 @@
-package com.aresstack.enterpriseai.proasteion.application.memory;
+package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.proasteion.application.memory.MemoryResult;
+import com.aresstack.enterpriseai.proasteion.application.memory.MemoryService;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolParameter;
+import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 
 import java.util.Arrays;
 import java.util.List;
@@ -10,11 +13,11 @@ import java.util.List;
  * The memory tools of one chat. Built per chat turn with the trusted chat id; the model never names the chat, the
  * project or the user.
  */
-public final class MemoryTools {
+final class MemoryTools {
 
-    public static final String SAVE = "memory_save";
-    public static final String SEARCH = "memory_search";
-    public static final String DELETE = "memory_delete";
+    static final String SAVE = "memory_save";
+    static final String SEARCH = "memory_search";
+    static final String DELETE = "memory_delete";
 
     private static final List<String> SCOPES = Arrays.asList("chat", "project", "global");
 
@@ -22,7 +25,7 @@ public final class MemoryTools {
     }
 
     /** The three tools bound to {@code chatId}; {@code service} {@code null} gives description-only tools. */
-    public static List<McpToolContribution> forChat(final MemoryService service, final String chatId) {
+    static List<McpToolContribution> forChat(final MemoryService service, final String chatId) {
         return Arrays.asList(
                 McpToolContribution.of(SAVE, "Permanently saves a memory, but ONLY when the user explicitly asks to "
                                 + "remember or keep something for later (\"Merke dir ...\", \"Bitte speichern ...\", "
@@ -33,7 +36,7 @@ public final class MemoryTools {
                                 + "keys or other secrets. Confirm to the user only after this tool reported success, "
                                 + "and give the returned id.",
                         call -> service == null ? unavailable()
-                                : service.save(chatId, call.getString("content"), call.getString("scope")),
+                                : result(service.save(chatId, call.getString("content"), call.getString("scope"))),
                         McpToolParameter.string("content", true, "Compact, self-contained text to remember. Keep "
                                 + "decisions and negations exactly as the user stated them."),
                         McpToolParameter.enumeration("scope", false, "chat (default: only this chat), project (all "
@@ -44,8 +47,8 @@ public final class MemoryTools {
                                 + "something saved before, or when a remembered detail seems to be missing from the "
                                 + "context. Results carry ids for targeted deletion.",
                         call -> service == null ? unavailable()
-                                : service.search(chatId, call.getString("query"), call.getString("scope"),
-                                call.getInteger("limit", MemoryService.DEFAULT_LIMIT)),
+                                : result(service.search(chatId, call.getString("query"), call.getString("scope"),
+                                call.getInteger("limit", 0))),
                         McpToolParameter.string("query", false, "Words the memory must contain; empty lists the "
                                 + "newest memories."),
                         McpToolParameter.enumeration("scope", false, "Only search this scope; never widens access.",
@@ -57,11 +60,15 @@ public final class MemoryTools {
                                 + "and the permission are checked by the application; deleting project or global "
                                 + "memories may need the user's confirmation. Never claim a deletion before this "
                                 + "tool reported success.",
-                        call -> service == null ? unavailable() : service.delete(chatId, call.getString("id")),
+                        call -> service == null ? unavailable() : result(service.delete(chatId, call.getString("id"))),
                         McpToolParameter.string("id", true, "The memory id, e.g. M-0042.")));
     }
 
-    private static com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult unavailable() {
-        return com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult.error("Memories are not available.");
+    private static McpToolResult result(MemoryResult result) {
+        return result.isError() ? McpToolResult.error(result.text()) : McpToolResult.ok(result.text());
+    }
+
+    private static McpToolResult unavailable() {
+        return McpToolResult.error("Memories are not available.");
     }
 }

@@ -366,13 +366,11 @@ public final class CompositionRoot {
         // of project/global deletions for the host approval of #145.
         this.memories = ports.memories() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
-                System.getProperty("user.name", "local"),
-                com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver.NONE, null,
-                com.aresstack.enterpriseai.proasteion.application.memory.MemoryDeletionApproval.UNAVAILABLE);
+                System.getProperty("user.name", "local"), null, null, null);
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
                     () -> McpChatTool.definitions(
-                            com.aresstack.enterpriseai.proasteion.application.memory.MemoryTools.forChat(null, "")));
+                            MemoryTools.forChat(null, "")));
         }
         registerHelpTools(toolCatalog, config.agent().toolSettings());
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
@@ -673,7 +671,7 @@ public final class CompositionRoot {
         }
         List<McpToolContribution> active = new ArrayList<McpToolContribution>();
         for (McpToolContribution tool
-                : com.aresstack.enterpriseai.proasteion.application.memory.MemoryTools.forChat(memories, chatId)) {
+                : MemoryTools.forChat(memories, chatId)) {
             if (toolCatalog.isEnabled(tool.getName())) {
                 active.add(tool);
             }

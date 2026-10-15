@@ -7,7 +7,6 @@ import com.aresstack.enterpriseai.memory.api.MemorySaved;
 import com.aresstack.enterpriseai.memory.api.MemoryScope;
 import com.aresstack.enterpriseai.memory.api.MemoryStoreException;
 import com.aresstack.enterpriseai.memory.api.MemoryStorePort;
-import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -24,8 +23,8 @@ import java.util.logging.Logger;
  */
 public final class MemoryService {
 
-    static final int DEFAULT_LIMIT = 10;
-    static final int MAX_LIMIT = 50;
+    public static final int DEFAULT_LIMIT = 10;
+    public static final int MAX_LIMIT = 50;
     static final int MAX_CONTENT_LENGTH = 2000;
     private static final int PREVIEW_LENGTH = 200;
 
@@ -39,9 +38,10 @@ public final class MemoryService {
 
     /**
      * @param userId         the running user/profile; key of the global memories
-     * @param projects       current project of a chat, asked on every call
+     * @param projects       current project of a chat, asked on every call; {@code null}: no chat has a project
      * @param deletePolicies per scope; missing scopes use {@link #defaultDeletePolicies()}
-     * @param approval       asked for deletions with {@link MemoryPolicy#ASK}
+     * @param approval       asked for deletions with {@link MemoryPolicy#ASK}; {@code null}: no host approval, so
+     *                       nothing that needs confirmation is deleted
      */
     public MemoryService(MemoryStorePort store, String userId, ChatProjectResolver projects,
                          Map<MemoryScope, MemoryPolicy> deletePolicies, MemoryDeletionApproval approval) {
@@ -50,12 +50,12 @@ public final class MemoryService {
         }
         this.store = store;
         this.userId = userId;
-        this.projects = projects == null ? ChatProjectResolver.NONE : projects;
+        this.projects = projects == null ? chatId -> null : projects;
         this.deletePolicies = defaultDeletePolicies();
         if (deletePolicies != null) {
             this.deletePolicies.putAll(deletePolicies);
         }
-        this.approval = approval == null ? MemoryDeletionApproval.UNAVAILABLE : approval;
+        this.approval = approval == null ? request -> false : approval;
     }
 
     /** chat {@code ALLOW}, project and global {@code ASK}. */
@@ -68,20 +68,20 @@ public final class MemoryService {
     }
 
     /** {@code memory_save}: {@code scope} {@code null} or blank means chat. */
-    public McpToolResult save(String chatId, String content, String scopeArgument) {
+    public MemoryResult save(String chatId, String content, String scopeArgument) {
         if (chatId == null || chatId.trim().isEmpty()) {
-            return McpToolResult.error("Memories are not available without a chat context.");
+            return MemoryResult.error("Memories are not available without a chat context.");
         }
         if (content == null || content.trim().isEmpty()) {
-            return McpToolResult.error("Missing argument: content (the information to remember).");
+            return MemoryResult.error("Missing argument: content (the information to remember).");
         }
         String text = content.trim();
         if (text.length() > MAX_CONTENT_LENGTH) {
-            return McpToolResult.error("The memory is too long (" + text.length() + " characters, at most "
+            return MemoryResult.error("The memory is too long (" + text.length() + " characters, at most "
                     + MAX_CONTENT_LENGTH + "). Save a shorter, self-contained summary.");
         }
         if (SecretGuard.looksSecret(text)) {
-            return McpToolResult.error("Not saved: the text looks like it contains a password, token, key or other "
+            return MemoryResult.error("Not saved: the text looks like it contains a password, token, key or other "
                     + "secret. Secrets are never stored as memories.");
         }
         MemoryScope scope;
@@ -90,7 +90,7 @@ public final class MemoryService {
         } else {
             scope = MemoryScope.parse(scopeArgument);
             if (scope == null) {
-                return McpToolResult.error("Unknown scope '" + scopeArgument.trim()
+                return MemoryResult.error("Unknown scope '" + scopeArgument.trim()
                         + "'. Use chat (default), project or global.");
             }
         }
@@ -99,7 +99,7 @@ public final class MemoryService {
             case PROJECT:
                 String projectId = projects.projectOf(chatId);
                 if (projectId == null || projectId.trim().isEmpty()) {
-                    return McpToolResult.error("Not saved: this chat is not assigned to a project, so there is no "
+                    return MemoryResult.error("Not saved: this chat is not assigned to a project, so there is no "
                             + "project scope. Save it for this chat or globally instead, if the user wants that.");
                 }
                 owner = MemoryOwner.project(projectId);
@@ -113,24 +113,24 @@ public final class MemoryService {
         try {
             MemorySaved saved = store.save(owner, text);
             Memory memory = saved.memory();
-            return McpToolResult.ok((saved.existing() ? "Already saved as " : "Saved as ") + memory.id().visible()
+            return MemoryResult.ok((saved.existing() ? "Already saved as " : "Saved as ") + memory.id().visible()
                     + " (scope: " + memory.scope().wireName() + ").");
         } catch (MemoryStoreException e) {
             LOG.log(Level.WARNING, "Memory not saved: " + e.getMessage(), e);
-            return McpToolResult.error("Not saved: the memory store is not available (" + e.getMessage() + ").");
+            return MemoryResult.error("Not saved: the memory store is not available (" + e.getMessage() + ").");
         }
     }
 
     /** {@code memory_search}: {@code scope} only narrows the accessible scopes. */
-    public McpToolResult search(String chatId, String query, String scopeArgument, long limit) {
+    public MemoryResult search(String chatId, String query, String scopeArgument, long limit) {
         if (chatId == null || chatId.trim().isEmpty()) {
-            return McpToolResult.error("Memories are not available without a chat context.");
+            return MemoryResult.error("Memories are not available without a chat context.");
         }
         MemoryScope only = null;
         if (scopeArgument != null && !scopeArgument.trim().isEmpty()) {
             only = MemoryScope.parse(scopeArgument);
             if (only == null) {
-                return McpToolResult.error("Unknown scope '" + scopeArgument.trim()
+                return MemoryResult.error("Unknown scope '" + scopeArgument.trim()
                         + "'. Use chat, project or global, or leave it out to search all.");
             }
         }
@@ -141,7 +141,7 @@ public final class MemoryService {
             }
         }
         if (owners.isEmpty()) {
-            return McpToolResult.ok(only == MemoryScope.PROJECT
+            return MemoryResult.ok(only == MemoryScope.PROJECT
                     ? "No project memories: this chat is not assigned to a project."
                     : "No memories found.");
         }
@@ -149,7 +149,7 @@ public final class MemoryService {
         try {
             List<Memory> found = store.search(owners, query, max);
             if (found.isEmpty()) {
-                return McpToolResult.ok("No memories found.");
+                return MemoryResult.ok("No memories found.");
             }
             StringBuilder text = new StringBuilder();
             text.append(found.size()).append(found.size() == 1 ? " memory:" : " memories:");
@@ -159,33 +159,33 @@ public final class MemoryService {
                         .append(memory.createdAt().atOffset(ZoneOffset.UTC).toLocalDate()).append("] ")
                         .append(memory.content());
             }
-            return McpToolResult.ok(text.toString());
+            return MemoryResult.ok(text.toString());
         } catch (MemoryStoreException e) {
             LOG.log(Level.WARNING, "Memory search failed: " + e.getMessage(), e);
-            return McpToolResult.error("The memory store is not available (" + e.getMessage() + ").");
+            return MemoryResult.error("The memory store is not available (" + e.getMessage() + ").");
         }
     }
 
     /** {@code memory_delete}: exactly one memory, authorized by its actual owner and the policy of its scope. */
-    public McpToolResult delete(String chatId, String idArgument) {
+    public MemoryResult delete(String chatId, String idArgument) {
         if (chatId == null || chatId.trim().isEmpty()) {
-            return McpToolResult.error("Memories are not available without a chat context.");
+            return MemoryResult.error("Memories are not available without a chat context.");
         }
         MemoryId id = MemoryId.parse(idArgument);
         if (id == null) {
-            return McpToolResult.error("Missing or invalid argument: id (a memory id such as M-0042 from "
+            return MemoryResult.error("Missing or invalid argument: id (a memory id such as M-0042 from "
                     + "memory_search or memory_save).");
         }
         try {
             Memory memory = store.find(id);
             // Unknown and not accessible look the same: the existence of other chats' memories is not revealed.
             if (memory == null || !accessibleOwners(chatId).contains(memory.owner())) {
-                return McpToolResult.error("Nothing deleted: there is no memory " + id.visible()
+                return MemoryResult.error("Nothing deleted: there is no memory " + id.visible()
                         + " accessible from this chat.");
             }
             MemoryPolicy policy = deletePolicies.get(memory.scope());
             if (policy == MemoryPolicy.DENY) {
-                return McpToolResult.error("Nothing deleted: deleting " + memory.scope().wireName()
+                return MemoryResult.error("Nothing deleted: deleting " + memory.scope().wireName()
                         + " memories with a tool is not allowed by the settings. The user can delete "
                         + id.visible() + " in the memory management.");
             }
@@ -199,23 +199,23 @@ public final class MemoryService {
                     approved = false;
                 }
                 if (!approved) {
-                    return McpToolResult.error("Nothing deleted: deleting the " + memory.scope().wireName()
+                    return MemoryResult.error("Nothing deleted: deleting the " + memory.scope().wireName()
                             + " memory " + id.visible() + " needs the user's confirmation, which was not given.");
                 }
                 // The project assignment may have changed while the user decided.
                 if (!accessibleOwners(chatId).contains(memory.owner())) {
-                    return McpToolResult.error("Nothing deleted: memory " + id.visible()
+                    return MemoryResult.error("Nothing deleted: memory " + id.visible()
                             + " is no longer accessible from this chat.");
                 }
             }
             if (!store.delete(id, memory.version())) {
-                return McpToolResult.error("Nothing deleted: memory " + id.visible()
+                return MemoryResult.error("Nothing deleted: memory " + id.visible()
                         + " was changed or deleted in the meantime.");
             }
-            return McpToolResult.ok("Deleted " + id.visible() + " (scope: " + memory.scope().wireName() + ").");
+            return MemoryResult.ok("Deleted " + id.visible() + " (scope: " + memory.scope().wireName() + ").");
         } catch (MemoryStoreException e) {
             LOG.log(Level.WARNING, "Memory deletion failed: " + e.getMessage(), e);
-            return McpToolResult.error("Nothing deleted: the memory store is not available (" + e.getMessage()
+            return MemoryResult.error("Nothing deleted: the memory store is not available (" + e.getMessage()
                     + ").");
         }
     }
