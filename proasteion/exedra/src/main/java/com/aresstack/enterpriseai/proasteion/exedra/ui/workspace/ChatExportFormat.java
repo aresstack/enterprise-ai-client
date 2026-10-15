@@ -1,13 +1,21 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFileTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
-/** Die Dateiarten von „Chat exportieren …“: JSON (maßgeblich), Markdown und Word als lesbare Sichten. */
+/**
+ * Die Dateiarten von „Chat exportieren …“: PDF (im Dialog voreingestellt, #132), Word und Markdown als lesbare
+ * Gesprächsberichte, JSON als maßgebliche, verlustarme Exportstruktur.
+ */
 public enum ChatExportFormat {
 
-    JSON("JSON (*.json)", "json"),
+    PDF("PDF-Dokument (*.pdf)", "pdf"),
+    DOCX("Word-Dokument (*.docx)", "docx"),
     MARKDOWN("Markdown (*.md)", "md"),
-    DOCX("Word-Dokument (*.docx)", "docx");
+    JSON("JSON (*.json)", "json");
 
     private final String label;
     private final String extension;
@@ -25,6 +33,15 @@ public enum ChatExportFormat {
     /** Die Dateiendung ohne Punkt. */
     public String extension() {
         return extension;
+    }
+
+    /** Die Dateitypen des gemeinsamen Speichern-Dialogs, PDF zuerst. */
+    public static ExportFileTypes<ChatExportFormat> fileTypes() {
+        List<ExportFileTypes.Type<ChatExportFormat>> types = new ArrayList<ExportFileTypes.Type<ChatExportFormat>>();
+        for (ChatExportFormat format : values()) {
+            types.add(new ExportFileTypes.Type<ChatExportFormat>(format.label, format.extension, format));
+        }
+        return new ExportFileTypes<ChatExportFormat>(types);
     }
 
     /** Das Format, dessen Endung der Dateiname trägt, oder {@code null}. */

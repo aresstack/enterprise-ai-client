@@ -277,14 +277,18 @@ public class ChatDocxExportTest {
         record.setModifiedAt(T0);
         store.save(record);
         Path target = folder.getRoot().toPath().resolve("chat2.docx");
-        assertTrue(export.write("chat-2", target, ChatExportFormat.DOCX));
+        // without a Mermaid renderer the fence stays code; an address outside the chat is never fetched (#132)
+        com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics graphics =
+                new com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics(null);
+        assertTrue(export.write("chat-2", target, ChatExportFormat.DOCX, graphics));
+        assertEquals(2, graphics.problems().size());
         XWPFDocument document = new XWPFDocument(Files.newInputStream(target));
         String text = text(document);
         assertTrue(text, text.contains("roh"));
         assertTrue(text.contains("graph TD; A-->B"));
         assertTrue(text.contains("Steuerzeichen"));
         assertTrue(text.contains("[ref][x]"));
-        assertTrue(text.contains("[Bild: Bild]"));
+        assertTrue(text, text.contains("[Abbildung nicht verfügbar: Bild]"));
         assertEquals("Chat", document.getParagraphs().get(0).getText());
     }
 

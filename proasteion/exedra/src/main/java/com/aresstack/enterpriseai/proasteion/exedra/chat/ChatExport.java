@@ -3,6 +3,9 @@ package com.aresstack.enterpriseai.proasteion.exedra.chat;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatHistoryStore;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.ExportDocumentNode;
+import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
+import com.aresstack.enterpriseai.proasteion.exedra.document.PdfExportWriter;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -43,7 +46,8 @@ import java.util.function.Supplier;
  *
  * <p>Der Export liest nur: Chat-Datei, Anhänge und Projekt bleiben unverändert, auch für den offenen Chat. Vor dem
  * Schreiben schwärzt {@link ChatExportRedaction} Zugangsdaten. JSON ist maßgeblich; Markdown ist dieselbe Sicht,
- * menschenlesbar, und Word ({@link ChatDocxWriter}) ein formatierter Gesprächsbericht aus demselben geschwärzten Baum.
+ * menschenlesbar, Word ({@link ChatDocxWriter}) und PDF ({@link #toPdf}, #132) formatierte Gesprächsberichte aus demselben
+ * geschwärzten Baum.
  */
 public final class ChatExport {
 
@@ -218,15 +222,42 @@ public final class ChatExport {
     }
 
     /**
+     * Derselbe Gesprächsbericht als PDF (#132): der Markdown-Bericht ({@link #toMarkdown}) aus demselben geschwärzten
+     * Baum, gesetzt vom Seiten-PDF-Schreiber mit eingebetteten Bildern und Diagrammen; der Chat-Titel ist das Kapitel.
+     */
+    public byte[] toPdf(JsonObject export, ExportGraphics graphics) throws IOException {
+        JsonObject chat = export.getAsJsonObject("chat");
+        String title = string(chat, "title");
+        String report = toMarkdown(export);
+        if (report.startsWith("# ")) {
+            int end = report.indexOf('\n');
+            report = end < 0 ? "" : report.substring(end + 1); // der Titel ist schon die Kapitelüberschrift
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        new PdfExportWriter(graphics).write(new ExportDocumentNode(title.isEmpty() ? "Chat" : title, null, report,
+                null, null), out);
+        return out.toByteArray();
+    }
+
+    /**
      * Exportiert den Chat in die Datei (über eine Zwischendatei, nie halb geschrieben).
      *
      * @return {@code false}, wenn es den Chat nicht (mehr) gibt
      */
     public boolean write(String chatId, Path target, ChatExportFormat format) throws IOException {
-        if (format == null) {
-            throw new IllegalArgumentException("format must not be null");
+        return write(chatId, target, format, ExportGraphics.standard());
+    }
+
+    /**
+     * Wie {@link #write(String, Path, ChatExportFormat)}; PDF und Word betten Bilder und Diagramme über
+     * {@code graphics} ein, das danach die fehlenden nennt ({@link ExportGraphics#problems()}).
+     */
+    public boolean write(String chatId, Path target, ChatExportFormat format, ExportGraphics graphics)
+            throws IOException {
+        if (format == null || graphics == null) {
+            throw new IllegalArgumentException("format and graphics must not be null");
         }
-        JsonObject export = export(chatId); // immer der geschwärzte Baum, auch für Word
+        JsonObject export = export(chatId); // immer der geschwärzte Baum, auch für Word und PDF
         if (export == null) {
             return false;
         }
@@ -236,7 +267,10 @@ public final class ChatExport {
                 bytes = toMarkdown(export).getBytes(StandardCharsets.UTF_8);
                 break;
             case DOCX:
-                bytes = new ChatDocxWriter(ZoneId.systemDefault()).write(export);
+                bytes = new ChatDocxWriter(ZoneId.systemDefault(), graphics).write(export);
+                break;
+            case PDF:
+                bytes = toPdf(export, graphics);
                 break;
             default:
                 bytes = toJson(export).getBytes(StandardCharsets.UTF_8);

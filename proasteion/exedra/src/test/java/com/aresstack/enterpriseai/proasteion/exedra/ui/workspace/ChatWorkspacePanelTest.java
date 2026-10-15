@@ -558,6 +558,12 @@ public class ChatWorkspacePanelTest {
                 ChatExportFileName.withExtension(new File(folder, "notiz.txt"), ChatExportFormat.DOCX));
         assertEquals(new File(folder, "Bericht v1.2.md"),
                 ChatExportFileName.withExtension(new File(folder, "Bericht v1.2"), ChatExportFormat.MARKDOWN));
+        // #132: PDF ist dabei und im Dialog voreingestellt, JSON bleibt
+        assertEquals(new File(folder, "foo.pdf"),
+                ChatExportFileName.withExtension(new File(folder, "foo.Docx"), ChatExportFormat.PDF));
+        assertEquals(ChatExportFormat.PDF, ChatExportFormat.fileTypes().preselected().format());
+        assertEquals(Arrays.asList(ChatExportFormat.PDF, ChatExportFormat.DOCX, ChatExportFormat.MARKDOWN,
+                ChatExportFormat.JSON), Arrays.asList(ChatExportFormat.values()));
     }
 
     private ChatWorkspacePanel chatOnlyWorkspace() {

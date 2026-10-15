@@ -1,10 +1,13 @@
 package com.aresstack.enterpriseai.proasteion.exedra.document;
 
-/** The formats of the page export (#115), each with its menu label, file extension and writer. */
+/**
+ * The formats of the page export (#115), each with its file type label, file extension and writer. Since #132 the
+ * format is chosen in the save dialog ({@link ExportFileTypes}); PDF comes first and is preselected.
+ */
 public enum ExportFormat {
-    PDF("Als PDF …", "PDF-Dokument", "pdf"),
-    DOCX("Als Word …", "Word-Dokument", "docx"),
-    MARKDOWN("Als Markdown …", "Markdown", "md");
+    PDF("Als PDF …", "PDF-Dokument (*.pdf)", "pdf"),
+    DOCX("Als Word …", "Word-Dokument (*.docx)", "docx"),
+    MARKDOWN("Als Markdown …", "Markdown (*.md)", "md");
 
     private final String menuLabel;
     private final String fileLabel;
@@ -30,15 +33,20 @@ public enum ExportFormat {
         return extension;
     }
 
-    /** Return a new writer of this format. */
+    /** Return a new writer of this format with the figures of the application. */
     public ExportWriter writer() {
+        return writer(ExportGraphics.standard());
+    }
+
+    /** Return a new writer of this format that embeds figures through {@code graphics}. */
+    public ExportWriter writer(ExportGraphics graphics) {
         switch (this) {
             case PDF:
-                return new PdfExportWriter();
+                return new PdfExportWriter(graphics);
             case DOCX:
-                return new DocxExportWriter();
+                return new DocxExportWriter(graphics);
             default:
-                return new MarkdownExportWriter();
+                return new MarkdownExportWriter(graphics);
         }
     }
 }

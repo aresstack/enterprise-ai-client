@@ -1,6 +1,5 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
-import com.aresstack.enterpriseai.proasteion.exedra.document.ExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.ui.comic.control.ComicScrollPane;
 import com.aresstack.enterpriseai.ui.comic.control.ComposerButton;
@@ -15,7 +14,6 @@ import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
-import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
@@ -77,8 +75,8 @@ public final class PageNavigationPanel extends JPanel {
         /** The page became visible (tab chosen, drawer opened). */
         void shown();
 
-        /** Export the page {@code key} of the tree with all pages below it (#115). */
-        default void exportRequested(String key, ExportFormat format) {
+        /** Export the page {@code key} of the tree with all pages below it (#115); format chosen when saving (#132). */
+        default void exportRequested(String key) {
         }
     }
 
@@ -150,7 +148,7 @@ public final class PageNavigationPanel extends JPanel {
             + "ihren Platz in der Quelle und ihre Verweise.";
     public static final String LOADING = "Lädt …";
     static final String LOADING_MORE = "Weitere Seiten werden geladen …";
-    static final String MENU_EXPORT = "Exportieren";
+    static final String MENU_EXPORT = "Exportieren …";
     static final String OUTGOING = "Verweist auf";
     static final String INCOMING = "Wird verlinkt von";
     static final String NO_OUTGOING = "Keine Verweise auf andere Seiten.";
@@ -640,16 +638,12 @@ public final class PageNavigationPanel extends JPanel {
         if (item.isRoot()) {
             return null;
         }
-        JMenu export = new JMenu(MENU_EXPORT);
-        for (final ExportFormat format : ExportFormat.values()) {
-            JMenuItem entry = new JMenuItem(format.menuLabel());
-            entry.addActionListener(event -> {
-                if (actions != null) {
-                    actions.exportRequested(item.key(), format);
-                }
-            });
-            export.add(entry);
-        }
+        JMenuItem export = new JMenuItem(MENU_EXPORT);
+        export.addActionListener(event -> {
+            if (actions != null) {
+                actions.exportRequested(item.key());
+            }
+        });
         JPopupMenu menu = new JPopupMenu();
         menu.add(export);
         return menu;

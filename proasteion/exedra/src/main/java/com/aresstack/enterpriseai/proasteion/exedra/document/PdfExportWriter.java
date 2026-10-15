@@ -42,6 +42,8 @@ import org.apache.pdfbox.pdmodel.PageMode;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDBorderStyleDictionary;
@@ -66,6 +68,10 @@ import java.util.Map;
  * chapter list: indented by depth, with page numbers, every line a link to its chapter. Content is the canonical
  * Markdown of the page laid out as headings, paragraphs, lists, quotes, code and tables in the standard PDF fonts;
  * characters those fonts cannot show are replaced.
+ *
+ * <p>Figures (#132): a Markdown image the {@link ExportGraphics} of the export resolves is drawn as a picture where it
+ * stands, scaled to the text width and to one page, with its caption below; a Mermaid fence is drawn as the diagram.
+ * A figure that does not resolve leaves a visible notice and is reported by the graphics.</p>
  */
 public final class PdfExportWriter implements ExportWriter {
 
@@ -98,9 +104,22 @@ public final class PdfExportWriter implements ExportWriter {
     private static final String BULLET = "•";
     private static final String REPLACEMENT = "?";
 
+    private static final float PIXELS_TO_POINTS = 0.75f;
+    private static final String MISSING = "Abbildung nicht verfügbar";
+
     private final Parser parser;
+    private final ExportGraphics graphics;
 
     public PdfExportWriter() {
+        this(ExportGraphics.standard());
+    }
+
+    /** @param graphics the figures of this export; it also collects the ones that are missing */
+    public PdfExportWriter(ExportGraphics graphics) {
+        if (graphics == null) {
+            throw new IllegalArgumentException("graphics must not be null");
+        }
+        this.graphics = graphics;
         MutableDataSet options = new MutableDataSet();
         options.set(Parser.EXTENSIONS, Arrays.asList(TablesExtension.create(), StrikethroughExtension.create(),
                 AutolinkExtension.create()));
@@ -109,6 +128,7 @@ public final class PdfExportWriter implements ExportWriter {
 
     @Override
     public void write(ExportDocumentNode root, OutputStream out) throws IOException {
+        graphics.with(root);
         PDDocument document = new PDDocument();
         try {
             new Layout(document).run(root);
@@ -220,6 +240,8 @@ public final class PdfExportWriter implements ExportWriter {
     private final class Layout {
         private final PDDocument document;
         private final Map<Integer, Boolean> encodable = new HashMap<Integer, Boolean>();
+        private final Map<ExportGraphics.Graphic, PDImageXObject> pictures =
+                new HashMap<ExportGraphics.Graphic, PDImageXObject>();
         private PDPage page;
         private PDPageContentStream stream;
         private float y;
@@ -330,12 +352,21 @@ public final class PdfExportWriter implements ExportWriter {
                 return;
             }
             if (node instanceof Paragraph) {
-                paragraph(inlines(node, base(frame)), frame, null);
+                flow(node, base(frame), frame, null);
                 y -= BODY_SIZE * 0.5f;
                 return;
             }
             if (node instanceof FencedCodeBlock) {
-                code(((FencedCodeBlock) node).getContentChars().toString(), frame);
+                FencedCodeBlock fenced = (FencedCodeBlock) node;
+                String code = fenced.getContentChars().toString();
+                if (isMermaid(fenced.getInfo().toString())) {
+                    ExportGraphics.Graphic diagram = graphics.mermaid(code);
+                    if (diagram != null) {
+                        figure(diagram, "", frame);
+                        return;
+                    }
+                }
+                code(code, frame);
                 return;
             }
             if (node instanceof IndentedCodeBlock) {
@@ -399,7 +430,7 @@ public final class PdfExportWriter implements ExportWriter {
                 boolean first = true;
                 for (Node child = item.getFirstChild(); child != null; child = child.getNext()) {
                     if (first && child instanceof Paragraph) {
-                        paragraph(inlines(child, base(frame)), inner, marker);
+                        flow(child, base(frame), inner, marker);
                         y -= BODY_SIZE * 0.2f;
                     } else {
                         if (first) {
@@ -499,6 +530,90 @@ public final class PdfExportWriter implements ExportWriter {
             y -= BODY_SIZE * 0.6f;
         }
 
+        // -------------------------------------------------------------- figures
+
+        /**
+         * Write the inline content of {@code parent} as paragraphs, every image that resolves drawn as a picture
+         * between them where it stands.
+         */
+        private void flow(Node parent, Style style, Frame frame, String marker) throws IOException {
+            List<Run> runs = new ArrayList<Run>();
+            String pending = marker;
+            for (Node node = parent.getFirstChild(); node != null; node = node.getNext()) {
+                Image image = image(node);
+                if (image == null) {
+                    inline(node, style, runs);
+                    continue;
+                }
+                String caption = plain(image);
+                ExportGraphics.Graphic graphic = graphics.image(image.getUrl().unescape(), caption);
+                if (graphic == null) {
+                    Style missing = style.copy();
+                    missing.italic = true;
+                    missing.color = MUTED;
+                    runs.add(run("[" + MISSING + (caption.isEmpty() ? "" : ": " + caption) + "]", missing));
+                    continue;
+                }
+                if (!isBlank(runs) || pending != null) {
+                    paragraph(runs, frame, pending);
+                    pending = null;
+                }
+                runs = new ArrayList<Run>();
+                figure(graphic, caption, frame);
+            }
+            if (!isBlank(runs) || pending != null) {
+                paragraph(runs, frame, pending);
+            }
+        }
+
+        /** The image of an inline node: an image, or a link around nothing but an image. */
+        private Image image(Node node) {
+            if (node instanceof Image) {
+                return (Image) node;
+            }
+            if (node instanceof Link && node.getFirstChild() instanceof Image
+                    && node.getFirstChild() == node.getLastChild()) {
+                return (Image) node.getFirstChild();
+            }
+            return null;
+        }
+
+        private boolean isBlank(List<Run> runs) {
+            for (Run run : runs) {
+                if (!run.text.trim().isEmpty()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /** Draw a picture at most as wide as the frame and as high as a page, its caption below. */
+        private void figure(ExportGraphics.Graphic graphic, String caption, Frame frame) throws IOException {
+            float width = graphic.width() * PIXELS_TO_POINTS;
+            float height = graphic.height() * PIXELS_TO_POINTS;
+            float maxHeight = contentTop() - MARGIN - 3 * SMALL_SIZE * LEADING;
+            float scale = Math.min(1f, Math.min(frame.width / width, maxHeight / height));
+            width *= scale;
+            height *= scale;
+            y -= BODY_SIZE * 0.3f;
+            ensure(height);
+            PDImageXObject picture = pictures.get(graphic);
+            if (picture == null) {
+                picture = LosslessFactory.createFromImage(document, graphic.image());
+                pictures.put(graphic, picture);
+            }
+            stream.drawImage(picture, frame.x, y - height, width, height);
+            y -= height + BODY_SIZE * 0.4f;
+            if (!caption.trim().isEmpty()) {
+                Style style = new Style();
+                style.italic = true;
+                style.size = SMALL_SIZE;
+                style.color = MUTED;
+                paragraph(Arrays.asList(run(caption.trim(), style)), frame, null);
+            }
+            y -= BODY_SIZE * 0.5f;
+        }
+
         // -------------------------------------------------------------- inline
 
         private List<Run> inlines(Node parent, Style style) {
@@ -541,7 +656,7 @@ public final class PdfExportWriter implements ExportWriter {
                 String mail = ((MailLink) node).getText().toString();
                 link(runs, mail, "mailto:" + mail, style);
             } else if (node instanceof Image) {
-                String alt = plain(node);
+                String alt = plain(node); // inside a table cell: no room for the picture
                 runs.add(run("[Bild" + (alt.isEmpty() ? "" : ": " + alt) + "]", style));
             } else if (node instanceof HtmlInlineComment) {
                 return;
@@ -913,6 +1028,11 @@ public final class PdfExportWriter implements ExportWriter {
             default:
                 return null;
         }
+    }
+
+    static boolean isMermaid(String info) {
+        String language = info == null ? "" : info.trim().split("\\s+")[0];
+        return "mermaid".equalsIgnoreCase(language);
     }
 
     private static PDBorderStyleDictionary noBorder() {

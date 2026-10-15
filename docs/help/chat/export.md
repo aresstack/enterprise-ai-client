@@ -1,26 +1,27 @@
 ---
 id: chat.export
 title: Chat exportieren
-keywords: Export, exportieren, Chat exportieren, speichern unter, Datei, JSON, Markdown, md, Word, docx, Word-Dokument, Bericht, weitergeben, archivieren, Fehlerbericht, Schwärzung, geschwärzt, REDACTED, Passwort, Token, Dateiname, Endung, Dateiendung, export, save as, redaction
+keywords: Export, exportieren, Chat exportieren, speichern unter, Datei, PDF, pdf, JSON, Markdown, md, Word, docx, Bild, Bilder, Diagramm, Mermaid, Word-Dokument, Bericht, weitergeben, archivieren, Fehlerbericht, Schwärzung, geschwärzt, REDACTED, Passwort, Token, Dateiname, Endung, Dateiendung, export, save as, redaction
 ---
 
 # Chat exportieren
 
-Mit „Chat exportieren …“ speicherst du einen Chat als eigene Datei, etwa um ein Ergebnis weiterzugeben, eine Unterhaltung zu archivieren oder einen Fehler nachvollziehbar zu melden. Zur Wahl stehen JSON, Markdown und ein Word-Dokument. Vor dem Schreiben schwärzt der Client Zugangsdaten wie Passwörter und Tokens. Dieses Kapitel erklärt die Bedienung, den Inhalt der drei Formate, die Schwärzung und wie Dateiname und Endung entstehen.
+Mit „Chat exportieren …“ speicherst du einen Chat als eigene Datei, etwa um ein Ergebnis weiterzugeben, eine Unterhaltung zu archivieren oder einen Fehler nachvollziehbar zu melden. Zur Wahl stehen PDF, ein Word-Dokument, Markdown und JSON. Vor dem Schreiben schwärzt der Client Zugangsdaten wie Passwörter und Tokens. Dieses Kapitel erklärt die Bedienung, den Inhalt der vier Formate, die Schwärzung und wie Dateiname und Endung entstehen.
 
 ## Einen Chat exportieren: Schritt für Schritt
 
 1. Öffne im Drawer den Reiter „Chats“ (siehe [Chat-Verlauf](help:chat.history)).
 2. Klicke mit der rechten Maustaste auf die Zeile des Chats, oder fahre mit der Maus darüber und klicke auf das „…“ rechts.
 3. Wähle „Chat exportieren …“.
-4. Es öffnet sich ein Speichern-Dialog mit dem Titel „Chat exportieren“. Wähle unten im Feld für den Dateityp eines der Formate:
-   - „JSON (*.json)“ (voreingestellt),
+4. Es öffnet sich ein Speichern-Dialog mit dem Titel „Chat exportieren“. Es ist derselbe Dialog wie beim Exportieren einer Seite im Lesebereich oder im Seitenbaum. Wähle unten im Feld für den Dateityp eines der Formate:
+   - „PDF-Dokument (*.pdf)“ (voreingestellt),
+   - „Word-Dokument (*.docx)“,
    - „Markdown (*.md)“,
-   - „Word-Dokument (*.docx)“.
+   - „JSON (*.json)“.
 5. Wähle den Ordner, passe bei Bedarf den vorgeschlagenen Dateinamen an und klicke auf „Speichern“.
 6. Gibt es die Datei schon, fragt das Programm „… gibt es schon. Ersetzen?“. Mit „Ja“ wird sie überschrieben, mit „Nein“ passiert nichts.
 
-Eine Erfolgsmeldung gibt es nicht; die Datei liegt danach im gewählten Ordner. Nur bei einem Fehler erscheint ein Fenster „Export fehlgeschlagen“.
+Eine Erfolgsmeldung gibt es nicht; die Datei liegt danach im gewählten Ordner. Nur bei einem Fehler erscheint ein Fenster „Export fehlgeschlagen“. Konnte ein Bild oder Diagramm nicht übernommen werden, wird die Datei trotzdem gespeichert; an seiner Stelle steht „[Abbildung nicht verfügbar: …]“, und ein Fenster nennt die fehlenden Abbildungen.
 
 Gut zu wissen:
 
@@ -49,12 +50,16 @@ Der Vorschlag hat **keine Endung**. Das ist Absicht.
 Die Endung ergibt sich erst beim Speichern aus dem gewählten Dateityp:
 
 - Tippst du keine Endung, wird die passende angehängt: Aus `Bericht` wird mit Word `Bericht.docx`.
-- Tippst du eine der drei Export-Endungen, die nicht zum Dateityp passt, wird sie ersetzt: `Bericht.json` mit dem Dateityp Word wird zu `Bericht.docx`.
+- Tippst du eine der Export-Endungen (`.pdf`, `.docx`, `.md`, `.json`, gleich in welcher Schreibweise), die nicht zum Dateityp passt, wird sie ersetzt: `Bericht.json` mit dem Dateityp Word wird zu `Bericht.docx`, `Bericht.PDF` zu `Bericht.docx`.
 - Jede andere Endung bleibt Teil des Namens, und die richtige kommt dahinter: `notiz.txt` mit dem Dateityp Word wird zu `notiz.txt.docx`, `Bericht v1.2` zu `Bericht v1.2.docx`.
 
 So entsteht nie ein Word-Dokument mit einer fremden Endung. Maßgeblich ist also der Dateityp im Dialog, nicht die getippte Endung. Wechselst du den Dateityp nach dem Tippen, gilt der zuletzt gewählte.
 
-## Die drei Formate
+## Die vier Formate
+
+### PDF: der Gesprächsbericht zum Lesen und Drucken
+
+Das PDF ist der voreingestellte Dateityp. Es enthält denselben Bericht wie die Markdown-Datei, sauber gesetzt: oben der Chat-Titel, dann Chat-ID und Zeitpunkte, je Nachricht eine Überschrift mit Autor und Zeitpunkt, darunter der formatierte Text mit Listen, Tabellen und Codeblöcken sowie Anhänge, Seiten, Zitate, Werkzeugaufrufe und Quellen. Bilder aus dem Nachrichtentext und Mermaid-Diagramme erscheinen als Grafik (siehe [Bilder und Diagramme](help:chat.export#bilder-und-diagramme)). Grundlage ist derselbe geschwärzte Stand wie bei allen anderen Formaten.
 
 ### JSON: vollständig und maschinenlesbar
 
@@ -86,15 +91,25 @@ Das Word-Dokument ist ein formatierter Bericht zum Lesen und Weitergeben:
 
 - Oben stehen der Chat-Titel und die Zeile „Exportiert am … um …“.
 - Jede Nachricht hat einen farbigen Kopf mit „Du“, dem Namen des Assistenten oder „Hinweis“ und der Uhrzeit; abgebrochene Antworten sind als „abgebrochen“ gekennzeichnet.
-- Der Markdown-Text wird in echte Word-Formatierung übertragen: Überschriften, Listen, Fettdruck, Tabellen, Codeblöcke. Diagramme erscheinen als Codeblock mit ihrem Quelltext, nicht als Grafik.
+- Der Markdown-Text wird in echte Word-Formatierung übertragen: Überschriften, Listen, Fettdruck, Tabellen, Codeblöcke. Bilder und Mermaid-Diagramme erscheinen als Grafik.
 - Unter einer Nachricht stehen, soweit vorhanden, die Abschnitte „Anhänge“, „Verwendete Seiten“, „Verweise“, „Zitate“ und „Quellen“ (mit Abschnitt, Ort und Stand).
 - Am Ende folgt „Ressourcen des Chats“ mit den Dateien, Seiten und verwendeten Quellen des ganzen Chats, jeweils nur einmal aufgeführt.
 
 Werkzeugaufrufe stehen nicht im Word-Dokument, nur im JSON (und als Kurzzeile im Markdown). Für eine technische Fehleranalyse ist deshalb JSON die bessere Wahl.
 
+## Bilder und Diagramme
+
+PDF und Word übernehmen Abbildungen als echte Grafik an ihrer Stelle im Text, auf die Seitenbreite verkleinert, mit dem Alternativtext als Bildunterschrift:
+
+- Mermaid-Diagramme werden mit demselben Renderer gezeichnet wie im Chat. Im JSON und im Markdown bleibt der Mermaid-Quelltext erhalten.
+- Bilder, die im Nachrichtentext selbst stecken (eingebettete `data:`-Bilder in PNG, JPEG, GIF oder SVG), werden eingebettet.
+- Bilder mit einer fremden Internetadresse lädt der Export **nicht** herunter. An ihrer Stelle steht „[Abbildung nicht verfügbar: …]“, und das Hinweisfenster nennt sie.
+
+Beim Export einer Seite aus dem Lesebereich oder dem Seitenbaum gilt dasselbe für die Bilder der Seite: Sie werden über die Anmeldung der Quelle geladen (wie in der Leseansicht) und in PDF und Word eingebettet; in Markdown stehen sie als eingebettete PNG-Daten in der Datei, damit sie auch offline und ohne Zugang zur Quelle sichtbar sind. Verlangt die Quelle für Dateien einen Einmalcode, öffne vorher im Lesebereich ein Bild und bestätige den Code.
+
 ## Schwärzung von Zugangsdaten
 
-Ein Chat kann Geheimnisse enthalten, etwa wenn ein Werkzeugaufruf eine Adresse mit Anmeldedaten enthielt oder jemand einen Schlüssel in den Chat kopiert hat. Bevor der Export geschrieben wird, ersetzt der Client solche Werte durch `[REDACTED]`. Das gilt für alle drei Formate; Markdown und Word werden aus demselben geschwärzten Stand erzeugt wie das JSON.
+Ein Chat kann Geheimnisse enthalten, etwa wenn ein Werkzeugaufruf eine Adresse mit Anmeldedaten enthielt oder jemand einen Schlüssel in den Chat kopiert hat. Bevor der Export geschrieben wird, ersetzt der Client solche Werte durch `[REDACTED]`. Das gilt für alle vier Formate; PDF, Markdown und Word werden aus demselben geschwärzten Stand erzeugt wie das JSON.
 
 Geschwärzt wird auf zwei Wegen:
 
@@ -136,9 +151,9 @@ Das Schreiben ist gescheitert. Typische Ursachen: Der Zielordner ist schreibgesc
 
 Du hast eine fremde Endung wie „.txt“ getippt. Sie bleibt Teil des Namens, die Endung des Dateityps kommt dahinter. Lass die Endung beim Tippen einfach weg.
 
-### Im Word-Dokument fehlt ein Diagramm
+### Im PDF oder Word-Dokument fehlt ein Bild
 
-Diagramme werden als Quelltext im Codeblock übernommen, nicht als Bild.
+An seiner Stelle steht „[Abbildung nicht verfügbar: …]“, und nach dem Speichern nennt ein Fenster den Grund: Das Bild hatte eine fremde Internetadresse (wird nie geladen), seine Daten waren nicht lesbar, oder das Mermaid-Diagramm ließ sich nicht zeichnen (dann steht sein Quelltext im Codeblock).
 
 Weitere Hilfe in [Probleme im Chat](help:troubleshooting.chat).
 
@@ -147,4 +162,4 @@ Weitere Hilfe in [Probleme im Chat](help:troubleshooting.chat).
 - Export immer nur eines Chats; kein Sammelexport.
 - Kein Import: Ein exportierter Chat lässt sich nicht wieder einlesen.
 - Die Schwärzung erkennt nur bekannte Muster.
-- Die Formatierung im Word-Dokument ist fest vorgegeben.
+- Die Formatierung im PDF und im Word-Dokument ist fest vorgegeben.
