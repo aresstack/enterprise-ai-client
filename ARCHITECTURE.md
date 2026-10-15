@@ -129,7 +129,7 @@ Moduls liegen nur dort (geprüft).
 | `source-mediawiki` | ADAPTER | `proasteion.emporion.holkas.mediawiki` | astu, source-api, network | E (AP12) |
 | `source-confluence` | ADAPTER | `proasteion.emporion.holkas.confluence` | astu, source-api, adyton, network | F (AP15) |
 | `source-localfiles` | ADAPTER | `proasteion.emporion.holkas.localfiles` | astu, source-api, deigma | Dateien (0.1.10) |
-| `source-git` | ADAPTER | `proasteion.emporion.holkas.git` | astu, source-api, adyton, deigma, network | Git-Repository (#137): ein Ref, nur lesend, JGit 5.13.5 adapterintern, Bare-Cache der Anwendung; Revision = Blob-ID |
+| `source-git` | ADAPTER | `proasteion.emporion.holkas.git` | astu, source-api, deigma, network | Git-Repository (#137): ein Ref, nur lesend, JGit 5.13.5 adapterintern, Bare-Cache der Anwendung; Revision = Blob-ID; Token per Callback der Composition Root, Proxy-Route und TLS der Anwendung |
 | `source-ftp` | ADAPTER | `proasteion.emporion.holkas.ftp` | astu, source-api, adyton | FTP/MVS-Quelle (COBOL in PDS-Membern) und JES-Jobausgaben; Commons Net, Anmeldung über KeePass |
 | `source-ndv` | ADAPTER | `proasteion.emporion.holkas.ndv` | astu, source-api, adyton | Natural-Quellen über NDV (NATSPOD/PAL aus MainframeMate, Anmeldung über KeePass) |
 | `source-outlook` | ADAPTER | `proasteion.emporion.holkas.outlook` | astu, source-api | Outlook-Postfachdateien PST/OST (java-libpst, Auswahl aus MainframeMate) |

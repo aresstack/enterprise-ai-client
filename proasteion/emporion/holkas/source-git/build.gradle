@@ -1,8 +1,7 @@
-description = 'Adapter: Git-Repository (ein Ref, aktueller Stand) als Knowledge Source. JGit nur adapterintern, nur lesend; Token über adyton, Extraktion von PDF/Office über den Port deigma.'
+description = 'Adapter: Git-Repository (ein Ref, aktueller Stand) als Knowledge Source. JGit nur adapterintern, nur lesend; Token über einen Callback der Composition Root, Extraktion von PDF/Office über den Port deigma.'
 
 dependencies {
     api project(':source-api')
-    api project(':adyton')
     // Proxy-Route je Ziel (Port); die Umsetzung liefert die Composition Root.
     api project(':proasteion:platform:network')
     api project(':proasteion:emporion:deigma')

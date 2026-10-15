@@ -77,7 +77,9 @@ java -jar enterprise-ai-client-<version>.jar
    `<Anwendungsverzeichnis>/git-cache`; spätere Läufe holen nur Neues. Quelltext (Java, Go, TypeScript/React …),
    Konfiguration und Markdown erscheinen mit Pfad, Sprache und Commit; Bilder und Figma-Originale (`.fig`) nur als
    Assets. Abhängigkeiten, Build-Ausgaben und Lockfiles sind vorbelegt ausgeschlossen; Submodule, symbolische
-   Links und Git-LFS-Inhalte werden nicht nachgeladen.
+   Links und Git-LFS-Inhalte werden nicht nachgeladen. Private Repositorys: KeePass-Eintrag mit Lese-Token
+   (Azure Repos: PAT mit „Code (Read)“, Benutzer beliebig); das Token geht nur über HTTPS, je Fetch über die
+   Proxy-Route und das TLS-Vertrauen der Anwendung, und steht nie in URL, Einstellungen oder Metadaten.
 6. **RAG verwenden**: Einen RAG-Schalter gibt es nicht (wie in askai-java8 arch). Sind Wissensquellen
    konfiguriert, sucht die Anwendung vor jeder Antwort in den angehakten Quellen; die Antwort trägt die verwendeten
    Quellen, Hinweise erscheinen als eigene Blase. Der Composer zeigt wie arch links das Chat-Modell (Klick zeigt die

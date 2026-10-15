@@ -80,9 +80,10 @@ final class ModuleRegistry {
                 // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port deigma.
                 .module("source-localfiles", "proasteion.emporion.holkas.localfiles", ModuleKind.ADAPTER, "E",
                         "astu", "source-api", "deigma")
-                // Git-Repositories (#137): JGit adapterintern, nur lesend; Token über adyton, Proxy über network.
+                // Git-Repositories (#137): JGit adapterintern, nur lesend; Token über einen Callback der Composition
+                // Root (wie SharePoint), Proxy und TLS über network.
                 .module("source-git", "proasteion.emporion.holkas.git", ModuleKind.ADAPTER, "Quellen",
-                        "astu", "source-api", "adyton", "deigma", "network")
+                        "astu", "source-api", "deigma", "network")
                 // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über adyton.
                 .module("source-ftp", "proasteion.emporion.holkas.ftp", ModuleKind.ADAPTER, "Quellen",
                         "astu", "source-api", "adyton")

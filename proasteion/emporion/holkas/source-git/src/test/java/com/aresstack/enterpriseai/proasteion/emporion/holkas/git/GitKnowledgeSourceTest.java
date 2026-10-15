@@ -160,7 +160,7 @@ public class GitKnowledgeSourceTest {
             again.discover(SourceScope.of("."));
             fail("discover must fetch and fail without the remote");
         } catch (KnowledgeSourceException e) {
-            assertTrue(e.kind() == Kind.UNAVAILABLE || e.kind() == Kind.NOT_FOUND);
+            assertTrue(e.kind() + ": " + e.getMessage(), e.kind() == Kind.UNAVAILABLE || e.kind() == Kind.NOT_FOUND);
         }
     }
 

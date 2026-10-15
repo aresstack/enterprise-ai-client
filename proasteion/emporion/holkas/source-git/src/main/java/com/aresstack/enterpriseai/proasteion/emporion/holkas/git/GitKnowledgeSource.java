@@ -25,7 +25,7 @@ import com.aresstack.enterpriseai.source.api.PagePosition;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.files.FilePatterns;
-import org.eclipse.jgit.api.TransportConfigCallback;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
@@ -55,6 +55,7 @@ import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.net.ssl.SSLSocketFactory;
 
 /**
  * Ein Ref eines Git-Repositorys als {@link KnowledgeSourcePort} mit Verzeichnisbaum ({@link PageNavigationSource}).
@@ -86,7 +87,9 @@ public final class GitKnowledgeSource implements KnowledgeSourcePort, PageNaviga
     private final String locator;
     private final String title;
     private final GitRepositoryCache cache;
-    private final TransportConfigCallback transport;
+    private final HttpRoutePort routes;
+    private final SSLSocketFactory tls;
+    private final GitCredentialsProvider credentials;
     private final int timeoutSeconds;
     private final FilePatterns patterns;
     private final long maxFileBytes;
@@ -99,7 +102,8 @@ public final class GitKnowledgeSource implements KnowledgeSourcePort, PageNaviga
     private long fetchedAt;
 
     GitKnowledgeSource(SourceAddress sourceId, GitRemote remote, String ref, String locator, String title,
-                       GitRepositoryCache cache, TransportConfigCallback transport, int timeoutSeconds,
+                       GitRepositoryCache cache, HttpRoutePort routes, SSLSocketFactory tls,
+                       GitCredentialsProvider credentials, int timeoutSeconds,
                        FilePatterns patterns, long maxFileBytes, ContentDetector detector,
                        ExtractionRegistry extractors, long refreshMillis, LongSupplier clock) {
         if (sourceId == null || remote == null || cache == null || patterns == null || detector == null
@@ -113,7 +117,9 @@ public final class GitKnowledgeSource implements KnowledgeSourcePort, PageNaviga
         this.locator = locator;
         this.title = title == null || title.trim().isEmpty() ? remote.locator() : title.trim();
         this.cache = cache;
-        this.transport = transport;
+        this.routes = routes;
+        this.tls = tls;
+        this.credentials = credentials == null ? GitCredentialsProvider.none() : credentials;
         this.timeoutSeconds = timeoutSeconds;
         this.patterns = patterns;
         this.maxFileBytes = maxFileBytes;
@@ -321,9 +327,30 @@ public final class GitKnowledgeSource implements KnowledgeSourcePort, PageNaviga
                 return cached;
             }
         }
-        current = cache.fetch(remote, ref, transport, timeoutSeconds);
+        current = fetch();
         fetchedAt = now;
         return current;
+    }
+
+    /** One fetch; for HTTP(S) over the application's route and trust, with credentials only for its duration. */
+    private GitSnapshot fetch() throws KnowledgeSourceException {
+        if (!remote.isHttp()) {
+            return cache.fetch(remote, ref, null, timeoutSeconds);
+        }
+        GitCredentials access;
+        try {
+            access = credentials.credentials();
+        } catch (Exception e) {
+            throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "Zugangsdaten für " + remote
+                    + " nicht verfügbar (KeePass-Eintrag prüfen)");
+        }
+        try {
+            return cache.fetch(remote, ref, new GitHttpTransport(routes, tls, access), timeoutSeconds);
+        } finally {
+            if (access != null) {
+                access.clear();
+            }
+        }
     }
 
     private Repository repository() throws IOException {

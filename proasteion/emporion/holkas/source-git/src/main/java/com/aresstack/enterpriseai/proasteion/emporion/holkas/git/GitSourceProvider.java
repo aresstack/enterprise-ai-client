@@ -1,29 +1,38 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.git;
 
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceSettingField;
 import com.aresstack.enterpriseai.astu.source.SourceSettings;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ContentDetector;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ExtractionRegistry;
+import com.aresstack.enterpriseai.proasteion.platform.network.HttpRoutePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
 import com.aresstack.enterpriseai.source.api.files.FilePatterns;
 
+import javax.net.ssl.SSLSocketFactory;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Function;
 
 /**
  * Quelltyp „Git-Repository“ ({@code source.<n>.type=git}, Ressourcenschema {@code git}, #137): der aktuelle Stand
  * genau eines Refs, nur lesend. Schlüssel: {@code url} (Pflicht; https, http oder lokales Repository), {@code title},
- * {@code ref} (Branch, Tag oder Commit-ID; leer = Standard-Branch des Remotes), {@code startPoints} (Pfadpräfixe,
+ * {@code ref} (Branch, Tag oder Commit-ID; leer = Standard-Branch des Remotes), {@code credentialRef} (KeePass-Eintrag
+ * mit Benutzer und Lese-Token/PAT; leer = anonym, nur über HTTPS), {@code startPoints} (Pfadpräfixe,
  * Standard {@code .}), {@code maxDepth} (Standard 30), {@code maxResources} (Standard 5000),
  * {@code maxFileMegabytes} (Standard 2), {@code include}, {@code exclude} (Glob-Muster; Vorgabe
  * {@link GitFiles#DEFAULT_EXCLUDES}), {@code timeoutSeconds} (Standard 120), {@code refreshMinutes} (Standard 5).
  *
  * <p>JGit liegt nur hinter diesem Adapter; der Cache der Repositorys gehört der Anwendung ({@code cacheDirectory}).
+ * HTTP(S) geht über die Proxy-Route und das TLS-Vertrauen der Anwendung; das Token holt die Composition Root je
+ * Fetch aus KeePass ({@link GitCredentialsProvider}) und es landet nie in URL, Einstellungen, Metadaten oder
+ * Meldungen.
  */
 public final class GitSourceProvider implements KnowledgeSourceProvider {
 
@@ -41,6 +50,9 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
             .field(SourceSettingField.text("title", "Anzeigename (optional)", "Leer = Name aus der Adresse"))
             .field(SourceSettingField.text("ref", "Branch/Tag (optional)",
                     "Branch, Tag oder Commit-ID; leer = Standard-Branch des Repositorys"))
+            .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
+                    "KeePass-Eintrag (optional)", "Benutzer und Lese-Token (Azure: PAT mit „Code (Read)“); "
+                            + "leer = öffentliches Repository"))
             .field(SourceSettingField.text("startPoints", "Pfade",
                     "Kommagetrennte Ordner oder Dateien im Repository (. = alles)").withDefault(".").advanced())
             .field(SourceSettingField.text("include", "Nur diese Dateien (optional)",
@@ -61,19 +73,35 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
     private static final int DEFAULT_MAX_RESOURCES = 5000;
 
     private final GitRepositoryCache cache;
+    private final Function<SecretRef, GitCredentialsProvider> credentials;
+    private final HttpRoutePort routes;
+    private final SSLSocketFactory tls;
     private final ContentDetector detector;
     private final ExtractionRegistry extraction;
 
+    /** Without vault, proxy route and own trust: local and public repositories (tests, tools). */
+    public GitSourceProvider(Path cacheDirectory, ContentDetector detector, ExtractionRegistry extraction) {
+        this(cacheDirectory, null, null, null, detector, extraction);
+    }
+
     /**
      * @param cacheDirectory folder owned by the application for the bare copies of the repositories
+     * @param credentials    bridge from the KeePass entry of a source to its credentials; {@code null} = none
+     * @param routes         proxy route per target URL; {@code null} = JVM default
+     * @param tls            trust of the application for HTTPS; {@code null} = JVM default
      * @param detector       content detection for PDF and Office files in repositories
      * @param extraction     extractors for PDF and Office files in repositories
      */
-    public GitSourceProvider(Path cacheDirectory, ContentDetector detector, ExtractionRegistry extraction) {
+    public GitSourceProvider(Path cacheDirectory, Function<SecretRef, GitCredentialsProvider> credentials,
+                             HttpRoutePort routes, SSLSocketFactory tls, ContentDetector detector,
+                             ExtractionRegistry extraction) {
         if (cacheDirectory == null || detector == null || extraction == null) {
             throw new IllegalArgumentException("cacheDirectory, detector and extraction must not be null");
         }
         this.cache = new GitRepositoryCache(cacheDirectory);
+        this.credentials = credentials;
+        this.routes = routes;
+        this.tls = tls;
         this.detector = detector;
         this.extraction = extraction;
     }
@@ -91,8 +119,9 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
     @Override
     public List<String> validate(SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
-        remote(reader);
+        GitRemote remote = remote(reader);
         ref(reader);
+        credentialRef(reader, remote);
         maxFileBytes(reader);
         scope(reader);
         return reader.problems();
@@ -108,8 +137,9 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         GitRemote remote = remote(reader);
         String ref = ref(reader);
+        SecretRef credentialRef = credentialRef(reader, remote);
         long maxFileBytes = maxFileBytes(reader);
-        int timeout = reader.integer("timeoutSeconds", 120, 5, 3600);
+        int timeout = reader.integer("timeoutSeconds", 120, 1, 3600);
         long refreshMillis = reader.integer("refreshMinutes", 5, 0, 24 * 60) * 60000L;
         if (reader.hasProblems() || remote == null) {
             throw new IllegalArgumentException("Git-Quelle " + sourceId + " ist fehlerhaft: " + reader.problems());
@@ -117,7 +147,7 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
         FilePatterns patterns = new FilePatterns(FilePatterns.split(reader.text("include", null)),
                 FilePatterns.split(reader.text("exclude", GitFiles.DEFAULT_EXCLUDES)));
         return new GitKnowledgeSource(sourceId, remote, ref, locatorOf(remote, ref), reader.text("title", null),
-                cache, null, timeout, patterns, maxFileBytes, detector, extraction, refreshMillis,
+                cache, routes, tls, access(credentialRef), timeout, patterns, maxFileBytes, detector, extraction, refreshMillis,
                 System::currentTimeMillis);
     }
 
@@ -145,6 +175,31 @@ public final class GitSourceProvider implements KnowledgeSourceProvider {
             r.problem("url", e.getMessage());
             return null;
         }
+    }
+
+    private GitCredentialsProvider access(SecretRef credentialRef) {
+        if (credentialRef == null) {
+            return GitCredentialsProvider.none();
+        }
+        if (credentials == null) {
+            return new GitCredentialsProvider() {
+                @Override
+                public GitCredentials credentials() {
+                    throw new IllegalStateException("no vault");
+                }
+            };
+        }
+        return credentials.apply(credentialRef);
+    }
+
+    /** A token only travels over HTTPS; local repositories need none. */
+    private static SecretRef credentialRef(SourceSettingsReader r, GitRemote remote) {
+        SecretRef ref = r.secretRef("credentialRef");
+        if (ref != null && remote != null && !remote.uri().toLowerCase(Locale.ROOT).startsWith("https:")) {
+            r.problem("credentialRef", "Zugangsdaten nur über HTTPS; bei http:// oder lokalen Repositorys leer lassen");
+            return null;
+        }
+        return ref;
     }
 
     private static String ref(SourceSettingsReader r) {

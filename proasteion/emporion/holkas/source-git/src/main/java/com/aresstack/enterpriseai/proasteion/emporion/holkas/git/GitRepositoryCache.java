@@ -43,6 +43,9 @@ final class GitRepositoryCache {
     /** The local ref holding the fetched commit of the configured ref. */
     static final String SNAPSHOT_REF = "refs/eai/snapshot";
     private static final Pattern COMMIT_ID = Pattern.compile("[0-9a-fA-F]{40}");
+    /** HTTP status in a JGit message; whole numbers only, so digits in a path never count. */
+    private static final Pattern STATUS_DENIED = Pattern.compile("(?<![0-9])40[13](?![0-9])");
+    private static final Pattern STATUS_NOT_FOUND = Pattern.compile("(?<![0-9])404(?![0-9])");
 
     private final Path root;
     private final Map<Path, Object> locks = new ConcurrentHashMap<Path, Object>();
@@ -218,13 +221,15 @@ final class GitRepositoryCache {
     }
 
     private static KnowledgeSourceException transportFailure(GitRemote remote, TransportException e) {
-        String message = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT);
+        // Without the remote itself: digits or words in its path must not look like a status.
+        String message = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT)
+                .replace(remote.uri().toLowerCase(Locale.ROOT), "");
         Throwable root = e;
         while (root.getCause() != null && root.getCause() != root) {
             root = root.getCause();
         }
         if (message.contains("not authorized") || message.contains("authentication is required")
-                || message.contains("401") || message.contains("403") || message.contains("not permitted")
+                || STATUS_DENIED.matcher(message).find() || message.contains("not permitted")
                 || message.contains("authentication not supported")) {
             return new KnowledgeSourceException(Kind.ACCESS_DENIED, "Kein Lesezugriff auf " + remote
                     + " (Anmeldung abgelehnt oder Token ohne Berechtigung „Code (Read)“)");
@@ -236,7 +241,8 @@ final class GitRepositoryCache {
         if (root instanceof java.net.UnknownHostException) {
             return new KnowledgeSourceException(Kind.UNAVAILABLE, "Host unbekannt: " + remote);
         }
-        if (message.contains("not found") || message.contains("404") || message.contains("does not appear")) {
+        if (message.contains("not found") || STATUS_NOT_FOUND.matcher(message).find()
+                || message.contains("does not appear")) {
             return new KnowledgeSourceException(Kind.NOT_FOUND, "Repository nicht gefunden: " + remote);
         }
         return new KnowledgeSourceException(Kind.UNAVAILABLE, "Git-Repository nicht erreichbar: " + remote + " ("
