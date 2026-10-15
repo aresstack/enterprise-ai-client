@@ -110,6 +110,17 @@ final class InMemoryVault implements SecretProvider, SecretVault {
     }
 
     @Override
+    public void create(VaultEntryDraft entry) throws SecretUnavailableException {
+        for (String title : entries.keySet()) {
+            if (title.trim().equalsIgnoreCase(entry.title().trim())) {
+                throw new SecretUnavailableException(SecretUnavailableException.Reason.ALREADY_EXISTS, null,
+                        "entry exists");
+            }
+        }
+        save(entry);
+    }
+
+    @Override
     public void remove(String title) {
         entries.remove(title);
     }

@@ -104,7 +104,7 @@ public final class SetupWizardPanel extends JPanel {
     static final String DEFAULT_SERVICE_ENTRY = "Enterprise AI API";
     static final String DEFAULT_CONFLUENCE_ENTRY = "Confluence";
     static final String ENTRIES_REFRESH_HINT = "KeePass-Einträge neu laden";
-    /** Hinweis bei einem unvollständigen vorhandenen Eintrag; der Assistent ergänzt ihn nicht selbst. */
+    /** Hint for an incomplete existing entry; the wizard never completes it itself. */
     static final String INCOMPLETE_HINT = " Bitte den Eintrag direkt in KeePass ergänzen und dann die Einträge neu "
             + "laden (⟳), oder einen neuen Titel eintragen.";
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
@@ -188,13 +188,13 @@ public final class SetupWizardPanel extends JPanel {
     private boolean entriesLoaded;
     /** Warum das Nachladen der Einträge zuletzt scheiterte ({@code null}: kein Fehler). */
     private String entriesProblem;
-    /** Zählt Lesevorgänge der Eintragsliste; eine Antwort gilt nur, wenn seither keine neuere angefordert wurde. */
+    /** Counts entry list reads; a response only counts if no newer read was requested since. */
     private int entriesGeneration;
     private final ComposerButton serviceEntryRefresh =
             ComposerButton.iconButton(ComposerIcons.refresh(), ENTRIES_REFRESH_HINT);
     private final ComposerButton confluenceEntryRefresh =
             ComposerButton.iconButton(ComposerIcons.refresh(), ENTRIES_REFRESH_HINT);
-    /** Der Titel, dessen Status die Schritte KI-Dienst bzw. Confluence gerade zeigen. */
+    /** The title whose status the service and Confluence steps currently show. */
     private String serviceShownTitle;
     private String confluenceShownTitle;
 
@@ -413,7 +413,7 @@ public final class SetupWizardPanel extends JPanel {
         return rows.panel();
     }
 
-    /** Auswahl bzw. Neueingabe des Titels und rechts daneben „KeePass-Einträge neu laden“. */
+    /** Title choice or new title input, with the "reload KeePass entries" button to its right. */
     private static JPanel entryRow(JComboBox<String> combo, ComposerButton refresh) {
         JPanel row = transparent(new BorderLayout(4, 0));
         row.add(combo, BorderLayout.CENTER);
@@ -1057,10 +1057,10 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * „KeePass-Einträge neu laden“ in den Schritten KI-Dienst und Confluence: liest die Liste immer neu, füllt beide
-     * Auswahlen, ohne den getippten Titel oder Formulareingaben zu verlieren, und liest den gewählten Eintrag neu
-     * (Metadaten und ob es ihn noch gibt). Scheitert das Lesen, gilt die alte Liste nicht mehr als Bestand; ein
-     * Titel heißt dann nicht „neu“, und der Assistent legt nichts an. Nur die Antwort des neuesten Abrufs zählt.
+     * "Reload KeePass entries" on the service and Confluence steps: always re-reads the list, refills both choices
+     * without losing the typed title or form input, and re-reads the chosen entry (metadata and whether it still
+     * exists). If reading fails, the old list no longer counts as the KeePass state; no title is called "new" and
+     * the wizard creates nothing. Only the response to the newest read counts.
      */
     private void refreshEntries() {
         form = collect();
@@ -1178,7 +1178,7 @@ public final class SetupWizardPanel extends JPanel {
             serviceEntryStatus.setText("Neuer Eintrag „" + title + "“: bitte Basis-URL und API-Key angeben und "
                     + "neu in KeePass anlegen.");
             serviceMissing.setVisible(true);
-            if (wasExisting) { // die Werte des zuvor gewählten Eintrags gehören nicht zum neuen
+            if (wasExisting) { // values of the previously chosen entry do not belong to the new one
                 serviceUrl.setText("");
                 serviceKey.setText("");
             }
@@ -1189,7 +1189,7 @@ public final class SetupWizardPanel extends JPanel {
         setBusy(true);
         store().read(stored, (entry, error) -> {
             setBusy(false);
-            if (!title.equals(text(serviceEntry))) { // inzwischen weitergetippt: der neue Titel zählt
+            if (!title.equals(text(serviceEntry))) { // the user kept typing meanwhile: the newer title wins
                 readServiceEntry();
                 return;
             }
@@ -1215,8 +1215,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Legt den KI-Dienst-Eintrag neu an (nur anlegen, nie ändern): Ein vorhandener Titel wird abgelehnt, auch wenn
-     * er sich nur in Groß-/Kleinschreibung unterscheidet; KeePass prüft beim Anlegen den aktuellen Bestand selbst.
+     * Creates the AI service entry (create-only, never change): an existing title is rejected, also when it differs
+     * only in case; the create path re-checks the current KeePass state itself.
      */
     private void saveServiceEntry() {
         final String title = text(serviceEntry);
@@ -1581,9 +1581,9 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Liest den gewählten Eintrag. Ein vorhandener Eintrag wird nur gelesen: Der Schritt zeigt, was vorhanden ist,
-     * und testet mit den Werten aus KeePass; was fehlt, ergänzt der Benutzer direkt in KeePass und lädt neu. Die
-     * Felder erscheinen nur für einen neuen Titel, unter dem der Test den Eintrag neu anlegt.
+     * Reads the chosen entry. An existing entry is only read: the step shows what is present and tests with the
+     * KeePass values; anything missing the user adds directly in KeePass and then reloads. The fields only appear
+     * for a new title, under which the test creates the entry.
      */
     private void readConfluenceEntry() {
         final String title = text(confluenceEntry);
@@ -1604,7 +1604,7 @@ public final class SetupWizardPanel extends JPanel {
                         : "Neuer Eintrag: URL und Passwort bzw. Token angeben; er wird beim Testen neu in KeePass "
                         + "angelegt.");
                 confluencePasswordHint.setText(" ");
-                if (wasExisting) { // die Werte des zuvor gewählten Eintrags gehören nicht zum neuen
+                if (wasExisting) { // values of the previously chosen entry do not belong to the new one
                     confluenceUrl.setText("");
                     confluenceUser.setText("");
                     confluencePassword.setText("");
@@ -1624,7 +1624,7 @@ public final class SetupWizardPanel extends JPanel {
         store().read(stored, (entry, error) -> {
             confluenceReading = false;
             setBusy(false);
-            if (!title.equals(text(confluenceEntry))) { // inzwischen weitergetippt: der neue Titel zählt
+            if (!title.equals(text(confluenceEntry))) { // the user kept typing meanwhile: the newer title wins
                 if (entry != null) {
                     entry.wipe();
                 }
@@ -1667,8 +1667,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Status eines gelesenen Eintrags (was vorhanden ist, ohne Secrets) bzw. bei einem neuen Titel die Felder für
-     * den neuen Eintrag. Einen vorhandenen Eintrag ändert der Assistent nie.
+     * Status of a read entry (what is present, no secrets), or for a new title the fields of the new entry. The
+     * wizard never changes an existing entry.
      */
     private void showConfluenceCredentials() {
         String title = text(confluenceEntry);
@@ -1720,8 +1720,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Ein vorhandener Eintrag wird nur gelesen und mit seinen KeePass-Werten getestet. Ein neuer Titel wird erst neu
-     * in KeePass angelegt (nur anlegen, nie ändern) und nach erfolgreichem Anlegen getestet.
+     * An existing entry is only read and tested with its KeePass values. A new title is first created in KeePass
+     * (create-only, never change) and tested only after the create succeeded.
      */
     private void testConfluence() {
         final String title = text(confluenceEntry);
@@ -2591,8 +2591,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Der Titel des gelesenen Eintrags, der {@code title} entspricht, getrimmt und ohne Groß-/Kleinschreibung wie
-     * KeePassRPC; {@code null} = keiner.
+     * The title of the read entry matching {@code title}, trimmed and case-insensitive like KeePassRPC;
+     * {@code null} = none.
      */
     private String storedTitle(String title) {
         String wanted = title == null ? "" : title.trim();
@@ -2608,8 +2608,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Warum unter diesem Titel kein neuer Eintrag angelegt werden darf ({@code null}: darf). Die Liste ist nur ein
-     * Vorabcheck; den aktuellen Bestand prüft das Anlegen in KeePass selbst.
+     * Why no new entry may be created under this title ({@code null}: it may). The list is only a pre-check; the
+     * create path checks the current KeePass state itself.
      */
     private String newEntryProblem(String title) {
         if (title == null || title.trim().isEmpty()) {
@@ -2691,8 +2691,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Füllt eine Eintragsauswahl mit den gelesenen Titeln; der getippte Titel bleibt als Text im Editor, auch wenn
-     * es ihn (nicht mehr) gibt, steht dann aber nicht als Eintrag in der Liste.
+     * Fills an entry choice with the read titles; the typed title stays as editor text even if it does not exist
+     * (any more), but is then not listed as an item.
      */
     private void setEntryChoices(JComboBox<String> combo, List<String> titles) {
         boolean was = busy;
@@ -2706,7 +2706,7 @@ public final class SetupWizardPanel extends JPanel {
         }
     }
 
-    /** Ruft {@code action} bei jeder Eingabe im Editor einer editierbaren Auswahl auf, nicht nur bei Enter. */
+    /** Runs {@code action} on every edit in an editable combo box editor, not only on Enter. */
     private void onTyped(final JComboBox<String> combo, final Runnable action) {
         final SimpleDocumentListener typed = new SimpleDocumentListener(() -> {
             if (!busy) {
@@ -2714,7 +2714,7 @@ public final class SetupWizardPanel extends JPanel {
             }
         });
         listenToEditor(combo, typed);
-        // Ein Look-and-Feel-Wechsel (Comic-UI) setzt einen neuen Editor; der Listener zieht mit.
+        // A look-and-feel change (comic UI) installs a new editor; the listener moves along.
         combo.addPropertyChangeListener("editor", e -> listenToEditor(combo, typed));
     }
 

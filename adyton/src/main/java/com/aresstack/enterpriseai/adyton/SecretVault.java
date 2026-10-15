@@ -20,18 +20,12 @@ public interface SecretVault {
     void save(VaultEntryDraft entry) throws SecretUnavailableException;
 
     /**
-     * Legt den Eintrag nur an, wenn noch keiner mit gleichem Titel existiert (getrimmt, ohne Groß-/Kleinschreibung);
-     * ein bestehender Eintrag wird nie geändert. Kollision: {@link SecretUnavailableException.Reason#ALREADY_EXISTS}.
-     * Der Standard prüft den aktuellen Bestand über {@link #list()} und legt erst dann an; Adapter mit eigener
-     * Sitzung prüfen und schreiben in einem Zug.
+     * Create-only: adds the entry only if no entry with the same title exists (trimmed, case-insensitive) and never
+     * changes an existing one; a collision fails with {@link SecretUnavailableException.Reason#ALREADY_EXISTS}.
+     * Each adapter implements this against its own backend; there is deliberately no default built on the upserting
+     * {@link #save(VaultEntryDraft)}.
      */
-    default void create(VaultEntryDraft entry) throws SecretUnavailableException {
-        if (VaultTitles.containsTitle(list(), entry.title())) {
-            throw new SecretUnavailableException(SecretUnavailableException.Reason.ALREADY_EXISTS, null,
-                    "Eintrag existiert bereits");
-        }
-        save(entry);
-    }
+    void create(VaultEntryDraft entry) throws SecretUnavailableException;
 
     /** Löscht den Eintrag mit diesem Titel. */
     void remove(String title) throws SecretUnavailableException;

@@ -162,6 +162,12 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
     }
 
     @Override
+    public void create(com.aresstack.enterpriseai.adyton.VaultEntryDraft entry)
+            throws SecretUnavailableException {
+        SecretVaults.of(vault).create(entry);
+    }
+
+    @Override
     public void remove(String title) throws SecretUnavailableException {
         SecretVaults.of(vault).remove(title);
     }

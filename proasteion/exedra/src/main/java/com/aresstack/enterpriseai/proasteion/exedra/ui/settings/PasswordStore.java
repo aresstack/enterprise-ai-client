@@ -20,9 +20,9 @@ public interface PasswordStore {
     void remove(String title, PasswordCallback<Void> done);
 
     /**
-     * Legt einen neuen Eintrag an und ändert nie einen bestehenden: Gibt es den Titel (getrimmt, ohne Groß-/
-     * Kleinschreibung) schon, scheitert der Aufruf mit einer Meldung, und KeePass bleibt unverändert. Ohne eigene
-     * Umsetzung wird nichts geschrieben.
+     * Creates a new entry and never changes an existing one: if the title already exists (trimmed,
+     * case-insensitive) the call fails with a message and KeePass stays unchanged. Without an implementation
+     * nothing is written.
      */
     default void create(PasswordEntry entry, PasswordCallback<Void> done) {
         done.done(null, "Neue Einträge lassen sich hier nicht anlegen.");

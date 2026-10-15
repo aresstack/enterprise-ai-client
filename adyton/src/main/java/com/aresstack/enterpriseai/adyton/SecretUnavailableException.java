@@ -27,7 +27,7 @@ public class SecretUnavailableException extends Exception {
         ACCESS_DENIED,
         /** Benutzer hat eine nötige Interaktion (z. B. Pairing) abgebrochen. */
         CANCELLED,
-        /** Anlegen abgelehnt: ein Eintrag mit diesem Titel existiert bereits (er bleibt unverändert). */
+        /** Create rejected: an entry with this title already exists (it stays unchanged). */
         ALREADY_EXISTS
     }
 

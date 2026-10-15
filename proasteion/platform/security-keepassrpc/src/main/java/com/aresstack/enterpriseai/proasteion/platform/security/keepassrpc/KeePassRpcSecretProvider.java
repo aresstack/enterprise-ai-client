@@ -243,11 +243,11 @@ public final class KeePassRpcSecretProvider implements SecretProvider, SecretVau
     }
 
     /**
-     * Nur anlegen, nie ändern: In derselben Sitzung prüft der Adapter den aktuellen Bestand (Titelsuche und
-     * vollständige Liste, getrimmt und ohne Groß-/Kleinschreibung) und ruft bei einem Treffer weder
-     * {@code UpdateLogin} noch {@code AddLogin} auf. KeePassRPC kennt kein atomares „Anlegen falls fehlend“;
-     * zwischen Prüfung und {@code AddLogin} bleibt ein kurzes Fenster für einen Eintrag, den jemand gleichzeitig
-     * direkt in KeePass anlegt. Dieser Adapter serialisiert seine eigenen Schreibzugriffe ({@code synchronized}).
+     * Create-only: within one session the adapter checks the current KeePass state (title lookup and the full entry
+     * list, trimmed and case-insensitive) and on a match calls neither {@code UpdateLogin} nor {@code AddLogin}.
+     * KeePassRPC has no atomic create-if-absent; a short window remains between the check and {@code AddLogin} for
+     * an entry created at the same moment directly in KeePass. This adapter serializes its own writes
+     * ({@code synchronized}).
      */
     @Override
     public synchronized void create(final VaultEntryDraft draft) throws SecretUnavailableException {

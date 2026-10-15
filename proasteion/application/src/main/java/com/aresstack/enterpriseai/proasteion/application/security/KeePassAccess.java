@@ -243,8 +243,8 @@ public final class KeePassAccess {
     }
 
     /**
-     * Legt einen neuen Eintrag an und ändert nie einen bestehenden (Titel getrimmt, ohne Groß-/Kleinschreibung);
-     * bei Kollision scheitert der Aufruf mit der Bitte um einen anderen Titel. Löscht das Passwort danach.
+     * Creates a new entry and never changes an existing one (title trimmed, case-insensitive); on a collision the
+     * call fails asking for another title. Wipes the password afterwards.
      */
     public void create(String title, String userName, char[] password, String url, Map<String, String> fields)
             throws Failure {

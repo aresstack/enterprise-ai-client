@@ -20,8 +20,8 @@ import static org.junit.Assert.assertTrue;
 /**
  * KeePass-Einträge im Einrichtungsassistenten: Ist KeePass längst gekoppelt und springt die Schrittleiste an
  * „Mit KeePass verbinden“ vorbei, lädt der Assistent die Einträge selbst nach. Ein vollständiger Confluence-Eintrag
- * verlangt keine Eingabe (nur Status, keine Secrets). Vorhandene Einträge ändert der Assistent nie; neue Titel
- * werden getippt und nur angelegt. „Neu laden“ liest KeePass erneut. Übersprungenes Confluence blockiert den Abschluss nicht.
+ * verlangt keine Eingabe (nur Status, keine Secrets). The wizard never changes existing entries; new titles
+ * are typed and only created. "Reload" reads KeePass again. Übersprungenes Confluence blockiert den Abschluss nicht.
  */
 public class SetupWizardKeePassEntriesTest {
 
@@ -296,7 +296,7 @@ public class SetupWizardKeePassEntriesTest {
         });
     }
 
-    /** Tippt wie ein Benutzer in den Editor der Auswahl (Dokumentänderungen, kein setSelectedItem, kein Enter). */
+    /** Types into the combo editor like a user (document changes, no setSelectedItem, no Enter). */
     private static void type(JComboBox<String> combo, String text) {
         javax.swing.text.JTextComponent editor = (javax.swing.text.JTextComponent) combo.getEditor()
                 .getEditorComponent();

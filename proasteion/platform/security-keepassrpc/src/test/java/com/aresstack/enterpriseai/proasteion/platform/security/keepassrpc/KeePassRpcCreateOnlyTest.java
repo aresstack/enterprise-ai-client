@@ -15,8 +15,8 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Nur anlegen, nie ändern ({@code SecretVault.create}): Der Adapter prüft in derselben Sitzung den aktuellen
- * Bestand und ruft bei einem Treffer weder {@code UpdateLogin} noch {@code AddLogin} auf.
+ * Create-only ({@code SecretVault.create}): the adapter checks the current state within the same session and on a
+ * match calls neither {@code UpdateLogin} nor {@code AddLogin}.
  */
 public class KeePassRpcCreateOnlyTest {
 
@@ -58,7 +58,7 @@ public class KeePassRpcCreateOnlyTest {
     @Test
     public void entryCreatedAfterTheCallersLastListIsFoundByTheFreshCheck() throws Exception {
         provider.create(draft("Wiki neu"));
-        transport.titles.add("WIKI 2"); // jemand legt ihn direkt in KeePass an
+        transport.titles.add("WIKI 2"); // someone creates it directly in KeePass
         assertRejected("wiki 2");
         assertEquals(Collections.singletonList("Wiki neu"), transport.added);
     }
@@ -74,7 +74,7 @@ public class KeePassRpcCreateOnlyTest {
         assertTrue("kein AddLogin für " + title, !transport.added.contains(title));
     }
 
-    /** Titelsuche exakt (wie ein Server, der Varianten nicht findet); die volle Liste zeigt alle Titel. */
+    /** Exact title lookup (like a server that misses variants); the full list shows all titles. */
     private static final class FakeTransport implements KeePassRpcTransport {
 
         final List<String> titles = new ArrayList<String>();
