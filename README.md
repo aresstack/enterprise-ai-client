@@ -71,6 +71,13 @@ java -jar enterprise-ai-client-<version>.jar
    `deigma` (Module `deigma` und `document-tika`, Quelle `source-localfiles`): Text und Markdown direkt,
    PDF, Word, Excel, PowerPoint, OpenDocument, RTF, HTML und Mails über Apache Tika 2.9.1 wie in MainframeMate.
    Die Tika-Parser vergrößern das Fat Jar deutlich.
+   **Git-Repository** (#137): Typ „Git-Repository“ (`type=git`, Quelle `source-git`) liest genau einen Branch,
+   Tag oder Commit eines Repositorys (Azure Repos, GitHub, GitLab über HTTPS oder ein lokales Repository) mit
+   JGit 5.13.5 im Java-8-Prozess, ohne Git-CLI und nur lesend. Die Anwendung hält eine Bare-Kopie unter
+   `<Anwendungsverzeichnis>/git-cache`; spätere Läufe holen nur Neues. Quelltext (Java, Go, TypeScript/React …),
+   Konfiguration und Markdown erscheinen mit Pfad, Sprache und Commit; Bilder und Figma-Originale (`.fig`) nur als
+   Assets. Abhängigkeiten, Build-Ausgaben und Lockfiles sind vorbelegt ausgeschlossen; Submodule, symbolische
+   Links und Git-LFS-Inhalte werden nicht nachgeladen.
 6. **RAG verwenden**: Einen RAG-Schalter gibt es nicht (wie in askai-java8 arch). Sind Wissensquellen
    konfiguriert, sucht die Anwendung vor jeder Antwort in den angehakten Quellen; die Antwort trägt die verwendeten
    Quellen, Hinweise erscheinen als eigene Blase. Der Composer zeigt wie arch links das Chat-Modell (Klick zeigt die

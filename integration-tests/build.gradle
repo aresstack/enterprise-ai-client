@@ -22,6 +22,9 @@ dependencies {
     testImplementation project(':astu:acropolis:chalcotheca:pinakes')
     testImplementation project(':proasteion:emporion:holkas:source-mediawiki')
     testImplementation project(':proasteion:emporion:holkas:source-confluence')
+    // Git-Repository (#137): Fixture-Repositorys über JGit, ohne Netz
+    testImplementation project(':proasteion:emporion:holkas:source-git')
+    testImplementation libs.jgit
     testImplementation project(':proasteion:platform:security-keepassrpc')
     testImplementation project(':acp-solon-client')
     testImplementation project(':proasteion:katagogion:mcp-solon-runtime')

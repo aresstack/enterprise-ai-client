@@ -53,6 +53,7 @@ import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.JesSourceProvider;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.git.GitSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles.LocalFilesSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.mediawiki.MediaWikiSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.NdvSourceProvider;
@@ -420,6 +421,9 @@ public final class AdapterAssembly {
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry(),
                 fileAccess));
+        // Git-Repositorys (#137): Bare-Cache im Anwendungsverzeichnis, PDF/Office im Repository über deigma.
+        providers.add(new GitSourceProvider(AppPaths.defaultGitCacheDirectory(), DocumentExtraction.detector(),
+                DocumentExtraction.registry()));
         providers.add(new FtpSourceProvider(secrets));
         providers.add(new NdvSourceProvider(secrets));
         providers.add(new JesSourceProvider(secrets));
