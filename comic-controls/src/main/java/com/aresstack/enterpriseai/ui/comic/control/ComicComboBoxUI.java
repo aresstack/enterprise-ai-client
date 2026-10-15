@@ -30,6 +30,7 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -106,19 +107,33 @@ public final class ComicComboBoxUI extends BasicComboBoxUI {
             field.setCaretColor(ResearchUiPalette.LIGHT_CONTROL_TEXT);
             field.setDisabledTextColor(ResearchUiPalette.LIGHT_TEXT_MUTED);
         }
-        if (editor instanceof JComponent && ((JComponent) editor).getClientProperty(EDITOR_KEY) == null) {
-            ((JComponent) editor).putClientProperty(EDITOR_KEY, Boolean.TRUE);
-            editor.addFocusListener(new FocusAdapter() {
+        if (editor instanceof JComponent) {
+            // One listener per editor, bound to this UI: a reinstalled UI replaces the one of the old UI, whose
+            // comboBox is already cleared.
+            JComponent component = (JComponent) editor;
+            Object previous = component.getClientProperty(EDITOR_KEY);
+            if (previous instanceof FocusListener) {
+                component.removeFocusListener((FocusListener) previous);
+            }
+            FocusListener repaint = new FocusAdapter() {
                 @Override
                 public void focusGained(FocusEvent event) {
-                    comboBox.repaint();
+                    repaintCombo();
                 }
 
                 @Override
                 public void focusLost(FocusEvent event) {
-                    comboBox.repaint();
+                    repaintCombo();
                 }
-            });
+            };
+            component.putClientProperty(EDITOR_KEY, repaint);
+            component.addFocusListener(repaint);
+        }
+    }
+
+    private void repaintCombo() {
+        if (comboBox != null) {
+            comboBox.repaint();
         }
     }
 

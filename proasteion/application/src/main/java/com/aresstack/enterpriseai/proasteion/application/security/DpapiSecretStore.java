@@ -215,10 +215,14 @@ public final class DpapiSecretStore implements ProtectedSecretStore {
                 stdin.write(input);
                 stdin.write('\n');
                 stdin.close();
-                byte[] output = readAll(process.getInputStream());
+                // Beide Ausgaben nebenher leeren, damit ein volles stderr nichts blockiert und die Frist sicher greift.
+                java.util.concurrent.FutureTask<byte[]> stdout = drain(process.getInputStream());
+                drain(process.getErrorStream());
                 if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
                     throw new IOException("DPAPI antwortet nicht");
                 }
+                byte[] output = stdout.get(5, TimeUnit.SECONDS);
                 if (process.exitValue() != 0 || output.length == 0) {
                     // stderr kann Teile der Eingabe enthalten: nur der Code wandert in die Meldung
                     throw new IOException("DPAPI fehlgeschlagen (Code " + process.exitValue() + ")");
@@ -227,6 +231,20 @@ public final class DpapiSecretStore implements ProtectedSecretStore {
             } finally {
                 process.destroy();
             }
+        }
+
+        private static java.util.concurrent.FutureTask<byte[]> drain(final InputStream in) {
+            java.util.concurrent.FutureTask<byte[]> task = new java.util.concurrent.FutureTask<byte[]>(
+                    new java.util.concurrent.Callable<byte[]>() {
+                        @Override
+                        public byte[] call() throws IOException {
+                            return readAll(in);
+                        }
+                    });
+            Thread reader = new Thread(task, "dpapi-output");
+            reader.setDaemon(true);
+            reader.start();
+            return task;
         }
 
         private static byte[] readAll(InputStream in) throws IOException {
