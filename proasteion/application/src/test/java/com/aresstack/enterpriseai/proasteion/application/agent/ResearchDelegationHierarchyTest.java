@@ -47,16 +47,17 @@ public class ResearchDelegationHierarchyTest {
 
     @Test
     public void bundleReadPagesAreStructuredSourcesOfTheResearch() {
-        offer("knowledge_tree", call -> McpToolResult.ok("source: wiki\nspace: OPS — Betrieb\n\nparents: none\n\n"
-                + "current:\n  type: page\n  title: Vault Überblick\n  id: p1\n  children: yes\n\nchildren:\n"
+        offer("knowledge_tree", call -> McpToolResult.ok("source: wiki\nspace: OPS — Betrieb\n\nparents:\n"
+                + "- type: space\n  space: OPS\n  title: Betrieb\n\ncurrent:\n  type: page\n  title: Vault Überblick\n  id: p1\n  children: yes\n\nchildren:\n"
                 + "- title: Vault Backup\n  id: c1\n  children: no\n- title: Vault Rufbereitschaft\n  id: c2\n"
                 + "  children: no\n"));
 
         McpToolResult result = research();
 
         assertFalse(result.getText(), result.isError());
-        assertEquals(Arrays.asList("knowledge_search", "knowledge_read", "knowledge_tree", "knowledge_read_many"),
-                calls);
+        assertEquals("the page's tree, the top-level pages of its space, one bundled read",
+                Arrays.asList("knowledge_search", "knowledge_read", "knowledge_tree", "knowledge_tree",
+                        "knowledge_read_many"), calls);
         assertEquals(Arrays.asList("p1", "c1", "c2"), used(result));
         assertEquals("https://wiki.example/c1", result.contextResources().get(1).location());
     }
