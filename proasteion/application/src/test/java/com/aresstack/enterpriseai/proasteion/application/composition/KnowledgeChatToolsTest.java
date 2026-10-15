@@ -92,8 +92,9 @@ public class KnowledgeChatToolsTest {
         assertEquals(KnowledgeMcpTools.KNOWLEDGE_SEARCH, chatTools.get(0).name());
         assertEquals(KnowledgeMcpTools.KNOWLEDGE_TREE, chatTools.get(1).name());
         assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ, chatTools.get(2).name());
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, chatTools.get(3).name());
-        assertEquals(KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, chatTools.get(4).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_READ_MANY, chatTools.get(3).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_ATTACHMENTS, chatTools.get(4).name());
+        assertEquals(KnowledgeMcpTools.KNOWLEDGE_RESOLVE_URL, chatTools.get(5).name());
     }
 
     /** Akzeptanztests 1, 2 und 5: Suche über die Werkzeug-Schleife, dieselbe Treffer-ID danach mit knowledge_read. */
@@ -150,6 +151,14 @@ public class KnowledgeChatToolsTest {
         context.clear();
         tools.execute(KnowledgeMcpTools.KNOWLEDGE_READ, "{\"id\":\"" + id + "-missing\"}", activity);
         assertTrue(context.toString(), context.isEmpty());
+
+        // #127: the batch read takes a real JSON array and names every read resource once, failed ones not
+        context.clear();
+        String output = tools.execute(KnowledgeMcpTools.KNOWLEDGE_READ_MANY, "{\"ids\":[\"" + id + "\",\"" + id
+                + "-missing\",\"" + id + "\"]}", activity);
+        assertTrue(output, output.contains("[2/3] ERROR"));
+        assertEquals(Collections.singletonList(KnowledgeMcpTools.KNOWLEDGE_READ_MANY + "|" + wiki.sourceId().value()
+                + "|" + id), context);
     }
 
     /** Akzeptanztest 4: eine abgewählte Quelle wird nicht durchsucht. */

@@ -12,7 +12,8 @@ import java.util.Set;
  * RAG-Teilpfad: ein ausgefallener Suchpfad heißt nicht, dass die Antwort ohne Wissen entstand, wenn
  * {@code knowledge_read} eine Seite geliefert hat.
  *
- * <p>Als gelieferter Wissenskontext zählt ein erfolgreiches {@value ChatBookmark#READ_TOOL}. Ein Ergebnis von
+ * <p>Als gelieferter Wissenskontext zählt ein erfolgreiches {@value ChatBookmark#READ_TOOL} oder
+ * {@value #READ_MANY_TOOL}. Ein Ergebnis von
  * {@code knowledge_search} zählt nicht, weil es auch ohne Treffer erfolgreich ist; der Inhalt eines Treffers kommt
  * über {@value ChatBookmark#READ_TOOL}.
  */
@@ -86,9 +87,12 @@ public final class KnowledgeAcquisition {
     /** Name der Research-Grenze des Chats ({@code KnowledgeMcpTools.KNOWLEDGE_RESEARCH}). */
     public static final String RESEARCH_TOOL = "knowledge_research";
 
+    /** Name des Batch-Lesens ({@code KnowledgeMcpTools.KNOWLEDGE_READ_MANY}); liefert Kontext wie das Einzel-Lesen. */
+    public static final String READ_MANY_TOOL = "knowledge_read_many";
+
     /** Liefert dieses Werkzeug bei Erfolg Wissenskontext für den Turn? */
     public static boolean deliversContext(String toolName) {
-        return ChatBookmark.READ_TOOL.equals(toolName) || isResearch(toolName);
+        return ChatBookmark.READ_TOOL.equals(toolName) || READ_MANY_TOOL.equals(toolName) || isResearch(toolName);
     }
 
     /**
