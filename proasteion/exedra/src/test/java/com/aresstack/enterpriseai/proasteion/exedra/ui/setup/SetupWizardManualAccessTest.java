@@ -111,7 +111,7 @@ public class SetupWizardManualAccessTest {
             assertEquals("ask:KI-Dienst", form.chatApiKeyRef());
             assertEquals("https://ai.example.invalid/v1", form.chatBaseUrl());
             assertFalse("kein Secret im Entwurf", form.toString().contains(KEY));
-            assertFalse("kein Secret in den Properties", SettingsMapper.toProperties(form).toString().contains(KEY));
+            assertFalse("kein Secret in den Properties", SettingsMapper.writes(form).toString().contains(KEY));
         });
     }
 
