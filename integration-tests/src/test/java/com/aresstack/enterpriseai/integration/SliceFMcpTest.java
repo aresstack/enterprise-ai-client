@@ -132,7 +132,7 @@ public class SliceFMcpTest {
         assertTrue(search, search.contains("source: " + SOURCE_ID));
         assertTrue(search, search.contains(EXPECTED_PHRASE));
 
-        String document = client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ, KnowledgeMcpTools.KNOWLEDGE_READ_MANY,
+        String document = client.callTool(KnowledgeMcpTools.KNOWLEDGE_READ,
                 args("id", source.idOf("kuendigung").value()));
         assertTrue(document, document.contains("title: " + EXPECTED_TITLE));
         assertTrue(document, document.contains("source: " + SOURCE_ID));
