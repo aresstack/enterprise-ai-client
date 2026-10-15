@@ -35,6 +35,14 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
         default Answer ask(SecretRef ref, String label, String suggestedUser) throws Unavailable {
             return ask(ref, label);
         }
+
+        /**
+         * Die Sitzung der manuellen Eingaben, die alle Zugriffe mit dieser Eingabe teilen; ohne eigene Sitzung eine
+         * leere, die nur für diesen Zugriff gilt.
+         */
+        default ManualCredentials session() {
+            return new ManualCredentials();
+        }
     }
 
     /** Die Eingabe ist hier nicht möglich (kein Fenster); die Meldung nennt den Grund, nie Material. */
@@ -70,9 +78,9 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
     private final CredentialPrompt prompt;
     private final ManualCredentials credentials;
 
-    /** Mit der Sitzung des Prozesses ({@link ManualCredentials#session()}): eine Eingabe gilt überall. */
+    /** Mit der Sitzung der Eingabe ({@link CredentialPrompt#session()}): eine Eingabe gilt überall. */
     public AskedSecretProvider(SecretProvider vault, CredentialPrompt prompt) {
-        this(vault, prompt, ManualCredentials.session());
+        this(vault, prompt, prompt == null ? null : prompt.session());
     }
 
     public AskedSecretProvider(SecretProvider vault, CredentialPrompt prompt, ManualCredentials credentials) {

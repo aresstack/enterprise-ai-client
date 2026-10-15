@@ -23,8 +23,6 @@ public final class ManualCredentials {
      */
     public static final String SOURCE_USER_SETTING = "manualUserName";
 
-    private static final ManualCredentials SESSION = new ManualCredentials();
-
     private final Map<String, String> users = new HashMap<String, String>();
     private final Map<String, char[]> secrets = new HashMap<String, char[]>();
     /** Vorgemerkte Benutzernamen (Vorbelegung im Dialog), nie ein Secret. */
@@ -33,13 +31,8 @@ public final class ManualCredentials {
     private volatile ProtectedSecretStore persistent =
             ProtectedSecretStore.unavailable("Dauerhaftes Speichern ist hier nicht eingerichtet.");
 
-    /** Für Tests eine eigene, leere Sitzung; produktiv {@link #session()}. */
+    /** Eine leere Sitzung; die Anwendung legt beim Start genau eine an und reicht sie über die Eingaben weiter. */
     public ManualCredentials() {
-    }
-
-    /** Die Sitzung des Prozesses. */
-    public static ManualCredentials session() {
-        return SESSION;
     }
 
     /** {@code true}, wenn die Referenz manuell abgefragt wird ({@code ask:…}). */

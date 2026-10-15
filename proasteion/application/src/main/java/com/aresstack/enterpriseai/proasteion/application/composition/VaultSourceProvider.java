@@ -50,13 +50,15 @@ final class VaultSourceProvider implements KnowledgeSourceProvider, AddressableK
 
     private final KnowledgeSourceProvider delegate;
     private final SecretProvider secrets;
+    private final ManualCredentials manual;
 
-    VaultSourceProvider(KnowledgeSourceProvider delegate, SecretProvider secrets) {
-        if (delegate == null || secrets == null) {
-            throw new IllegalArgumentException("delegate and secrets must not be null");
+    VaultSourceProvider(KnowledgeSourceProvider delegate, SecretProvider secrets, ManualCredentials manual) {
+        if (delegate == null || secrets == null || manual == null) {
+            throw new IllegalArgumentException("delegate, secrets and manual must not be null");
         }
         this.delegate = delegate;
         this.secrets = secrets;
+        this.manual = manual;
     }
 
     @Override
@@ -122,7 +124,7 @@ final class VaultSourceProvider implements KnowledgeSourceProvider, AddressableK
             if (field.kind() == SourceSettingField.Kind.SECRET_REF) {
                 String value = settings.get(field.key());
                 if (ManualCredentials.isManual(value)) {
-                    ManualCredentials.session().suggestUser(value, user);
+                    manual.suggestUser(value, user);
                 }
             }
         }

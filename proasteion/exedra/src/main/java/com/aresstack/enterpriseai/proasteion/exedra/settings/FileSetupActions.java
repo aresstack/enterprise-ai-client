@@ -87,10 +87,10 @@ public final class FileSetupActions implements SetupActions {
 
     public FileSetupActions(FileSettingsActions settings, SecretChecker secrets, ConnectionChecker connection,
                             ConfigurationCheck check, Executor worker, Executor ui, ComicPalette palette) {
-        this(settings, secrets, connection, check, worker, ui, palette, ManualCredentials.session());
+        this(settings, secrets, connection, check, worker, ui, palette, new ManualCredentials());
     }
 
-    /** Wie oben mit eigener Sitzung der manuellen Zugangsdaten (Tests). */
+    /** Wie oben mit der Sitzung der manuellen Zugangsdaten, die die Proben {@code secrets}/{@code connection} teilen. */
     public FileSetupActions(FileSettingsActions settings, SecretChecker secrets, ConnectionChecker connection,
                             ConfigurationCheck check, Executor worker, Executor ui, ComicPalette palette,
                             ManualCredentials manual) {

@@ -105,7 +105,7 @@ public final class ApplicationStart {
         final SettingsService settings = new SettingsService(config, settingsLoader(file, secrets, config, prompts,
                 keePassRetry));
         final ApplicationPorts ports = AdapterAssembly.createWith(config, network, secrets, partitions,
-                () -> settings.current().fileAccess().policy());
+                () -> settings.current().fileAccess().policy(), prompts.credentials().session());
         adoptSourceAddresses(file, ports, settings);
         applyProxyAuthentication(null, config, ports, localVoices);
         final CompositionRoot root = CompositionRoot.compose(settings, ports, uiExecutor, clock, zone);

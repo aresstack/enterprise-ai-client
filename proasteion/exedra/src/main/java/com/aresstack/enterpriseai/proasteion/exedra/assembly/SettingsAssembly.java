@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigException;
 import com.aresstack.enterpriseai.proasteion.application.net.HttpRoutes;
 import com.aresstack.enterpriseai.proasteion.application.net.TrustPolicy;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationCheck;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.exedra.settings.FileSettingsActions;
@@ -44,6 +45,12 @@ public final class SettingsAssembly {
     /** Wie {@link #create(ConfigurationFile, ModelCatalogLoader)} mit der Stimmenversorgung des Starts. */
     public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models,
                                                LocalVoices voices) {
+        return create(file, models, voices, new ManualCredentials());
+    }
+
+    /** Wie oben mit der Sitzung der manuellen Zugangsdaten, die Proben und Einrichtungsassistent teilen. */
+    public static SettingsDialogActions create(ConfigurationFile file, final ModelCatalogLoader models,
+                                               LocalVoices voices, ManualCredentials manual) {
         ExecutorService worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -52,7 +59,7 @@ public final class SettingsAssembly {
                 return t;
             }
         });
-        return create(file, models, voices, worker, new Executor() {
+        return create(file, models, voices, manual, worker, new Executor() {
             @Override
             public void execute(Runnable command) {
                 SwingUtilities.invokeLater(command);
@@ -66,12 +73,14 @@ public final class SettingsAssembly {
 
     public static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, Executor worker,
                                                Executor ui) {
-        return create(file, models, new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts()), worker, ui);
+        return create(file, models, new LocalVoices(new com.aresstack.enterpriseai.proasteion.exedra.security.SwingUserPrompts()),
+                new ManualCredentials(), worker, ui);
     }
 
     private static SettingsDialogActions create(ConfigurationFile file, ModelCatalogLoader models, LocalVoices voices,
-                                                Executor worker, Executor ui) {
-        return new FileSettingsActions(file, new KeePassSecretChecker(), new ServiceConnectionChecker(),
+                                                ManualCredentials manual, Executor worker, Executor ui) {
+        return new FileSettingsActions(file, new KeePassSecretChecker(manual),
+                new ServiceConnectionChecker((ModelCatalogs) null, manual),
                 configurationCheck(), models, voices, SpeechOutput.nlpModels(), worker, ui);
     }
 
@@ -91,6 +100,13 @@ public final class SettingsAssembly {
     public static com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions setup(
             SettingsDialogActions settings, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette palette,
             ModelCatalogs catalogs) {
+        return setup(settings, palette, catalogs, new ManualCredentials());
+    }
+
+    /** Wie oben mit der Sitzung der manuellen Zugangsdaten der Anwendung (Eingaben gelten auch im Chat). */
+    public static com.aresstack.enterpriseai.proasteion.exedra.ui.setup.SetupActions setup(
+            SettingsDialogActions settings, com.aresstack.enterpriseai.ui.comic.theme.ComicPalette palette,
+            ModelCatalogs catalogs, ManualCredentials manual) {
         if (!(settings instanceof FileSettingsActions)) {
             throw new IllegalArgumentException("settings must be the file-backed settings actions");
         }
@@ -103,13 +119,14 @@ public final class SettingsAssembly {
             }
         });
         return new com.aresstack.enterpriseai.proasteion.exedra.settings.FileSetupActions(
-                (FileSettingsActions) settings, new KeePassSecretChecker(), new ServiceConnectionChecker(catalogs),
+                (FileSettingsActions) settings, new KeePassSecretChecker(manual),
+                new ServiceConnectionChecker(catalogs, manual),
                 configurationCheck(), worker, new Executor() {
                     @Override
                     public void execute(Runnable command) {
                         SwingUtilities.invokeLater(command);
                     }
-                }, palette);
+                }, palette, manual);
     }
 
     /**
@@ -117,17 +134,19 @@ public final class SettingsAssembly {
      * den API-Key wie der Verbindungstest (KeePass, Pairing-Dialog bei Bedarf).
      */
     public static ModelCatalogs modelCatalogs(java.nio.file.Path cacheFile) {
-        final KeePassSecretChecker.PairingCallbackFactory pairing = new KeePassSecretChecker.PairingCallbackFactory() {
-            @Override
-            public com.aresstack.enterpriseai.proasteion.application.security.PairingPrompt forAddress(String address) {
-                return new com.aresstack.enterpriseai.proasteion.exedra.security.SwingPairingCallback(address);
-            }
-        };
+        return modelCatalogs(cacheFile, new ManualCredentials());
+    }
+
+    /** Wie {@link #modelCatalogs(java.nio.file.Path)} mit der Sitzung der manuellen Zugangsdaten der Anwendung. */
+    public static ModelCatalogs modelCatalogs(java.nio.file.Path cacheFile, ManualCredentials manual) {
+        final KeePassSecretChecker.PairingCallbackFactory pairing = KeePassSecretChecker.swingPairing();
+        final com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt credentials =
+                new com.aresstack.enterpriseai.proasteion.exedra.security.DialogCredentialPrompt(manual);
         return new ModelCatalogs(new com.aresstack.enterpriseai.proasteion.application.settings.ModelCatalogCache(cacheFile),
                 new ModelCatalogs.TokenLookup() {
                     @Override
                     public String token(AppConfig config) throws java.io.IOException {
-                        return ServiceConnectionChecker.chatToken(config, pairing);
+                        return ServiceConnectionChecker.chatToken(config, pairing, credentials);
                     }
                 });
     }

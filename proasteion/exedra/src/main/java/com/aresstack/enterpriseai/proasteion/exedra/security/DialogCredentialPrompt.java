@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.security;
 
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.proasteion.application.security.AskedSecretProvider;
+import com.aresstack.enterpriseai.proasteion.application.security.ManualCredentials;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.security.CredentialDialog;
 
 import javax.swing.SwingUtilities;
@@ -14,6 +15,26 @@ import java.util.concurrent.atomic.AtomicReference;
  * Aufrufer (Arbeits-Thread) wartet. Ohne Display (headless) scheitert die Abfrage mit einer Meldung.
  */
 public final class DialogCredentialPrompt implements AskedSecretProvider.CredentialPrompt {
+
+    private final ManualCredentials session;
+
+    /** Mit eigener, leerer Sitzung (eine Eingabe gilt nur für diesen Zugriff). */
+    public DialogCredentialPrompt() {
+        this(new ManualCredentials());
+    }
+
+    /** Mit der Sitzung der Anwendung: eine Eingabe gilt für alle Zugriffe dieser Sitzung. */
+    public DialogCredentialPrompt(ManualCredentials session) {
+        if (session == null) {
+            throw new IllegalArgumentException("session must not be null");
+        }
+        this.session = session;
+    }
+
+    @Override
+    public ManualCredentials session() {
+        return session;
+    }
 
     @Override
     public AskedSecretProvider.Answer ask(SecretRef ref, final String label)
