@@ -574,6 +574,49 @@ public class SettingsPanelTest {
     }
 
     @Test
+    public void toolsTabEditsApprovalPerToolAndPerActionScopeAndPersistsThem() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        final List<ToolOverviewEntry> registry = new ArrayList<ToolOverviewEntry>();
+        registry.add(new ToolOverviewEntry("web_fetch", "Holt eine Seite.", "Web", "Chat", true, false));
+        registry.add(new ToolOverviewEntry("memory_delete", "Löscht eine Erinnerung.", "Memory", "Chat + Agent",
+                true, false, java.util.Arrays.asList("delete/chat", "delete/project")));
+        registry.add(new ToolOverviewEntry("research_status", "Zustand.", "Recherche-Agent", "Recherche-Agent",
+                true, true));
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample().toBuilder()
+                        .toolApprovals("memory_delete=ASK;old_tool=DENY").build(), Collections.<String>emptyList(),
+                        SettingsPanel.Mode.EDIT, actions, new ToolOverview() {
+                            @Override
+                            public List<ToolOverviewEntry> tools() {
+                                return new ArrayList<ToolOverviewEntry>(registry);
+                            }
+                        }, palette);
+                panel.tabButton(SettingsPanel.TOOLS_TAB).doClick();
+                ToolsTab tab = panel.toolsTab();
+                assertEquals("Erlauben", tab.approvalBox("web_fetch").getSelectedItem());
+                assertEquals("Nachfragen", tab.approvalBox("memory_delete").getSelectedItem());
+                assertEquals(ToolsTab.INHERIT, tab.approvalBox("memory_delete:delete/chat").getSelectedItem());
+                assertNull("Pflichtwerkzeug ohne Genehmigung", tab.approvalBox("research_status"));
+                tab.approvalBox("web_fetch").setSelectedItem("Verbieten");
+                tab.approvalBox("memory_delete:delete/chat").setSelectedItem("Erlauben");
+                String rules = panel.toForm().toolApprovals();
+                assertEquals("memory_delete=ASK;old_tool=DENY;web_fetch=DENY;memory_delete:delete/chat=ALLOW", rules);
+                // Saved and loaded again (restart): the same rules are in force and shown.
+                java.util.Properties saved = com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper
+                        .merge(new java.util.Properties(), panel.toForm());
+                assertEquals(rules, saved.getProperty("tools.approval"));
+                assertEquals(rules, com.aresstack.enterpriseai.proasteion.exedra.settings.SettingsMapper
+                        .fromProperties(saved).toolApprovals());
+                tab.approvalBox("memory_delete:delete/chat").setSelectedItem(ToolsTab.INHERIT);
+                tab.approvalBox("web_fetch").setSelectedItem("Erlauben");
+                assertEquals("memory_delete=ASK;old_tool=DENY", panel.toForm().toolApprovals());
+            }
+        });
+    }
+
+    @Test
     public void requiredToolsCannotBeSwitchedOffInTheToolsTab() throws Exception {
         final ScriptedActions actions = new ScriptedActions();
         final List<ToolOverviewEntry> registry = new ArrayList<ToolOverviewEntry>();

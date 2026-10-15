@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
+import com.aresstack.enterpriseai.proasteion.katagogion.approval.ApprovalRules;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
@@ -138,6 +139,8 @@ public final class AppConfigLoader {
     public static final String SOURCE_ADDRESS_FIELD = "address";
     private static final Pattern SOURCE_SLOT = Pattern.compile("source\\.([1-9][0-9]{0,5})\\..+");
     private static final int MAX_TIMEOUT = 3600000;
+    /** Tool approval rules ({@code tool[:action[/scope]]=ALLOW|ASK|DENY;…}), see {@code ApprovalRules}. */
+    public static final String TOOL_APPROVAL_KEY = "tools.approval";
     /** Directory of the global metadata catalog (#106); default {@code <app directory>/facts}. */
     public static final String FACTS_DIRECTORY_KEY = "facts.directory";
     /** How long a catalog writer waits for a locked row, in milliseconds. */
@@ -183,6 +186,7 @@ public final class AppConfigLoader {
         AgentConfig agent = agent(reader);
         ModelsConfig models = models(reader, warnings);
         Set<String> disabledTools = new LinkedHashSet<String>(reader.list("tools.disabled"));
+        ApprovalRules toolApprovals = ApprovalRules.parse(reader.text(TOOL_APPROVAL_KEY, ""));
         BubbleColorsConfig bubbleColors = bubbleColors(reader, warnings);
         FactStoreConfig facts = new FactStoreConfig(reader.path(FACTS_DIRECTORY_KEY, AppPaths.defaultFactDirectory()),
                 reader.integer(FACTS_LOCK_TIMEOUT_KEY, FactStoreConfig.DEFAULT_LOCK_TIMEOUT_MILLIS, 0, MAX_TIMEOUT));
@@ -234,7 +238,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, bubbleColors, facts, textMining, fileAccess, warnings);
+                disabledTools, bubbleColors, facts, textMining, fileAccess, toolApprovals, warnings);
     }
 
     /**
