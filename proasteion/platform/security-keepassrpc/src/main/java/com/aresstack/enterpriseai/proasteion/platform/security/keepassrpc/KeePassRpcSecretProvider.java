@@ -242,6 +242,57 @@ public final class KeePassRpcSecretProvider implements SecretProvider, SecretVau
         });
     }
 
+    /**
+     * Create-only: within one session the adapter checks the current KeePass state (title lookup and the full entry
+     * list, trimmed and case-insensitive) and on a match calls neither {@code UpdateLogin} nor {@code AddLogin}.
+     * KeePassRPC has no atomic create-if-absent; a short window remains between the check and {@code AddLogin} for
+     * an entry created at the same moment directly in KeePass. This adapter serializes its own writes
+     * ({@code synchronized}).
+     */
+    @Override
+    public synchronized void create(final VaultEntryDraft draft) throws SecretUnavailableException {
+        if (draft == null) {
+            throw new IllegalArgumentException("Eintrag darf nicht null sein");
+        }
+        final SecretRef ref = refOf(draft.title());
+        inSession(ref, new SessionCall<Void>() {
+            @Override
+            public Void run(KeePassRpcTransport.Session session)
+                    throws KeePassRpcException, SecretUnavailableException {
+                KeePassEntry existing = session.findEntryByTitle(draft.title());
+                if (existing != null) {
+                    existing.close();
+                    throw alreadyExists(ref);
+                }
+                for (KeePassEntry entry : session.allEntries()) {
+                    try {
+                        if (entry.title() != null && entry.title().trim().equalsIgnoreCase(draft.title().trim())) {
+                            throw alreadyExists(ref);
+                        }
+                    } finally {
+                        entry.close();
+                    }
+                }
+                char[] password = draft.copyPassword();
+                try (KeePassEntry entry = new KeePassEntry(draft.title(), draft.userName(), password,
+                        draft.location(), draft.fields(), "", "", draft.location())) {
+                    session.addEntry(entry);
+                    LOG.info("KeePass-Eintrag angelegt: " + draft.title());
+                    return null;
+                } catch (KeePassRpcException e) {
+                    throw rejected(ref, e);
+                } finally {
+                    Arrays.fill(password, '\0');
+                }
+            }
+        });
+    }
+
+    private static SecretUnavailableException alreadyExists(SecretRef ref) {
+        return new SecretUnavailableException(Reason.ALREADY_EXISTS, ref,
+                "ein KeePass-Eintrag mit diesem Titel existiert bereits");
+    }
+
     @Override
     public synchronized void remove(String title) throws SecretUnavailableException {
         final SecretRef ref = refOf(title);

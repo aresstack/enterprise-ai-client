@@ -45,6 +45,11 @@ public final class SecretVaults {
         }
 
         @Override
+        public void create(VaultEntryDraft entry) throws SecretUnavailableException {
+            throw unavailable();
+        }
+
+        @Override
         public void remove(String title) throws SecretUnavailableException {
             throw unavailable();
         }

@@ -103,6 +103,10 @@ public final class SetupWizardPanel extends JPanel {
     /** Der Standardeintrag des KI-Dienstes in KeePass. */
     static final String DEFAULT_SERVICE_ENTRY = "Enterprise AI API";
     static final String DEFAULT_CONFLUENCE_ENTRY = "Confluence";
+    static final String ENTRIES_REFRESH_HINT = "KeePass-Einträge neu laden";
+    /** Hint for an incomplete existing entry; the wizard never completes it itself. */
+    static final String INCOMPLETE_HINT = " Bitte den Eintrag direkt in KeePass ergänzen und dann die Einträge neu "
+            + "laden (⟳), oder einen neuen Titel eintragen.";
     static final String NEW_ENTRY_HINT = "(neuer Eintrag)";
     private static final String KEEPASS_PREFIX = "keepass:";
     /** Zugang wie im Einstellungen-Dialog ({@code VaultAccess}): KeePass oder Manuell. */
@@ -191,6 +195,15 @@ public final class SetupWizardPanel extends JPanel {
     private boolean entriesLoaded;
     /** Warum das Nachladen der Einträge zuletzt scheiterte ({@code null}: kein Fehler). */
     private String entriesProblem;
+    /** Counts entry list reads; a response only counts if no newer read was requested since. */
+    private int entriesGeneration;
+    private final ComposerButton serviceEntryRefresh =
+            ComposerButton.iconButton(ComposerIcons.refresh(), ENTRIES_REFRESH_HINT);
+    private final ComposerButton confluenceEntryRefresh =
+            ComposerButton.iconButton(ComposerIcons.refresh(), ENTRIES_REFRESH_HINT);
+    /** The title whose status the service and Confluence steps currently show. */
+    private String serviceShownTitle;
+    private String confluenceShownTitle;
 
     // Schritt 2: KI-Dienst
     private final JComboBox<String> serviceAccess = accessChoice();
@@ -259,7 +272,6 @@ public final class SetupWizardPanel extends JPanel {
     private final JLabel confluenceHasUrl = statusLabel();
     private final JLabel confluenceHasUser = statusLabel();
     private final JLabel confluenceHasSecret = statusLabel();
-    private final ComposerButton confluenceChange;
     /** URL, Benutzer und Passwort bzw. Token: nur bei neuem oder unvollständigem Eintrag oder zum Ändern. */
     private final JPanel confluenceManual = transparent(new GridBagLayout());
     /** Je Zeile der Felder (URL, Benutzer, Passwort, Hinweis): Beschriftung und Feld, einzeln ein- und ausblendbar. */
@@ -275,7 +287,6 @@ public final class SetupWizardPanel extends JPanel {
     private final JLabel confluenceStatus = statusLabel();
     private PasswordEntry confluenceRead;
     private boolean confluenceReading;
-    private boolean confluenceEditing;
     private String certificateAlias = "";
     private boolean confluenceOk;
     private ConfluenceSetup confluence;
@@ -343,13 +354,12 @@ public final class SetupWizardPanel extends JPanel {
         this.finishButton = ComposerButton.primary(null, "Fertig", ResearchUiPalette.WAVE_GREEN,
                 "Einrichtung abschließen und die Anwendung öffnen");
         this.pairButton = ComposerButton.primary(null, "Mit KeePass verbinden", ResearchUiPalette.ACCENT_BLUE, null);
-        this.serviceSave = new ComposerButton(null, "In KeePass speichern", false);
+        this.serviceSave = new ComposerButton(null, "Neu in KeePass anlegen", false,
+                "Legt einen neuen KeePass-Eintrag unter diesem Titel an; bestehende Einträge bleiben unverändert");
         this.serviceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.modelsRefresh = new ComposerButton(null, "Modelle neu laden", false);
         this.dimensionMeasure = ComposerButton.iconButton(ComposerIcons.refresh(), "Dimension neu ermitteln");
         this.certificateChoose = new ComposerButton(null, "Zertifikat wählen…", false);
-        this.confluenceChange = new ComposerButton(null, "Zugangsdaten ändern", false,
-                "URL, Benutzername oder Passwort bzw. Token im KeePass-Eintrag ändern");
         this.confluenceTest = ComposerButton.primary(null, "Verbindung testen", ResearchUiPalette.ACCENT_BLUE, null);
         this.finishRetry = new ComposerButton(null, "Erneut prüfen", false);
         this.skipButton = new ComposerButton(null, "Überspringen", false, SKIP_STEP_HINT);
@@ -427,6 +437,14 @@ public final class SetupWizardPanel extends JPanel {
         return rows.panel();
     }
 
+    /** Title choice or new title input, with the "reload KeePass entries" button to its right. */
+    private static JPanel entryRow(JComboBox<String> combo, ComposerButton refresh) {
+        JPanel row = transparent(new BorderLayout(4, 0));
+        row.add(combo, BorderLayout.CENTER);
+        row.add(refresh, BorderLayout.EAST);
+        return row;
+    }
+
     private JPanel serviceStep() {
         Rows rows = new Rows("KI-Dienst");
         rows.note("KeePass: Der Eintrag des KI-Dienstes trägt den API-Key im Passwortfeld und die Basis-URL im "
@@ -434,7 +452,9 @@ public final class SetupWizardPanel extends JPanel {
                 + "Konfiguration geschrieben.");
         rows.field("Zugang", serviceAccess);
         serviceEntry.setEditable(true);
-        serviceKeePassParts.addAll(rows.field("KeePass-Eintrag", serviceEntry));
+        serviceKeePassParts.addAll(rows.field("KeePass-Eintrag", entryRow(serviceEntry, serviceEntryRefresh)));
+        serviceKeePassParts.add(serviceEntry);
+        serviceKeePassParts.add(serviceEntryRefresh);
         serviceKeePassParts.addAll(rows.field("", serviceEntryStatus));
         GridBagConstraints c = new GridBagConstraints();
         c.anchor = GridBagConstraints.WEST;
@@ -540,8 +560,13 @@ public final class SetupWizardPanel extends JPanel {
         at.fill = GridBagConstraints.HORIZONTAL;
         at.weightx = 1;
         access.add(confluenceEntry, at);
+        at.insets = new Insets(0, 4, 0, 0);
+        at.fill = GridBagConstraints.NONE;
+        at.weightx = 0;
+        access.add(confluenceEntryRefresh, at);
         confluenceKeePassParts.add(entryCaption);
         confluenceKeePassParts.add(confluenceEntry);
+        confluenceKeePassParts.add(confluenceEntryRefresh);
         rows.field("Zugang", access);
         confluenceKeePassParts.addAll(rows.field("", confluenceEntryStatus));
         int line = 0;
@@ -554,12 +579,6 @@ public final class SetupWizardPanel extends JPanel {
             state.setForeground(palette.getInk());
             confluenceSummary.add(state, c);
         }
-        GridBagConstraints change = new GridBagConstraints();
-        change.gridx = 0;
-        change.gridy = line;
-        change.anchor = GridBagConstraints.WEST;
-        change.insets = new Insets(4, 0, 0, 0);
-        confluenceSummary.add(confluenceChange, change);
         confluenceSummary.setVisible(false);
         rows.field("", confluenceSummary);
         manualRow(0, "Confluence-URL", confluenceUrl);
@@ -661,6 +680,12 @@ public final class SetupWizardPanel extends JPanel {
                 readServiceEntry();
             }
         });
+        onTyped(serviceEntry, () -> {
+            if (!text(serviceEntry).equals(serviceShownTitle)) {
+                readServiceEntry();
+            }
+        });
+        serviceEntryRefresh.addActionListener(e -> refreshEntries());
         serviceSave.addActionListener(e -> saveServiceEntry());
         serviceAccess.addActionListener(e -> {
             if (!busy) {
@@ -699,6 +724,12 @@ public final class SetupWizardPanel extends JPanel {
                 readConfluenceEntry();
             }
         });
+        onTyped(confluenceEntry, () -> {
+            if (!text(confluenceEntry).equals(confluenceShownTitle)) {
+                readConfluenceEntry();
+            }
+        });
+        confluenceEntryRefresh.addActionListener(e -> refreshEntries());
         SimpleDocumentListener invalidate = new SimpleDocumentListener(() -> {
             if (!busy) {
                 confluenceOk = false;
@@ -709,10 +740,6 @@ public final class SetupWizardPanel extends JPanel {
         confluenceUser.getDocument().addDocumentListener(invalidate);
         confluencePassword.getDocument().addDocumentListener(invalidate);
         certificateChoose.addActionListener(e -> chooseCertificate());
-        confluenceChange.addActionListener(e -> {
-            confluenceEditing = true;
-            showConfluenceCredentials();
-        });
         withoutCertificate.addActionListener(e -> {
             if (withoutCertificate.isSelected()) {
                 certificateAlias = "";
@@ -993,6 +1020,8 @@ public final class SetupWizardPanel extends JPanel {
         trail.show(step, done);
         boolean speech = step == STEP_SPEECH;
         backButton.setEnabled(step > 0 && !busy && !installing());
+        serviceEntryRefresh.setEnabled(!busy);
+        confluenceEntryRefresh.setEnabled(!busy);
         serviceAccess.setEnabled(!busy);
         confluenceAccess.setEnabled(!busy);
         nextButton.setVisible(!speech);
@@ -1062,7 +1091,11 @@ public final class SetupWizardPanel extends JPanel {
         done[STEP_KEEPASS] = false;
         keePassStatus.setText("Verbinde mit KeePass …");
         setBusy(true);
+        final int generation = ++entriesGeneration;
         store().list((list, error) -> {
+            if (generation != entriesGeneration) {
+                return;
+            }
             setBusy(false);
             if (error != null) {
                 keePassStatus.setText("Nicht verbunden.");
@@ -1088,7 +1121,11 @@ public final class SetupWizardPanel extends JPanel {
         form = collect();
         keePassStatus.setText("Verbinde mit KeePass …");
         setBusy(true);
+        final int generation = ++entriesGeneration;
         store().list((list, error) -> {
+            if (generation != entriesGeneration) {
+                return;
+            }
             setBusy(false);
             if (error != null) {
                 entriesProblem = error;
@@ -1097,6 +1134,46 @@ public final class SetupWizardPanel extends JPanel {
                 acceptEntries(list);
             }
             then.run();
+        });
+    }
+
+    /**
+     * "Reload KeePass entries" on the service and Confluence steps: always re-reads the list, refills both choices
+     * without losing the typed title or form input, and re-reads the chosen entry (metadata and whether it still
+     * exists). If reading fails, the old list no longer counts as the KeePass state; no title is called "new" and
+     * the wizard creates nothing. Only the response to the newest read counts.
+     */
+    private void refreshEntries() {
+        form = collect();
+        final int generation = ++entriesGeneration;
+        final int on = step;
+        JLabel status = on == STEP_SERVICE ? serviceEntryStatus : on == STEP_CONFLUENCE ? confluenceEntryStatus : null;
+        if (status != null) {
+            status.setText("Lade die KeePass-Einträge neu …");
+        }
+        setBusy(true);
+        store().list((list, error) -> {
+            if (generation != entriesGeneration) {
+                return;
+            }
+            setBusy(false);
+            if (error != null) {
+                entries = Collections.<PasswordEntry>emptyList();
+                entriesLoaded = false;
+                entriesProblem = error;
+                done[STEP_KEEPASS] = false;
+                keePassStatus.setText("Nicht verbunden.");
+            } else {
+                acceptEntries(list);
+            }
+            if (step != on) {
+                return;
+            }
+            if (on == STEP_SERVICE) {
+                readServiceEntry();
+            } else if (on == STEP_CONFLUENCE) {
+                readConfluenceEntry();
+            }
         });
     }
 
@@ -1116,7 +1193,7 @@ public final class SetupWizardPanel extends JPanel {
     /** Hinweis, solange die Eintragsliste nicht gelesen ist. */
     private String entriesMissingHint() {
         return "Die KeePass-Einträge sind nicht lesbar" + (entriesProblem == null ? "" : " (" + entriesProblem + ")")
-                + "; bitte zuerst im Schritt „KeePass“ verbinden.";
+                + "; bitte KeePass prüfen und die Einträge neu laden (⟳) oder im Schritt „KeePass“ verbinden.";
     }
 
     private void fillEntryChoices() {
@@ -1124,8 +1201,8 @@ public final class SetupWizardPanel extends JPanel {
         for (PasswordEntry entry : entries) {
             titles.add(entry.title());
         }
-        setChoices(serviceEntry, titles, text(serviceEntry));
-        setChoices(confluenceEntry, titles, text(confluenceEntry));
+        setEntryChoices(serviceEntry, titles);
+        setEntryChoices(confluenceEntry, titles);
     }
 
     // --- Schritt 2: KI-Dienst
@@ -1154,6 +1231,8 @@ public final class SetupWizardPanel extends JPanel {
 
     private void readServiceEntry() {
         final String title = text(serviceEntry);
+        boolean wasExisting = serviceRead != null;
+        serviceShownTitle = title;
         stopServiceRecheck();
         serviceCheckGeneration++;
         serviceChecking = false;
@@ -1176,19 +1255,26 @@ public final class SetupWizardPanel extends JPanel {
             updateButtons();
             return;
         }
-        if (!titleExists(title)) {
-            serviceEntryStatus.setText("Der Eintrag „" + title + "“ fehlt; bitte Basis-URL und API-Key angeben, "
-                    + "er wird in KeePass angelegt.");
+        final String stored = storedTitle(title);
+        if (stored == null) {
+            serviceEntryStatus.setText("Neuer Eintrag „" + title + "“: bitte Basis-URL und API-Key angeben und "
+                    + "neu in KeePass anlegen.");
             serviceMissing.setVisible(true);
-            serviceUrl.setText("");
-            serviceKey.setText("");
+            if (wasExisting) { // values of the previously chosen entry do not belong to the new one
+                serviceUrl.setText("");
+                serviceKey.setText("");
+            }
             updateButtons();
             return;
         }
         serviceEntryStatus.setText("Lese den Eintrag …");
         setBusy(true);
-        store().read(title, (entry, error) -> {
+        store().read(stored, (entry, error) -> {
             setBusy(false);
+            if (!title.equals(text(serviceEntry))) { // the user kept typing meanwhile: the newer title wins
+                readServiceEntry();
+                return;
+            }
             if (error != null || entry == null) {
                 serviceEntryStatus.setText("Nicht lesbar.");
                 fail(STEP_SERVICE, "Der Eintrag „" + title + "“ ist nicht lesbar: " + error);
@@ -1199,8 +1285,8 @@ public final class SetupWizardPanel extends JPanel {
             boolean hasUrl = !entry.url().isEmpty();
             serviceEntryComplete = hasKey && hasUrl;
             serviceEntryStatus.setText("API-Key: " + (hasKey ? "vorhanden" : "fehlt") + ".  Basis-URL: "
-                    + (hasUrl ? entry.url() : "fehlt") + ".");
-            serviceMissing.setVisible(!serviceEntryComplete);
+                    + (hasUrl ? entry.url() : "fehlt") + "." + (serviceEntryComplete ? "" : INCOMPLETE_HINT));
+            serviceMissing.setVisible(false);
             serviceUrl.setText(entry.url());
             serviceKey.setText("");
             updateButtons();
@@ -1210,28 +1296,34 @@ public final class SetupWizardPanel extends JPanel {
         });
     }
 
+    /**
+     * Creates the AI service entry (create-only, never change): an existing title is rejected, also when it differs
+     * only in case; the create path re-checks the current KeePass state itself.
+     */
     private void saveServiceEntry() {
         final String title = text(serviceEntry);
         String url = serviceUrl.getText().trim();
-        char[] typed = serviceKey.getPassword();
-        char[] password = typed.length > 0 ? typed : serviceRead == null ? null : serviceRead.copyPassword();
-        if (title.isEmpty() || url.isEmpty() || password == null || password.length == 0) {
-            fail(STEP_SERVICE, "Für den Eintrag werden Basis-URL und API-Key gebraucht.");
+        char[] password = serviceKey.getPassword();
+        String problem = newEntryProblem(title);
+        if (problem == null && (url.isEmpty() || password.length == 0)) {
+            problem = "Für den neuen Eintrag werden Basis-URL und API-Key gebraucht.";
+        }
+        if (problem != null) {
+            fail(STEP_SERVICE, problem);
             wipe(password);
-            wipe(typed);
             return;
         }
-        PasswordEntry entry = new PasswordEntry(title, serviceRead == null ? "" : serviceRead.userName(), url,
-                serviceRead == null ? Collections.<String, String>emptyMap() : serviceRead.fields(), password);
+        final PasswordEntry entry = new PasswordEntry(title, "", url, Collections.<String, String>emptyMap(),
+                password);
         wipe(password);
-        wipe(typed);
-        serviceEntryStatus.setText("Speichere in KeePass …");
+        serviceEntryStatus.setText("Lege den Eintrag in KeePass an …");
         setBusy(true);
-        store().save(entry, (ignored, error) -> {
+        store().create(entry, (ignored, error) -> {
             entry.wipe();
             setBusy(false);
             if (error != null) {
-                fail(STEP_SERVICE, "Der Eintrag ließ sich nicht in KeePass speichern: " + error);
+                serviceEntryStatus.setText("Nicht angelegt.");
+                fail(STEP_SERVICE, "Der Eintrag „" + title + "“ wurde nicht angelegt: " + error);
                 return;
             }
             addEntry(new PasswordEntry(title, entry.userName(), entry.url(), entry.fields(), null));
@@ -1676,29 +1768,36 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Liest den gewählten Eintrag. Ein vollständiger Eintrag (URL und Passwort bzw. Token) braucht keine Eingabe:
-     * Der Schritt zeigt nur, was vorhanden ist, und testet mit den Werten aus KeePass. Die Felder erscheinen bei
-     * einem neuen oder unvollständigen Eintrag und nach „Zugangsdaten ändern“.
+     * Reads the chosen entry. An existing entry is only read: the step shows what is present and tests with the
+     * KeePass values; anything missing the user adds directly in KeePass and then reloads. The fields only appear
+     * for a new title, under which the test creates the entry.
      */
     private void readConfluenceEntry() {
         final String title = text(confluenceEntry);
+        boolean wasExisting = confluenceRead != null;
+        confluenceShownTitle = title;
         confluenceRead = null;
         confluenceOk = false;
-        confluenceEditing = false;
         confluenceReading = false;
         clearError(STEP_CONFLUENCE);
         confluenceStatus.setText("");
-        if (title.isEmpty() || !entriesLoaded || !titleExists(title)) {
+        final String stored = title.isEmpty() || !entriesLoaded ? null : storedTitle(title);
+        if (stored == null) {
             busy = true;
             try {
                 confluenceEntryStatus.setText(title.isEmpty()
                         ? "Bitte einen KeePass-Eintrag wählen oder einen Titel eintragen."
                         : !entriesLoaded ? entriesMissingHint()
-                        : "Neuer Eintrag: URL und Passwort bzw. Token angeben; er wird beim Testen in KeePass "
+                        : "Neuer Eintrag: URL und Passwort bzw. Token angeben; er wird beim Testen neu in KeePass "
                         + "angelegt.");
                 confluencePasswordHint.setText(" ");
-                certificateAlias = "";
-                certificateLabel.setText("kein Zertifikat");
+                if (wasExisting) { // values of the previously chosen entry do not belong to the new one
+                    confluenceUrl.setText("");
+                    confluenceUser.setText("");
+                    confluencePassword.setText("");
+                    certificateAlias = "";
+                    certificateLabel.setText("kein Zertifikat");
+                }
             } finally {
                 busy = false;
             }
@@ -1709,9 +1808,16 @@ public final class SetupWizardPanel extends JPanel {
         confluenceReading = true;
         showConfluenceCredentials();
         setBusy(true);
-        store().read(title, (entry, error) -> {
+        store().read(stored, (entry, error) -> {
             confluenceReading = false;
             setBusy(false);
+            if (!title.equals(text(confluenceEntry))) { // the user kept typing meanwhile: the newer title wins
+                if (entry != null) {
+                    entry.wipe();
+                }
+                readConfluenceEntry();
+                return;
+            }
             if (error != null || entry == null) {
                 confluenceEntryStatus.setText("Nicht lesbar.");
                 showConfluenceCredentials();
@@ -1721,18 +1827,16 @@ public final class SetupWizardPanel extends JPanel {
             confluenceRead = entry;
             busy = true;
             try {
-                confluenceUrl.setText(entry.url());
-                confluenceUser.setText(entry.userName());
+                confluenceUrl.setText("");
+                confluenceUser.setText("");
                 confluencePassword.setText("");
-                confluencePasswordHint.setText(entry.hasPassword()
-                        ? "Passwort bzw. Token steht in KeePass; nur zum Ändern eintragen."
-                        : "Im Eintrag fehlt das Passwort bzw. Token.");
+                confluencePasswordHint.setText(" ");
                 String alias = entry.field(PasswordEntry.CERT_ALIAS);
                 certificateAlias = alias == null ? "" : alias.trim();
                 certificateLabel.setText(certificateAlias.isEmpty() ? "kein Zertifikat" : certificateAlias);
                 withoutCertificate.setSelected(false);
                 confluenceEntryStatus.setText(complete(entry) ? "Vorhandener Eintrag; die Zugangsdaten stehen in KeePass."
-                        : "Im Eintrag fehlt noch etwas; bitte ergänzen, es wird beim Testen in KeePass gespeichert.");
+                        : "Im vorhandenen Eintrag fehlt noch etwas." + INCOMPLETE_HINT);
             } finally {
                 busy = false;
             }
@@ -1750,9 +1854,8 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     /**
-     * Status eines gelesenen Eintrags (was vorhanden ist, ohne Secrets) und darunter die Felder: bei neuem Eintrag
-     * und nach „Zugangsdaten ändern“ alle, bei einem unvollständigen nur die fehlenden (etwa die URL). Was hier
-     * eingetragen wird, schreibt „Verbindung testen“ in den KeePass-Eintrag, wie den Zertifikatsalias.
+     * Status of a read entry (what is present, no secrets), or for a new title the fields of the new entry. The
+     * wizard never changes an existing entry.
      */
     private void showConfluenceCredentials() {
         boolean manualAccess = manualConfluence();
@@ -1772,26 +1875,24 @@ public final class SetupWizardPanel extends JPanel {
         }
         String title = text(confluenceEntry);
         boolean existing = confluenceRead != null;
-        boolean complete = complete(confluenceRead);
-        boolean summary = existing && !confluenceEditing && !confluenceReading;
-        boolean manual = entriesLoaded && !title.isEmpty() && !confluenceReading && (!complete || confluenceEditing);
+        boolean summary = existing && !confluenceReading;
+        boolean manual = entriesLoaded && !title.isEmpty() && !confluenceReading && !existing
+                && storedTitle(title) == null;
         if (summary) {
             boolean hasUrl = !confluenceRead.url().trim().isEmpty();
             state(confluenceHasUrl, hasUrl, hasUrl ? "URL vorhanden: " + confluenceRead.url()
-                    : "URL fehlt: bitte unten eintragen, sie wird im KeePass-Eintrag gespeichert");
+                    : "URL fehlt: bitte in KeePass ergänzen");
             String user = confluenceRead.userName().trim();
             state(confluenceHasUser, true, user.isEmpty()
                     ? "Kein Benutzername: Anmeldung mit persönlichem Zugriffstoken" : "Benutzername vorhanden");
             boolean hasSecret = confluenceRead.hasPassword();
             state(confluenceHasSecret, hasSecret, !hasSecret
-                    ? "Passwort bzw. Token fehlt: bitte unten eintragen, es wird im KeePass-Eintrag gespeichert"
+                    ? "Passwort bzw. Token fehlt: bitte in KeePass ergänzen"
                     : user.isEmpty() ? "Token vorhanden" : "Passwort bzw. Token vorhanden");
         }
-        boolean all = !existing || confluenceEditing;
-        manualRowVisible(0, all || confluenceRead.url().trim().isEmpty());
-        manualRowVisible(1, all);
-        manualRowVisible(2, all || !confluenceRead.hasPassword());
-        manualRowVisible(3, all || !confluenceRead.hasPassword());
+        for (int row = 0; row < manualRows.size(); row++) {
+            manualRowVisible(row, manual);
+        }
         confluenceSummary.setVisible(summary);
         confluenceManual.setVisible(manual);
         updateButtons();
@@ -1820,70 +1921,86 @@ public final class SetupWizardPanel extends JPanel {
         }
     }
 
+    /**
+     * An existing entry is only read and tested with its KeePass values. A new title is first created in KeePass
+     * (create-only, never change) and tested only after the create succeeded.
+     */
     private void testConfluence() {
         if (manualConfluence()) {
             testManualConfluence();
             return;
         }
         final String title = text(confluenceEntry);
-        final String url = confluenceUrl.getText().trim();
-        final String user = confluenceUser.getText().trim();
-        char[] typed = confluencePassword.getPassword();
-        char[] password = typed.length > 0 ? typed : confluenceRead == null ? null : confluenceRead.copyPassword();
-        wipe(typed == password ? null : typed);
-        if (title.isEmpty() || url.isEmpty() || password == null || password.length == 0) {
-            wipe(password);
-            fail(STEP_CONFLUENCE, "Für Confluence werden ein Titel für den KeePass-Eintrag, die URL und Passwort "
-                    + "bzw. Token gebraucht.");
+        if (confluenceRead == null && title.isEmpty()) {
+            fail(STEP_CONFLUENCE, "Für Confluence wird ein Titel für den KeePass-Eintrag gebraucht.");
+            return;
+        }
+        if (confluenceRead != null && !complete(confluenceRead)) {
+            fail(STEP_CONFLUENCE, "Im KeePass-Eintrag „" + confluenceRead.title() + "“ fehlen URL oder Passwort bzw. "
+                    + "Token. Der Assistent ändert keine vorhandenen Einträge;" + INCOMPLETE_HINT);
             return;
         }
         if (certificateAlias.isEmpty() && !withoutCertificate.isSelected()) {
-            wipe(password);
             fail(STEP_CONFLUENCE, "Bitte ein Client-Zertifikat wählen oder ausdrücklich ohne Zertifikat fortfahren.");
             return;
         }
-        Map<String, String> fields = new LinkedHashMap<String, String>(confluenceRead == null
-                ? Collections.<String, String>emptyMap() : confluenceRead.fields());
-        if (confluenceRead == null) {
-            fields.put(PasswordEntry.CATEGORY, "Confluence");
+        if (confluenceRead != null) {
+            Map<String, String> fields = new LinkedHashMap<String, String>(confluenceRead.fields());
+            if (!certificateAlias.isEmpty()) {
+                fields.put(PasswordEntry.CERT_ALIAS, certificateAlias);
+            } else {
+                fields.remove(PasswordEntry.CERT_ALIAS);
+            }
+            char[] password = confluenceRead.copyPassword();
+            PasswordEntry entry = new PasswordEntry(confluenceRead.title(), confluenceRead.userName(),
+                    confluenceRead.url(), fields, password);
+            wipe(password);
+            clearError(STEP_CONFLUENCE);
+            confluenceOk = false;
+            setBusy(true);
+            runConfluenceTest(entry);
+            return;
         }
+        final String url = confluenceUrl.getText().trim();
+        final String user = confluenceUser.getText().trim();
+        char[] password = confluencePassword.getPassword();
+        String problem = newEntryProblem(title);
+        if (problem == null && (url.isEmpty() || password.length == 0)) {
+            problem = "Für den neuen Confluence-Eintrag werden URL und Passwort bzw. Token gebraucht.";
+        }
+        if (problem != null) {
+            wipe(password);
+            fail(STEP_CONFLUENCE, problem);
+            return;
+        }
+        Map<String, String> fields = new LinkedHashMap<String, String>();
+        fields.put(PasswordEntry.CATEGORY, "Confluence");
         if (!certificateAlias.isEmpty()) {
             fields.put(PasswordEntry.CERT_ALIAS, certificateAlias);
-        } else {
-            fields.remove(PasswordEntry.CERT_ALIAS);
         }
         final PasswordEntry entry = new PasswordEntry(title, user, url, fields, password);
         wipe(password);
         clearError(STEP_CONFLUENCE);
         confluenceOk = false;
         setBusy(true);
-        if (changed(entry, typed.length > 0)) {
-            confluenceStatus.setText("Speichere den Eintrag in KeePass …");
-            store().save(entry, (ignored, error) -> {
-                if (error != null) {
-                    entry.wipe();
-                    setBusy(false);
-                    fail(STEP_CONFLUENCE, "Der Eintrag ließ sich nicht in KeePass speichern: " + error);
-                    return;
-                }
-                addEntry(new PasswordEntry(title, user, url, entry.fields(), null));
-                confluenceRead = new PasswordEntry(title, user, url, entry.fields(), entry.copyPassword());
-                busy = true;
-                confluencePassword.setText("");
-                busy = false;
-                runConfluenceTest(entry);
-            });
-        } else {
+        confluenceStatus.setText("Lege den Eintrag neu in KeePass an …");
+        store().create(entry, (ignored, error) -> {
+            if (error != null) {
+                entry.wipe();
+                setBusy(false);
+                confluenceStatus.setText("Nicht angelegt.");
+                fail(STEP_CONFLUENCE, "Der Eintrag „" + title + "“ wurde nicht angelegt: " + error);
+                return;
+            }
+            addEntry(new PasswordEntry(title, user, url, entry.fields(), null));
+            confluenceRead = new PasswordEntry(title, user, url, entry.fields(), entry.copyPassword());
+            confluenceShownTitle = title;
+            busy = true;
+            confluencePassword.setText("");
+            busy = false;
+            showConfluenceCredentials();
             runConfluenceTest(entry);
-        }
-    }
-
-    private boolean changed(PasswordEntry entry, boolean newPassword) {
-        if (confluenceRead == null || newPassword) {
-            return true;
-        }
-        return !confluenceRead.url().equals(entry.url()) || !confluenceRead.userName().equals(entry.userName())
-                || !trimmed(confluenceRead.field(PasswordEntry.CERT_ALIAS)).equals(certificateAlias);
+        });
     }
 
     private void runConfluenceTest(final PasswordEntry entry) {
@@ -2814,18 +2931,49 @@ public final class SetupWizardPanel extends JPanel {
     }
 
     private boolean titleExists(String title) {
+        return storedTitle(title) != null;
+    }
+
+    /**
+     * The title of the read entry matching {@code title}, trimmed and case-insensitive like KeePassRPC;
+     * {@code null} = none.
+     */
+    private String storedTitle(String title) {
+        String wanted = title == null ? "" : title.trim();
+        if (wanted.isEmpty()) {
+            return null;
+        }
         for (PasswordEntry entry : entries) {
-            if (entry.title().equals(title)) {
-                return true;
+            if (entry.title().trim().equalsIgnoreCase(wanted)) {
+                return entry.title();
             }
         }
-        return false;
+        return null;
+    }
+
+    /**
+     * Why no new entry may be created under this title ({@code null}: it may). The list is only a pre-check; the
+     * create path checks the current KeePass state itself.
+     */
+    private String newEntryProblem(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            return "Bitte einen Titel für den neuen KeePass-Eintrag eintragen.";
+        }
+        if (!entriesLoaded) {
+            return entriesMissingHint();
+        }
+        String stored = storedTitle(title);
+        if (stored != null) {
+            return "In KeePass gibt es bereits den Eintrag „" + stored + "“; er bleibt unverändert. Bitte einen "
+                    + "anderen Titel wählen oder den Eintrag direkt in KeePass bearbeiten.";
+        }
+        return null;
     }
 
     private void addEntry(PasswordEntry entry) {
         List<PasswordEntry> updated = new ArrayList<PasswordEntry>();
         for (PasswordEntry existing : entries) {
-            if (!existing.title().equals(entry.title())) {
+            if (!existing.title().trim().equalsIgnoreCase(entry.title().trim())) {
                 updated.add(existing);
             }
         }
@@ -2889,6 +3037,43 @@ public final class SetupWizardPanel extends JPanel {
         String text = value == null ? "" : value;
         combo.getEditor().setItem(text);
         combo.setSelectedItem(text);
+    }
+
+    /**
+     * Fills an entry choice with the read titles; the typed title stays as editor text even if it does not exist
+     * (any more), but is then not listed as an item.
+     */
+    private void setEntryChoices(JComboBox<String> combo, List<String> titles) {
+        boolean was = busy;
+        busy = true;
+        try {
+            String typed = text(combo);
+            combo.setModel(new DefaultComboBoxModel<String>(titles.toArray(new String[0])));
+            setText(combo, typed);
+        } finally {
+            busy = was;
+        }
+    }
+
+    /** Runs {@code action} on every edit in an editable combo box editor, not only on Enter. */
+    private void onTyped(final JComboBox<String> combo, final Runnable action) {
+        final SimpleDocumentListener typed = new SimpleDocumentListener(() -> {
+            if (!busy) {
+                action.run();
+            }
+        });
+        listenToEditor(combo, typed);
+        // A look-and-feel change (comic UI) installs a new editor; the listener moves along.
+        combo.addPropertyChangeListener("editor", e -> listenToEditor(combo, typed));
+    }
+
+    private static void listenToEditor(JComboBox<String> combo, SimpleDocumentListener listener) {
+        java.awt.Component editor = combo.getEditor() == null ? null : combo.getEditor().getEditorComponent();
+        if (editor instanceof javax.swing.text.JTextComponent) {
+            javax.swing.text.Document document = ((javax.swing.text.JTextComponent) editor).getDocument();
+            document.removeDocumentListener(listener);
+            document.addDocumentListener(listener);
+        }
     }
 
     private void setChoices(JComboBox<String> combo, List<String> items, String selected) {
@@ -2960,8 +3145,20 @@ public final class SetupWizardPanel extends JPanel {
         return confluenceHasUrl.getText() + "\n" + confluenceHasUser.getText() + "\n" + confluenceHasSecret.getText();
     }
 
-    ComposerButton confluenceChangeButton() {
-        return confluenceChange;
+    String serviceEntryStatusText() {
+        return serviceEntryStatus.getText();
+    }
+
+    boolean serviceFieldsShown() {
+        return serviceMissing.isVisible();
+    }
+
+    ComposerButton serviceEntryRefreshButton() {
+        return serviceEntryRefresh;
+    }
+
+    ComposerButton confluenceEntryRefreshButton() {
+        return confluenceEntryRefresh;
     }
 
     private JLabel statusLabel() {

@@ -81,6 +81,12 @@ public final class LiveSecretProvider implements SecretProvider, com.aresstack.e
     }
 
     @Override
+    public void create(com.aresstack.enterpriseai.adyton.VaultEntryDraft entry)
+            throws SecretUnavailableException {
+        SecretVaults.of(current).create(entry);
+    }
+
+    @Override
     public void remove(String title) throws SecretUnavailableException {
         SecretVaults.of(current).remove(title);
     }

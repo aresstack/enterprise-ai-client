@@ -19,6 +19,14 @@ public interface SecretVault {
     /** Legt den Eintrag an oder ändert den mit gleichem Titel; alle Felder werden ersetzt. */
     void save(VaultEntryDraft entry) throws SecretUnavailableException;
 
+    /**
+     * Create-only: adds the entry only if no entry with the same title exists (trimmed, case-insensitive) and never
+     * changes an existing one; a collision fails with {@link SecretUnavailableException.Reason#ALREADY_EXISTS}.
+     * Each adapter implements this against its own backend; there is deliberately no default built on the upserting
+     * {@link #save(VaultEntryDraft)}.
+     */
+    void create(VaultEntryDraft entry) throws SecretUnavailableException;
+
     /** Löscht den Eintrag mit diesem Titel. */
     void remove(String title) throws SecretUnavailableException;
 }

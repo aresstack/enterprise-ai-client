@@ -20,6 +20,15 @@ public interface PasswordStore {
     void remove(String title, PasswordCallback<Void> done);
 
     /**
+     * Creates a new entry and never changes an existing one: if the title already exists (trimmed,
+     * case-insensitive) the call fails with a message and KeePass stays unchanged. Without an implementation
+     * nothing is written.
+     */
+    default void create(PasswordEntry entry, PasswordCallback<Void> done) {
+        done.done(null, "Neue Einträge lassen sich hier nicht anlegen.");
+    }
+
+    /**
      * „🔗 Verbindung testen“ mit den Werten des Editors (URL, Benutzer, Passwort, Zertifikat), ohne zu speichern;
      * liefert die Erfolgsmeldung oder den Fehler.
      */
@@ -42,6 +51,11 @@ public interface PasswordStore {
 
             @Override
             public void save(PasswordEntry entry, PasswordCallback<Void> done) {
+                done.done(null, message);
+            }
+
+            @Override
+            public void create(PasswordEntry entry, PasswordCallback<Void> done) {
                 done.done(null, message);
             }
 

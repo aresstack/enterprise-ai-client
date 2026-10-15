@@ -97,6 +97,12 @@ public final class RetryingSecretProvider implements SecretProvider, SecretVault
     }
 
     @Override
+    public void create(com.aresstack.enterpriseai.adyton.VaultEntryDraft entry)
+            throws SecretUnavailableException {
+        SecretVaults.of(delegate).create(entry);
+    }
+
+    @Override
     public void remove(String title) throws SecretUnavailableException {
         SecretVaults.of(delegate).remove(title);
     }

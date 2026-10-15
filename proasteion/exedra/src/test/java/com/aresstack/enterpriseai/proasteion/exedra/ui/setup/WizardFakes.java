@@ -66,6 +66,8 @@ final class WizardFakes {
         final List<String> tested = new ArrayList<String>();
         /** Wie oft ein Eintrag gespeichert wurde. */
         int saves;
+        /** How often an entry was created (create-only, never change). */
+        int creates;
         final Map<String, PasswordEntry> vault = new LinkedHashMap<String, PasswordEntry>();
         /** The OpenNLP models of step 6, as the catalog lists them; installing marks one installed. */
         final List<com.aresstack.enterpriseai.proasteion.exedra.ui.settings.NlpModelOffer> nlpOffers =
@@ -166,6 +168,20 @@ final class WizardFakes {
                 @Override
                 public void save(PasswordEntry entry, PasswordCallback<Void> done) {
                     saves++;
+                    vault.put(entry.title(), new PasswordEntry(entry.title(), entry.userName(), entry.url(),
+                            entry.fields(), entry.copyPassword()));
+                    done.done(null, null);
+                }
+
+                @Override
+                public void create(PasswordEntry entry, PasswordCallback<Void> done) {
+                    for (String title : vault.keySet()) { // current state, case-insensitive like KeePassRPC
+                        if (title.trim().equalsIgnoreCase(entry.title().trim())) {
+                            done.done(null, "Eintrag existiert bereits");
+                            return;
+                        }
+                    }
+                    creates++;
                     vault.put(entry.title(), new PasswordEntry(entry.title(), entry.userName(), entry.url(),
                             entry.fields(), entry.copyPassword()));
                     done.done(null, null);
