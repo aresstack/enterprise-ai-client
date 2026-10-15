@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.assembly;
 
+import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectRecord;
+import com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects;
 import com.aresstack.enterpriseai.proasteion.application.composition.CompositionRoot;
 import com.aresstack.enterpriseai.proasteion.application.composition.ApplicationPorts;
 import com.aresstack.enterpriseai.proasteion.application.composition.ConfluenceEntryCheck;
@@ -25,6 +27,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.KnowledgeStatusModel
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatExport;
 import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatProjectStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
@@ -56,6 +59,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatWorkspacePanel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.SavedChatItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ShellFrame;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatProjectItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.WorkspaceActions;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
@@ -101,6 +105,8 @@ public final class ShellAssembly {
 
     /** Ordner der gespeicherten Chats und ihrer Anhänge, neben der Konfigurationsdatei. */
     static final String CHATS_DIRECTORY = "chats";
+    /** The chat projects (#143), next to the chats directory. */
+    static final String CHAT_PROJECTS_FILE = "chat-projects.json";
     /** Drawer-Reiter des Konzeptpapiers im Agent-Modus (askai: Artefakt-Ansicht „Concept“). */
     static final String CONCEPT_TAB = "Konzept";
     /** Die Favoriten des Lesebereichs, neben der Konfigurationsdatei. */
@@ -149,6 +155,11 @@ public final class ShellAssembly {
                     .withDiagnostics(root.turnDiagnostics()));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
+        // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.
+        // Every new turn resolves the project context from the current assignment.
+        final ChatProjects chatProjects = new ChatProjects(
+                new FileChatProjectStore(chatsDirectory.resolveSibling(CHAT_PROJECTS_FILE)));
+        root.ragChat().withProjectContext(chatProjects);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
@@ -422,6 +433,76 @@ public final class ShellAssembly {
             @Override
             public String currentChatTitle() {
                 return history.currentTitle();
+            }
+
+            @Override
+            public List<ChatProjectItem> chatProjects() {
+                List<ChatProjectItem> items = new ArrayList<ChatProjectItem>();
+                for (ChatProjectRecord project : chatProjects.projects()) {
+                    items.add(new ChatProjectItem(project.getId(), project.getName(), project.getParentId(),
+                            chatProjects.depth(project.getId()), project.getInstructions(), project.getMemories()));
+                }
+                return items;
+            }
+
+            @Override
+            public String projectOfChat(String chatId) {
+                return chatProjects.projectOf(chatId);
+            }
+
+            @Override
+            public String moveChatRequested(String chatId, String projectId) {
+                if (chatId != null && chatId.equals(history.currentChatId()) && chatModel.isStreaming()) {
+                    // The running answer resolved its project context already; a move waits until it ends.
+                    return "Der Chat lässt sich nicht verschieben, solange eine Antwort läuft.";
+                }
+                chatProjects.assign(chatId, projectId);
+                return null;
+            }
+
+            @Override
+            public boolean canMoveProject(String projectId, String parentId) {
+                return chatProjects.canMove(projectId, parentId);
+            }
+
+            @Override
+            public boolean moveProjectRequested(String projectId, String parentId) {
+                return chatProjects.move(projectId, parentId, Integer.MAX_VALUE);
+            }
+
+            @Override
+            public String createProjectRequested(String name, String parentId) {
+                return chatProjects.create(name, parentId);
+            }
+
+            @Override
+            public void renameProjectRequested(String projectId, String name) {
+                chatProjects.rename(projectId, name);
+            }
+
+            @Override
+            public void updateProjectContextRequested(String projectId, String instructions, List<String> memories) {
+                chatProjects.updateContext(projectId, instructions, memories);
+            }
+
+            @Override
+            public int chatsInProject(String projectId) {
+                return chatProjects.chatsWithin(projectId).size();
+            }
+
+            @Override
+            public void deleteProjectRequested(String projectId) {
+                chatProjects.delete(projectId);
+            }
+
+            @Override
+            public boolean newChatInProjectRequested(String projectId) {
+                if (chatProjects.project(projectId) == null || !lifecycle.newChat()) {
+                    return false;
+                }
+                // The new conversation belongs to the project from its first question on.
+                chatProjects.assign(history.currentChatId(), projectId);
+                return true;
             }
 
             @Override

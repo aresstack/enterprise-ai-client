@@ -530,7 +530,8 @@ public class RagChatUseCaseTest {
         RagChatUseCase reopened = new RagChatUseCase(chat, new RetrieveKnowledgeUseCase(index, embeddings, SPACE_3D,
                 null), new PromptContextAssembler(ContextSettings.defaults()), null,
                 FollowUpResearch.upTo(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS));
-        reopened.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids);
+        reopened.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids,
+                com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext.NONE_SCOPE);
         assertEquals(ids.size(), reopened.knowledgeContext(id).hits().size());
         int searches = index.keywordSearches + index.semanticSearches;
         chatPort.enqueueAnswer("{\"sufficient\": true, \"related\": true}");
@@ -541,6 +542,142 @@ public class RagChatUseCaseTest {
         assertEquals(searches, index.keywordSearches + index.semanticSearches);
         assertEquals(JAVA, turn.sources().get(0).resource());
         assertTrue(turn.sources().get(0).hit().isRestored());
+    }
+
+    /** #143: project instructions and memories go into this turn's system part, resolved anew for every turn. */
+    @Test
+    public void projectContextIsResolvedForEveryTurnAndNeverEntersTheHistory() throws Exception {
+        com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        rag.withProjectContext(projects);
+        ChatConversationId id = chat.openConversation("Du bist hilfsbereit.");
+        String a = projects.create("Projekt A", null);
+        String b = projects.create("Projekt B", null);
+        projects.updateContext(a, "Antworte immer auf Englisch.", Collections.singletonList("Kunde heißt Nordwind"));
+        projects.updateContext(b, "Antworte in Reimen.", Collections.<String>emptyList());
+        projects.assign(id.value(), a);
+
+        chatPort.enqueueAnswer("Hello.");
+        awaitDone(rag.send(id, "Hallo", RagOptions.disabled(), listener()));
+        String system = chatPort.lastRequest().messages().get(0).content();
+        assertTrue(system.contains("Antworte immer auf Englisch.") && system.contains("Kunde heißt Nordwind"));
+
+        projects.assign(id.value(), b);
+        chatPort.enqueueAnswer("Reim.");
+        awaitDone(rag.send(id, "Und jetzt?", RagOptions.disabled(), listener()));
+        system = chatPort.lastRequest().messages().get(0).content();
+        assertFalse("A is gone for new turns", system.contains("Englisch") || system.contains("Nordwind"));
+        assertTrue(system.contains("Antworte in Reimen."));
+
+        projects.assign(id.value(), null);
+        chatPort.enqueueAnswer("Normal.");
+        awaitDone(rag.send(id, "Und ohne Projekt?", RagOptions.disabled(), listener()));
+        assertEquals("Du bist hilfsbereit.", chatPort.lastRequest().messages().get(0).content());
+        assertEquals("history keeps only questions and answers", 6, chat.conversation(id).messages().size());
+    }
+
+    /** #143: knowledge context cached under project A is not reused after a move, not even after moving back. */
+    @Test
+    public void movingAChatDropsItsCachedKnowledgeContextForGood() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        research.withProjectContext(projects);
+        ChatConversationId id = chat.openConversation();
+        String a = projects.create("A", null);
+        String b = projects.create("B", null);
+        projects.assign(id.value(), a);
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
+        assertFalse(research.knowledgeContext(id).isEmpty());
+        String scopeInA = research.knowledgeScope(id);
+
+        projects.assign(id.value(), b);
+        assertTrue("A's context is gone in B", research.knowledgeContext(id).isEmpty());
+        projects.assign(id.value(), a);
+        assertTrue("and does not come back in A", research.knowledgeContext(id).isEmpty());
+        assertNotEquals(scopeInA, research.knowledgeScope(id));
+    }
+
+    /** #143: a saved context is only restored under the scope it was saved with, also if the move races the restore. */
+    @Test
+    public void restoreIsRefusedUnderAnotherScope() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        final com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects = projects();
+        research.withProjectContext(projects);
+        final ChatConversationId id = chat.openConversation();
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
+        final List<com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId> ids =
+                new ArrayList<com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId>();
+        for (RetrievedChunk hit : research.knowledgeContext(id).hits()) {
+            ids.add(com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId.parse(hit.chunk().id().value()));
+        }
+        String saved = research.knowledgeScope(id);
+        final String a = projects.create("A", null);
+
+        projects.assign(id.value(), a);
+        RagChatUseCase reopened = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS).withProjectContext(projects);
+        reopened.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids, saved);
+        assertTrue("moved since saving: nothing restored", reopened.knowledgeContext(id).isEmpty());
+
+        // The move happens while the index is read: the second look at the assignment (after the index read)
+        // sees another project, so the restored chunks are dropped before they are kept.
+        projects.assign(id.value(), null);
+        final String afterMove = reopened.knowledgeScope(id);
+        final int[] calls = {0};
+        RagChatUseCase racing = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS).withProjectContext(
+                new com.aresstack.enterpriseai.astu.acropolis.chatproject.ProjectContextResolver() {
+                    @Override
+                    public com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext resolve(
+                            ChatConversationId conversation) {
+                        if (calls[0]++ == 1) {
+                            projects.assign(id.value(), a);
+                        }
+                        return projects.resolve(conversation);
+                    }
+                });
+        racing.restoreKnowledgeContext(id, Collections.singletonList(QUESTION), ids, afterMove);
+        assertEquals("checked before and after the index read", 2, calls[0]);
+        assertTrue(racing.knowledgeContext(id).isEmpty());
+    }
+
+    /** #143: a resolver that fails gives no project information and no reusable knowledge context (fail closed). */
+    @Test
+    public void failingResolverFailsClosed() throws Exception {
+        RagChatUseCase research = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        ChatConversationId id = chat.openConversation("System.");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(research.send(id, QUESTION, RagOptions.enabled(), listener()));
+        assertFalse(research.knowledgeContext(id).isEmpty());
+        research.withProjectContext(new com.aresstack.enterpriseai.astu.acropolis.chatproject.ProjectContextResolver() {
+            @Override
+            public com.aresstack.enterpriseai.astu.acropolis.chatproject.EffectiveProjectContext resolve(
+                    ChatConversationId conversation) {
+                throw new IllegalStateException("store unreadable");
+            }
+        });
+        assertTrue(research.knowledgeContext(id).isEmpty());
+        assertFalse(research.projectContext(id).isResolved());
+    }
+
+    private static com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects projects() {
+        return new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjects(
+                new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectStore() {
+                    private com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord stored =
+                            new com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord();
+
+                    @Override
+                    public com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord load() {
+                        return stored;
+                    }
+
+                    @Override
+                    public void save(com.aresstack.enterpriseai.astu.acropolis.chatproject.ChatProjectsRecord r) {
+                        stored = r;
+                    }
+                });
     }
 
     /** Ohne Nachrecherche bleibt alles wie bisher: jede Nachricht sucht, nichts wird gemerkt. */

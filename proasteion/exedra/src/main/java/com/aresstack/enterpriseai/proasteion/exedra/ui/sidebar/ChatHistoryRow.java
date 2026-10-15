@@ -56,6 +56,10 @@ public final class ChatHistoryRow extends JComponent {
     private final ComicPalette palette;
     private boolean hovered;
     private boolean menuHovered;
+    /** Starts dragging the row (chat projects, #143); {@code null} = not draggable, opens on press. */
+    private java.util.function.Consumer<MouseEvent> dragStart;
+    private java.awt.Point pressedAt;
+    private static final int DRAG_THRESHOLD = 5;
 
     public ChatHistoryRow(String title, String meta, String time, boolean busy, boolean selected,
                           Runnable openAction, ComicPalette palette) {
@@ -126,19 +130,47 @@ public final class ChatHistoryRow extends JComponent {
                     Rectangle hit = menuHit();
                     showMenu(hit.x, hit.y + hit.height);
                 } else if (SwingUtilities.isLeftMouseButton(event) && ChatHistoryRow.this.openAction != null) {
-                    ChatHistoryRow.this.openAction.run();
+                    if (dragStart == null) {
+                        ChatHistoryRow.this.openAction.run();
+                    } else {
+                        pressedAt = event.getPoint(); // a draggable row opens on release, unless it was dragged
+                    }
+                }
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (pressedAt != null && dragStart != null && pressedAt.distance(event.getPoint()) > DRAG_THRESHOLD) {
+                    pressedAt = null;
+                    dragStart.accept(event);
                 }
             }
 
             @Override
             public void mouseReleased(MouseEvent event) {
                 if (event.isPopupTrigger()) {
+                    pressedAt = null;
                     showMenu(event.getX(), event.getY());
+                    return;
+                }
+                if (pressedAt != null) {
+                    pressedAt = null;
+                    if (contains(event.getPoint()) && ChatHistoryRow.this.openAction != null) {
+                        ChatHistoryRow.this.openAction.run();
+                    }
                 }
             }
         };
         addMouseListener(mouse);
         addMouseMotionListener(mouse);
+    }
+
+    /**
+     * Makes the row draggable: a press no longer opens at once; moving the pointer a few pixels with the button down
+     * calls {@code dragStart} (which starts the drag and drop), releasing without moving opens.
+     */
+    public void setDragStart(java.util.function.Consumer<MouseEvent> dragStart) {
+        this.dragStart = dragStart;
     }
 
     private boolean hasMenu() {

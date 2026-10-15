@@ -776,6 +776,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         listRefreshTimer.stop();
         chatListPanel.removeAll();
         chatRows.clear();
+        projectRows.clear();
         newChatButton.setEnabled(!visibleShell().model().isStreaming());
         String filter = chatFilter.getText().trim().toLowerCase(Locale.ROOT);
         chatListPanel.add(groupHeader("AKTIV"));
@@ -783,8 +784,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (agentShell != null) {
             addChatRow(ShellMode.AGENT, agentShell.model(), AGENT_TITLE, "Agent", filter);
         }
+        addProjects(filter);
         addSavedChats(filter);
-        if (chatRows.isEmpty() && renamingChatId == null) {
+        if (chatRows.isEmpty() && projectRows.isEmpty() && renamingChatId == null) {
             JLabel none = new JLabel(filter.isEmpty() ? "Keine Chats" : "Keine passenden Chats"); // wie arch
             none.setEnabled(false);
             none.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -821,6 +823,10 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
         String meta = kind + " · " + (count == 0 ? "noch keine Nachrichten"
                 : count == 1 ? "1 Nachricht" : count + " Nachrichten");
+        String currentProject = mode == ShellMode.CHAT ? currentProjectName() : null;
+        if (currentProject != null) {
+            meta = meta + " · " + currentProject;
+        }
         String time = lastMillis == 0L ? "" : TIME.format(Instant.ofEpochMilli(lastMillis).atZone(ZoneId.systemDefault()));
         final String currentId = actions == null ? null : actions.currentChatId();
         ChatHistoryRow.MenuSupplier menu = null;
@@ -838,6 +844,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                     showChatArea();
                 }, menu, palette);
         row.setAlignmentX(LEFT_ALIGNMENT);
+        if (menu != null) {
+            makeDraggable(row, ChatProjectTransfer.CHAT + currentId, null);
+        }
         chatRows.add(row);
         chatListPanel.add(row);
     }
@@ -853,10 +862,12 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         List<SavedChatItem> yesterday = new ArrayList<SavedChatItem>();
         List<SavedChatItem> lastWeek = new ArrayList<SavedChatItem>();
         List<SavedChatItem> older = new ArrayList<SavedChatItem>();
+        Set<String> projectIds = projectIds();
         for (SavedChatItem chat : actions.savedChats()) {
             if (chat.id().equals(currentId)
-                    || !filter.isEmpty() && !chat.title().toLowerCase(Locale.ROOT).contains(filter)) {
-                continue;
+                    || !filter.isEmpty() && !chat.title().toLowerCase(Locale.ROOT).contains(filter)
+                    || projectIds.contains(actions.projectOfChat(chat.id()))) {
+                continue; // chats in a project are listed below their project
             }
             long at = chat.modifiedAtMillis();
             if (at >= startOfToday) {
@@ -879,11 +890,24 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         if (group.isEmpty()) {
             return;
         }
-        chatListPanel.add(groupHeader(title));
+        JLabel header = groupHeader(title);
+        if (!projectIds().isEmpty()) {
+            // Dropping a chat onto a date group takes it out of its project (#143).
+            header.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.NO_PROJECT,
+                    projectDrops));
+            header.setToolTipText(NO_PROJECT_DROP_TOOLTIP);
+        }
+        chatListPanel.add(header);
         for (final SavedChatItem chat : group) {
+            chatListPanel.add(savedChatRow(chat, startOfToday, 0));
+        }
+    }
+
+    /** One saved chat as a row (or its rename field), indented by {@code depth} project levels. */
+    private JComponent savedChatRow(final SavedChatItem chat, long startOfToday, int depth) {
+        {
             if (chat.id().equals(renamingChatId)) {
-                chatListPanel.add(renameRow(chat.id(), chat.title()));
-                continue;
+                return indented(renameRow(chat.id(), chat.title()), depth);
             }
             ZonedDateTime at = Instant.ofEpochMilli(chat.modifiedAtMillis()).atZone(ZoneId.systemDefault());
             String time = chat.modifiedAtMillis() >= startOfToday ? TIME.format(at) : DAY.format(at);
@@ -897,8 +921,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
                     : new ChatHistoryRow(chat.title(), meta, time, false, false,
                     () -> openSavedChat(chat.id()), () -> chatMenu(chat.id(), chat.title()), palette);
             row.setAlignmentX(LEFT_ALIGNMENT);
+            if (!deleted) {
+                makeDraggable(row, ChatProjectTransfer.CHAT + chat.id(), null);
+            }
             chatRows.add(row);
-            chatListPanel.add(row);
+            return indented(row, depth);
         }
     }
 
@@ -1009,6 +1036,11 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
             refreshChatList();
         });
         menu.add(rename);
+        List<ChatProjectItem> projects = actions == null ? Collections.<ChatProjectItem>emptyList()
+                : actions.chatProjects();
+        if (!projects.isEmpty()) {
+            menu.add(moveMenu(chatId, projects));
+        }
         JMenuItem export = new JMenuItem(EXPORT_CHAT_LABEL);
         export.setEnabled(actions != null && actions.canExportChats());
         export.addActionListener(event -> exportChat(chatId, title));
@@ -1038,6 +1070,341 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         String problem = actions.exportChatRequested(chatId, choice.file(), choice.format());
         if (problem != null) {
             JOptionPane.showMessageDialog(this, problem, "Export fehlgeschlagen", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    // ------------------------------------------------------------------ Chat-Projekte (#143)
+
+    static final String PROJECTS_HEADER = "PROJEKTE";
+    static final String NEW_PROJECT_LABEL = "Neues Projekt …";
+    static final String NO_PROJECT_LABEL = "Chats ohne Projekt";
+    static final String MOVE_CHAT_LABEL = "Verschieben nach";
+    static final String NEW_CHAT_IN_PROJECT_LABEL = "Neuer Chat in diesem Projekt";
+    static final String PROJECT_CONTEXT_LABEL = "Anweisungen & Erinnerungen …";
+    static final String NEW_SUBPROJECT_LABEL = "Unterprojekt anlegen …";
+    static final String RENAME_PROJECT_LABEL = "Umbenennen …";
+    static final String DELETE_PROJECT_LABEL = "Löschen …";
+    static final String NO_PROJECT_DROP_TOOLTIP = "Hierher ziehen: Chat aus dem Projekt nehmen";
+    private static final int PROJECT_INDENT_PX = 14;
+
+    /** Project rows of the last refresh (tests and keyboard-free checks). */
+    private final List<ChatHistoryRow> projectRows = new ArrayList<ChatHistoryRow>();
+    /** Expanded projects, for this run. */
+    private final Set<String> expandedProjects = new LinkedHashSet<String>();
+
+    private final ChatProjectTransfer.Drops projectDrops = new ChatProjectTransfer.Drops() {
+        @Override
+        public boolean accepts(String payload, ChatProjectTransfer.Target target) {
+            if (actions == null) {
+                return false;
+            }
+            if (payload.startsWith(ChatProjectTransfer.CHAT)) {
+                return !target.topLevel;
+            }
+            String projectId = payload.substring(ChatProjectTransfer.PROJECT.length());
+            return target.projectId != null ? actions.canMoveProject(projectId, target.projectId)
+                    : target.topLevel && actions.canMoveProject(projectId, null);
+        }
+
+        @Override
+        public boolean drop(String payload, ChatProjectTransfer.Target target) {
+            boolean done;
+            if (payload.startsWith(ChatProjectTransfer.CHAT)) {
+                done = moveChat(payload.substring(ChatProjectTransfer.CHAT.length()), target.projectId);
+            } else {
+                done = actions.moveProjectRequested(payload.substring(ChatProjectTransfer.PROJECT.length()),
+                        target.projectId);
+            }
+            if (done && target.projectId != null) {
+                expandedProjects.add(target.projectId);
+            }
+            SwingUtilities.invokeLater(ChatWorkspacePanel.this::refreshChatList); // not while the drop runs
+            return done;
+        }
+    };
+
+    /** The project rows of the last refresh, in display order. */
+    List<ChatHistoryRow> projectRows() {
+        return Collections.unmodifiableList(projectRows);
+    }
+
+    private Set<String> projectIds() {
+        Set<String> ids = new LinkedHashSet<String>();
+        if (actions != null) {
+            for (ChatProjectItem project : actions.chatProjects()) {
+                ids.add(project.id());
+            }
+        }
+        return ids;
+    }
+
+    private String currentProjectName() {
+        if (actions == null || actions.currentChatId() == null) {
+            return null;
+        }
+        String projectId = actions.projectOfChat(actions.currentChatId());
+        for (ChatProjectItem project : actions.chatProjects()) {
+            if (project.id().equals(projectId)) {
+                return project.name();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The section PROJEKTE: a header with "+" (new project), then the project tree, each project with its chats when
+     * expanded (or, while the chat search filters, with its matching chats). Projects and chats can be dragged onto a
+     * project; the header takes projects to the top level, the date groups take chats out of their project.
+     */
+    private void addProjects(String filter) {
+        if (actions == null) {
+            return;
+        }
+        List<ChatProjectItem> projects = actions.chatProjects();
+        chatListPanel.add(projectsHeader());
+        if (projects.isEmpty()) {
+            return;
+        }
+        String currentId = actions.currentChatId();
+        Map<String, List<SavedChatItem>> chatsByProject = new LinkedHashMap<String, List<SavedChatItem>>();
+        for (SavedChatItem chat : actions.savedChats()) {
+            String projectId = actions.projectOfChat(chat.id());
+            if (projectId == null || chat.id().equals(currentId)
+                    || !filter.isEmpty() && !chat.title().toLowerCase(Locale.ROOT).contains(filter)) {
+                continue;
+            }
+            List<SavedChatItem> chats = chatsByProject.get(projectId);
+            if (chats == null) {
+                chats = new ArrayList<SavedChatItem>();
+                chatsByProject.put(projectId, chats);
+            }
+            chats.add(chat);
+        }
+        Set<String> visible = visibleProjects(projects, chatsByProject, filter);
+        Set<String> collapsed = new LinkedHashSet<String>();
+        long startOfToday = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        for (ChatProjectItem project : projects) {
+            if (!visible.contains(project.id()) || project.parentId() != null && collapsed.contains(project.parentId())) {
+                collapsed.add(project.id());
+                continue;
+            }
+            boolean expanded = !filter.isEmpty() || expandedProjects.contains(project.id());
+            if (!expanded) {
+                collapsed.add(project.id());
+            }
+            List<SavedChatItem> chats = chatsByProject.containsKey(project.id())
+                    ? chatsByProject.get(project.id()) : Collections.<SavedChatItem>emptyList();
+            chatListPanel.add(projectRow(project, expanded, chats.size()));
+            if (expanded) {
+                for (SavedChatItem chat : chats) {
+                    chatListPanel.add(savedChatRow(chat, startOfToday, project.depth() + 1));
+                }
+            }
+        }
+    }
+
+    /** Without filter every project; with filter the matching ones, those with matching chats, and their parents. */
+    private static Set<String> visibleProjects(List<ChatProjectItem> projects,
+                                               Map<String, List<SavedChatItem>> chatsByProject, String filter) {
+        Set<String> visible = new LinkedHashSet<String>();
+        Map<String, ChatProjectItem> byId = new LinkedHashMap<String, ChatProjectItem>();
+        for (ChatProjectItem project : projects) {
+            byId.put(project.id(), project);
+        }
+        for (ChatProjectItem project : projects) {
+            if (filter.isEmpty() || project.name().toLowerCase(Locale.ROOT).contains(filter)
+                    || chatsByProject.containsKey(project.id())) {
+                for (ChatProjectItem at = project; at != null && visible.add(at.id()); ) {
+                    at = at.parentId() == null ? null : byId.get(at.parentId());
+                }
+            }
+        }
+        return visible;
+    }
+
+    private JComponent projectsHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        header.setAlignmentX(LEFT_ALIGNMENT);
+        JLabel label = groupHeader(PROJECTS_HEADER);
+        label.setTransferHandler(new ChatProjectTransfer(null, ChatProjectTransfer.Target.TOP_LEVEL, projectDrops));
+        header.add(label, BorderLayout.CENTER);
+        javax.swing.JButton add = new javax.swing.JButton("+");
+        add.setToolTipText(NEW_PROJECT_LABEL);
+        add.setFocusable(false);
+        add.setBorderPainted(false);
+        add.setContentAreaFilled(false);
+        add.setFont(ResearchUiTypography.semiBold(13f));
+        add.setForeground(ResearchUiPalette.LIGHT_TEXT_MUTED);
+        add.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        add.addActionListener(event -> createProject(null));
+        header.add(add, BorderLayout.EAST);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getPreferredSize().height));
+        return header;
+    }
+
+    private JComponent projectRow(final ChatProjectItem project, final boolean expanded, int chatCount) {
+        String meta = "Projekt · " + (chatCount == 1 ? "1 Chat" : chatCount + " Chats");
+        ChatHistoryRow row = new ChatHistoryRow((expanded ? "▾ " : "▸ ") + project.name(), meta, "", false, false,
+                () -> {
+                    if (!expandedProjects.remove(project.id())) {
+                        expandedProjects.add(project.id());
+                    }
+                    refreshChatList();
+                }, () -> projectMenu(project), palette);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        makeDraggable(row, ChatProjectTransfer.PROJECT + project.id(),
+                ChatProjectTransfer.Target.project(project.id()));
+        projectRows.add(row);
+        return indented(row, project.depth());
+    }
+
+    private void makeDraggable(final ChatHistoryRow row, String payload, ChatProjectTransfer.Target target) {
+        if (actions == null) {
+            return;
+        }
+        final ChatProjectTransfer transfer = new ChatProjectTransfer(payload, target, projectDrops);
+        row.setTransferHandler(transfer);
+        row.setDragStart(event -> transfer.exportAsDrag(row, event, javax.swing.TransferHandler.MOVE));
+    }
+
+    private static JComponent indented(JComponent row, int depth) {
+        if (depth <= 0) {
+            return row;
+        }
+        JPanel wrap = new JPanel(new BorderLayout());
+        wrap.setOpaque(false);
+        wrap.setBorder(BorderFactory.createEmptyBorder(0, depth * PROJECT_INDENT_PX, 0, 0));
+        wrap.add(row, BorderLayout.CENTER);
+        wrap.setAlignmentX(LEFT_ALIGNMENT);
+        wrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
+        return wrap;
+    }
+
+    /** "Verschieben nach": "Chats ohne Projekt" and every project; the current place is disabled. */
+    private javax.swing.JMenu moveMenu(final String chatId, List<ChatProjectItem> projects) {
+        javax.swing.JMenu move = new javax.swing.JMenu(MOVE_CHAT_LABEL);
+        String current = actions.projectOfChat(chatId);
+        JMenuItem none = new JMenuItem(NO_PROJECT_LABEL);
+        none.setEnabled(current != null);
+        none.addActionListener(event -> {
+            moveChat(chatId, null);
+            refreshChatList();
+        });
+        move.add(none);
+        move.addSeparator();
+        for (final ChatProjectItem project : projects) {
+            StringBuilder indent = new StringBuilder();
+            for (int i = 0; i < project.depth(); i++) {
+                indent.append("   ");
+            }
+            JMenuItem item = new JMenuItem(indent + project.name());
+            item.setEnabled(!project.id().equals(current));
+            item.addActionListener(event -> {
+                if (moveChat(chatId, project.id())) {
+                    expandedProjects.add(project.id());
+                }
+                refreshChatList();
+            });
+            move.add(item);
+        }
+        return move;
+    }
+
+    private boolean moveChat(String chatId, String projectId) {
+        String problem = actions.moveChatRequested(chatId, projectId);
+        if (problem != null) {
+            JOptionPane.showMessageDialog(this, problem, "Chat nicht verschoben", JOptionPane.INFORMATION_MESSAGE);
+            return false;
+        }
+        return true;
+    }
+
+    JPopupMenu projectMenu(final ChatProjectItem project) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem newChat = new JMenuItem(NEW_CHAT_IN_PROJECT_LABEL);
+        newChat.setEnabled(!chatShell.model().isStreaming());
+        newChat.addActionListener(event -> {
+            modes.select(ShellMode.CHAT);
+            if (actions.newChatInProjectRequested(project.id())) {
+                expandedProjects.add(project.id());
+                showChatArea();
+            }
+            refreshChatList();
+        });
+        menu.add(newChat);
+        JMenuItem context = new JMenuItem(PROJECT_CONTEXT_LABEL);
+        context.addActionListener(event -> editProjectContext(project));
+        menu.add(context);
+        menu.addSeparator();
+        JMenuItem sub = new JMenuItem(NEW_SUBPROJECT_LABEL);
+        sub.addActionListener(event -> createProject(project.id()));
+        menu.add(sub);
+        JMenuItem rename = new JMenuItem(RENAME_PROJECT_LABEL);
+        rename.addActionListener(event -> {
+            String name = (String) JOptionPane.showInputDialog(this, "Neuer Name des Projekts:", "Projekt umbenennen",
+                    JOptionPane.PLAIN_MESSAGE, null, null, project.name());
+            if (name != null && !name.trim().isEmpty()) {
+                actions.renameProjectRequested(project.id(), name.trim());
+                refreshChatList();
+            }
+        });
+        menu.add(rename);
+        JMenuItem delete = new JMenuItem(DELETE_PROJECT_LABEL);
+        delete.addActionListener(event -> deleteProject(project));
+        menu.add(delete);
+        return menu;
+    }
+
+    private void createProject(String parentId) {
+        if (actions == null) {
+            return;
+        }
+        String name = JOptionPane.showInputDialog(this, "Name des Projekts:",
+                parentId == null ? "Neues Projekt" : "Neues Unterprojekt", JOptionPane.PLAIN_MESSAGE);
+        if (name == null || name.trim().isEmpty()) {
+            return;
+        }
+        String id = actions.createProjectRequested(name.trim(), parentId);
+        if (id != null && parentId != null) {
+            expandedProjects.add(parentId);
+        }
+        refreshChatList();
+    }
+
+    /** Deleting never deletes chats: the dialog names how many move to "Chats ohne Projekt". */
+    private void deleteProject(ChatProjectItem project) {
+        int chats = actions.chatsInProject(project.id());
+        String message = "Projekt \"" + project.name() + "\" mit allen Unterprojekten löschen?"
+                + (chats == 0 ? "" : "\n" + (chats == 1 ? "Ein Chat kommt" : chats + " Chats kommen")
+                + " nach „" + NO_PROJECT_LABEL + "“; gelöscht wird kein Chat.");
+        if (JOptionPane.showConfirmDialog(this, message, "Projekt löschen", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE) == JOptionPane.OK_OPTION) {
+            actions.deleteProjectRequested(project.id());
+            expandedProjects.remove(project.id());
+            refreshChatList();
+        }
+    }
+
+    /** Instructions (free text) and memories (one per line); they apply from the next question on. */
+    private void editProjectContext(ChatProjectItem project) {
+        javax.swing.JTextArea instructions = new javax.swing.JTextArea(project.instructions(), 8, 48);
+        instructions.setLineWrap(true);
+        instructions.setWrapStyleWord(true);
+        javax.swing.JTextArea memories = new javax.swing.JTextArea(String.join("\n", project.memories()), 6, 48);
+        memories.setLineWrap(true);
+        memories.setWrapStyleWord(true);
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.add(new JLabel("Projektanweisungen (gelten für jede neue Frage in diesem Projekt):"));
+        form.add(new JScrollPane(instructions));
+        form.add(Box.createVerticalStrut(8));
+        form.add(new JLabel("Projekterinnerungen (eine je Zeile):"));
+        form.add(new JScrollPane(memories));
+        if (JOptionPane.showConfirmDialog(this, form, "Projekt „" + project.name() + "“",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+            actions.updateProjectContextRequested(project.id(), instructions.getText(),
+                    Arrays.asList(memories.getText().split("\\r?\\n")));
         }
     }
 

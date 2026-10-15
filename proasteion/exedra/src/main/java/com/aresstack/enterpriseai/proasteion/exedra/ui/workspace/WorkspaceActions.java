@@ -72,4 +72,66 @@ public interface WorkspaceActions {
     default String currentChatTitle() {
         return null;
     }
+
+    // ------------------------------------------------------------------ chat projects (#143)
+
+    /** All chat projects, depth first in tree order; empty without chat projects. */
+    default List<ChatProjectItem> chatProjects() {
+        return Collections.emptyList();
+    }
+
+    /** The project of a chat, or {@code null} for a chat without project. */
+    default String projectOfChat(String chatId) {
+        return null;
+    }
+
+    /**
+     * Moves a chat into a project ({@code null} = "Chats ohne Projekt"). History and attachments stay; only new
+     * questions see the new project context.
+     *
+     * @return {@code null} on success, otherwise a sentence for the user (e.g. while an answer is running)
+     */
+    default String moveChatRequested(String chatId, String projectId) {
+        return "Projekte sind nicht verfügbar.";
+    }
+
+    /** Whether a project may be moved below {@code parentId} ({@code null} = top level); never into itself. */
+    default boolean canMoveProject(String projectId, String parentId) {
+        return false;
+    }
+
+    /** Moves a project below {@code parentId} ({@code null} = top level), as last child. */
+    default boolean moveProjectRequested(String projectId, String parentId) {
+        return false;
+    }
+
+    /** Creates a project; {@code null} = not created. */
+    default String createProjectRequested(String name, String parentId) {
+        return null;
+    }
+
+    default void renameProjectRequested(String projectId, String name) {
+    }
+
+    /** Replaces instructions and memories of a project; they apply to the next question. */
+    default void updateProjectContextRequested(String projectId, String instructions, List<String> memories) {
+    }
+
+    /** How many chats the project and its sub-projects contain (what deleting it would move out). */
+    default int chatsInProject(String projectId) {
+        return 0;
+    }
+
+    /** Deletes a project and its sub-projects; their chats become chats without project, none is deleted. */
+    default void deleteProjectRequested(String projectId) {
+    }
+
+    /**
+     * Starts a new chat that belongs to the project.
+     *
+     * @return {@code false} when no new chat can start right now
+     */
+    default boolean newChatInProjectRequested(String projectId) {
+        return false;
+    }
 }
