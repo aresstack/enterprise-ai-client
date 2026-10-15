@@ -79,9 +79,13 @@ public final class KnowledgeResearch {
         this.judge = judge == null ? modelJudge() : judge;
     }
 
-    /** The stages of the Research Agent today: the lexical search. */
+    /**
+     * The stages of the Research Agent today: first the cheap lookup of acronym-like terms in the structured findings
+     * ({@link TermLookupStrategy}), then the lexical search ({@link LexicalDiscoveryStrategy}).
+     */
     public static List<DiscoveryStrategy> defaultStages() {
-        return Collections.<DiscoveryStrategy>singletonList(new LexicalDiscoveryStrategy());
+        return Collections.unmodifiableList(java.util.Arrays.<DiscoveryStrategy>asList(new TermLookupStrategy(),
+                new LexicalDiscoveryStrategy()));
     }
 
     /**
@@ -140,11 +144,12 @@ public final class KnowledgeResearch {
                     if (!tried.add(hit.id)) {
                         continue;
                     }
-                    String page = readPage(hit.id);
-                    if (page == null || page.isEmpty()) {
+                    String output = readOutput(hit.id);
+                    String page = output == null ? "" : KnowledgeToolOutput.pageText(output);
+                    if (page.isEmpty()) {
                         continue;
                     }
-                    read.add(hit);
+                    read.add(described(hit, output));
                     readNow++;
                     excerpts.add(ResearchQueries.excerpt(page, request + " " + query));
                 }
@@ -157,9 +162,13 @@ public final class KnowledgeResearch {
         if (!reached && unavailable != null) {
             throw unavailable;
         }
+        Set<String> readIds = new HashSet<String>();
+        for (KnowledgeHit hit : read) {
+            readIds.add(hit.id);
+        }
         List<KnowledgeHit> unread = new ArrayList<KnowledgeHit>();
         for (KnowledgeHit hit : found.values()) {
-            if (!read.contains(hit)) {
+            if (!readIds.contains(hit.id)) {
                 unread.add(hit);
             }
         }
@@ -260,12 +269,27 @@ public final class KnowledgeResearch {
         return sources.toString();
     }
 
-    /** The page text of a hit; {@code null} when this one hit cannot be read (the next one gets its chance). */
-    private String readPage(String id) throws ToolInvoker.EndpointUnavailable {
+    /**
+     * The hit with title and address from the read header when the lookup named only the resource (a stage such as
+     * {@link TermLookupStrategy} knows ids, not titles), so the sources are cited by name.
+     */
+    private static KnowledgeHit described(KnowledgeHit hit, String readOutput) {
+        boolean untitled = hit.title.isEmpty() || hit.title.equals(hit.id);
+        String title = untitled ? KnowledgeToolOutput.header(readOutput, "title") : hit.title;
+        String url = hit.url.isEmpty() ? KnowledgeToolOutput.header(readOutput, "url") : hit.url;
+        if (title.equals(hit.title) && url.equals(hit.url)) {
+            return hit;
+        }
+        return new KnowledgeHit(hit.id, title.isEmpty() ? hit.title : title, hit.snippet, url, hit.passage,
+                hit.source);
+    }
+
+    /** The answer of {@code knowledge_read}; {@code null} when this one hit cannot be read (the next one gets its chance). */
+    private String readOutput(String id) throws ToolInvoker.EndpointUnavailable {
         Map<String, Object> args = new LinkedHashMap<String, Object>();
         args.put("id", id);
         try {
-            return KnowledgeToolOutput.pageText(tools.call(READ_TOOL, args));
+            return tools.call(READ_TOOL, args);
         } catch (ToolInvoker.ToolFailure unreadable) {
             return null;
         }

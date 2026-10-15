@@ -93,6 +93,27 @@ public final class KnowledgeToolOutput {
         return text.toString().trim();
     }
 
+    /**
+     * The value of one header line ({@code title}, {@code url}, ...) of a {@code knowledge_read} answer; empty when
+     * the header has no such line.
+     */
+    public static String header(String readOutput, String key) {
+        if (readOutput == null) {
+            return "";
+        }
+        String prefix = key.toLowerCase(java.util.Locale.ROOT) + ":";
+        for (String line : readOutput.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (!HEADER.matcher(trimmed).matches()) {
+                break;
+            }
+            if (trimmed.toLowerCase(java.util.Locale.ROOT).startsWith(prefix)) {
+                return trimmed.substring(prefix.length()).trim();
+            }
+        }
+        return "";
+    }
+
     /** The lines of one hit: first the metadata header, from the first other line on the snippet. */
     private static final class HitLines {
         final String title;

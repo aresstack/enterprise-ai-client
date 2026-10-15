@@ -36,7 +36,7 @@ public class KnowledgeResearchTest {
         }
 
         @Override
-        public String call(String toolName, Map<String, Object> args) throws ToolFailure {
+        public String call(String toolName, Map<String, Object> args) throws ToolFailure, EndpointUnavailable {
             if (KnowledgeResearch.SEARCH_TOOL.equals(toolName)) {
                 String query = String.valueOf(args.get("query"));
                 searches.add(query);
@@ -65,7 +65,7 @@ public class KnowledgeResearchTest {
                 }
                 return "title: " + page[0] + "\nid: " + id + "\nurl: https://wiki.example/" + id + "\n\n" + page[1];
             }
-            throw new ToolFailure("not offered: " + toolName);
+            throw new EndpointUnavailable(toolName + " is not offered");
         }
     }
 

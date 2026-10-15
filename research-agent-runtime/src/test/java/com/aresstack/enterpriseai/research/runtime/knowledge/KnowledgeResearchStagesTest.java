@@ -172,4 +172,73 @@ public class KnowledgeResearchStagesTest {
         new KnowledgeResearch(none, new Model(), Arrays.asList(CHEAP, new LexicalDiscoveryStrategy()), judge(true))
                 .research(TASK);
     }
+
+    private static final String IRR_TASK = "Finde heraus, welche Bedeutung IRR im internen Unternehmenswissen hat.";
+
+    /** A term lookup over stored findings plus a lexical search, both over the same two pages. */
+    private static final class AcronymTools implements ToolInvoker {
+        final List<String> calls = new ArrayList<String>();
+        boolean defined = true;
+
+        @Override
+        public String call(String toolName, Map<String, Object> args) throws ToolFailure {
+            if (TermLookupStrategy.TOOL.equals(toolName)) {
+                calls.add(toolName + ":" + args.get(TermLookupStrategy.PARAM_TERM));
+                return defined ? "Term: IRR\n\n[1] wiki:42\nid: wiki:42\nInterne Revisionsrichtlinie (IRR).\n"
+                        : "Term: IRR\nNo resource states a long form of this term.";
+            }
+            calls.add(toolName + ":" + (args.containsKey("query") ? args.get("query") : args.get("id")));
+            if (KnowledgeResearch.SEARCH_TOOL.equals(toolName)) {
+                return "Query: IRR\n\n[1] Prüfplan 2026\nid: wiki:7\nsource: wiki\nDie IRR gilt ab Mai.\n";
+            }
+            if ("wiki:42".equals(args.get("id"))) {
+                return "title: Richtlinien\nid: wiki:42\nurl: https://wiki.example/42\n\n"
+                        + "Die Interne Revisionsrichtlinie (IRR) regelt Prüfungen.";
+            }
+            return "title: Prüfplan 2026\nid: wiki:7\n\nDie IRR gilt ab Mai.";
+        }
+    }
+
+    @Test
+    public void anAcronymTaskIsAnsweredByTheTermLookupAlone() throws Exception {
+        AcronymTools tools = new AcronymTools();
+        Model model = new Model("JA", "IRR steht für Interne Revisionsrichtlinie [1].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals("one lookup and one read, no search", Arrays.asList("knowledge_term_lookup:IRR",
+                "knowledge_read:wiki:42"), tools.calls);
+        assertEquals("no planning: evidence check and answer", 2, model.calls);
+        assertEquals(Arrays.asList("term: IRR"), result.queries());
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+        KnowledgeHit source = result.sources().get(0);
+        assertEquals("wiki:42", source.id);
+        assertEquals("the read names the resource", "Richtlinien", source.title);
+        assertEquals("https://wiki.example/42", source.url);
+        assertTrue(result.render(), result.render().contains("[1] Richtlinien"));
+    }
+
+    @Test
+    public void withoutAStoredDefinitionTheTaskFallsThroughToTheLexicalStage() throws Exception {
+        AcronymTools tools = new AcronymTools();
+        tools.defined = false;
+        Model model = new Model("{\"queries\": [\"IRR\"]}", "Die IRR gilt ab Mai [1].");
+
+        KnowledgeResearchResult result = new KnowledgeResearch(tools, model).research(IRR_TASK);
+
+        assertEquals(Arrays.asList("knowledge_term_lookup:IRR", "knowledge_search:IRR", "knowledge_read:wiki:7"),
+                tools.calls);
+        assertEquals(Arrays.asList("term: IRR", "IRR"), result.queries());
+        assertEquals(KnowledgeResearchResult.Outcome.ANSWERED, result.outcome());
+        assertEquals("wiki:7", result.sources().get(0).id);
+    }
+
+    @Test
+    public void onlyAcronymLikeTermsAreLookedUp() {
+        assertEquals(Arrays.asList("IRR"), TermLookupStrategy.terms(IRR_TASK));
+        assertEquals(Arrays.asList("HaVdB", "PoC", "PIMA"), TermLookupStrategy.terms(
+                "Wie wird in HaVdB der PoC mit Hashicorp Vault für PIMA beschrieben?"));
+        assertEquals(Arrays.asList("BS-PIMA"), TermLookupStrategy.terms("Was macht BS-PIMA?"));
+        assertTrue(TermLookupStrategy.terms("Wie beantrage ich Urlaub?").isEmpty());
+    }
 }
