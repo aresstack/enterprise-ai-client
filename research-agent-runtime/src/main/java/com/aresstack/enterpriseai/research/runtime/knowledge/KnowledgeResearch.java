@@ -11,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Logger;
 
 /**
  * The Research Agent's mediation between a research task in natural language and the technical knowledge
@@ -29,8 +28,6 @@ import java.util.logging.Logger;
  * steps (acronym or fact lookup, semantic retrieval, relations) belong here, behind the same {@link #research} call.
  */
 public final class KnowledgeResearch {
-
-    private static final Logger LOG = Logger.getLogger(KnowledgeResearch.class.getName());
 
     public static final String SEARCH_TOOL = "knowledge_search";
     public static final String READ_TOOL = "knowledge_read";
@@ -81,7 +78,6 @@ public final class KnowledgeResearch {
             try {
                 hits = search(query);
             } catch (ToolInvoker.ToolFailure failed) {
-                LOG.info("[research] search failed: " + failed.getMessage());
                 failure = failed.getMessage();
                 continue;
             }
@@ -149,7 +145,6 @@ public final class KnowledgeResearch {
             }
         }
         if (queries.isEmpty()) {
-            LOG.info("[research] no usable plan from the model; literal terms of the task");
             queries.add(ResearchQueries.literalQuery(task));
         }
         return queries.size() > MAX_SEARCHES ? new ArrayList<String>(queries.subList(0, MAX_SEARCHES)) : queries;
@@ -169,7 +164,6 @@ public final class KnowledgeResearch {
         try {
             return KnowledgeToolOutput.pageText(tools.call(READ_TOOL, args));
         } catch (ToolInvoker.ToolFailure unreadable) {
-            LOG.info("[research] not readable: " + id + " " + unreadable.getMessage());
             return null;
         }
     }
@@ -202,12 +196,9 @@ public final class KnowledgeResearch {
         try {
             result = model.complete(messages, temperature, maxTokens);
         } catch (RuntimeException failed) {
-            LOG.warning("[research] model failed: " + failed);
             return "";
         }
         if (result == null || !result.isOk()) {
-            LOG.warning("[research] model failed: " + (result == null ? "no result"
-                    : result.getStatus() + " " + result.getDetail()));
             return "";
         }
         return result.getText() == null ? "" : result.getText();

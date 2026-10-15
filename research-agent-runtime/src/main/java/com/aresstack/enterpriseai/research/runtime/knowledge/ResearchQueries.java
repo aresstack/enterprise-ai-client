@@ -35,7 +35,7 @@ public final class ResearchQueries {
     public static final String RULES = "Suchanfragen sind kurze Schlüsselwortfolgen mit 1 bis 3 Wörtern (höchstens "
             + MAX_QUERY_WORDS + "), keine Fragen und keine ganzen Sätze, ohne Füllwörter, denn die Volltextsuche der "
             + "Quellen verknüpft alle Wörter mit UND. Übernimm interne Bezeichner, Abkürzungen, System-, Produkt- und "
-            + "Projektnamen wörtlich und in ihrer Schreibweise (z. B. HaVdB, BS-PIMA, IAR, RSL, Hashicorp Vault); "
+            + "Projektnamen wörtlich und in ihrer Schreibweise (z. B. HaVdB, BS-PIMA, Hashicorp Vault); "
             + "übersetze, erkläre oder umschreibe sie nie. Keine Synonymketten und keine Varianten derselben Begriffe.";
 
     private static final Set<String> STOP_WORDS = new HashSet<String>(Arrays.asList(
