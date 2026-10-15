@@ -26,7 +26,9 @@ public class SecretUnavailableException extends Exception {
         /** Backend verweigert den Zugriff (z. B. Pairing ungültig oder widerrufen). */
         ACCESS_DENIED,
         /** Benutzer hat eine nötige Interaktion (z. B. Pairing) abgebrochen. */
-        CANCELLED
+        CANCELLED,
+        /** Anlegen abgelehnt: ein Eintrag mit diesem Titel existiert bereits (er bleibt unverändert). */
+        ALREADY_EXISTS
     }
 
     private final Reason reason;

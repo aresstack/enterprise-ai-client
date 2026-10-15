@@ -242,6 +242,23 @@ public final class KeePassAccess {
         }
     }
 
+    /**
+     * Legt einen neuen Eintrag an und ändert nie einen bestehenden (Titel getrimmt, ohne Groß-/Kleinschreibung);
+     * bei Kollision scheitert der Aufruf mit der Bitte um einen anderen Titel. Löscht das Passwort danach.
+     */
+    public void create(String title, String userName, char[] password, String url, Map<String, String> fields)
+            throws Failure {
+        try (VaultEntryDraft draft = new VaultEntryDraft(title, userName, password, url, fields)) {
+            vault().create(draft);
+        } catch (SecretUnavailableException e) {
+            throw vaultFailure("Anlegen von " + title, e);
+        } finally {
+            if (password != null) {
+                Arrays.fill(password, '\0');
+            }
+        }
+    }
+
     public void remove(String title) throws Failure {
         try {
             vault().remove(title);
@@ -314,6 +331,9 @@ public final class KeePassAccess {
                         + ")") + ". Möglicherweise muss das Pairing erneut durchgeführt werden.";
             case CANCELLED:
                 return "Das KeePassRPC-Pairing wurde abgebrochen.";
+            case ALREADY_EXISTS:
+                return "In KeePass gibt es bereits einen Eintrag mit diesem Titel; er bleibt unverändert. Bitte einen "
+                        + "anderen Titel wählen oder den Eintrag direkt in KeePass bearbeiten.";
             default:
                 return "KeePass-Zugriff fehlgeschlagen (" + e.reason() + ").";
         }

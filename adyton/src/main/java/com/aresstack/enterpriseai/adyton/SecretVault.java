@@ -19,6 +19,20 @@ public interface SecretVault {
     /** Legt den Eintrag an oder ändert den mit gleichem Titel; alle Felder werden ersetzt. */
     void save(VaultEntryDraft entry) throws SecretUnavailableException;
 
+    /**
+     * Legt den Eintrag nur an, wenn noch keiner mit gleichem Titel existiert (getrimmt, ohne Groß-/Kleinschreibung);
+     * ein bestehender Eintrag wird nie geändert. Kollision: {@link SecretUnavailableException.Reason#ALREADY_EXISTS}.
+     * Der Standard prüft den aktuellen Bestand über {@link #list()} und legt erst dann an; Adapter mit eigener
+     * Sitzung prüfen und schreiben in einem Zug.
+     */
+    default void create(VaultEntryDraft entry) throws SecretUnavailableException {
+        if (VaultTitles.containsTitle(list(), entry.title())) {
+            throw new SecretUnavailableException(SecretUnavailableException.Reason.ALREADY_EXISTS, null,
+                    "Eintrag existiert bereits");
+        }
+        save(entry);
+    }
+
     /** Löscht den Eintrag mit diesem Titel. */
     void remove(String title) throws SecretUnavailableException;
 }
