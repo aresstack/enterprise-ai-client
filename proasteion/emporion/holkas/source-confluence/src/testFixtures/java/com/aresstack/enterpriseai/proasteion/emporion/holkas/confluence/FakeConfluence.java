@@ -42,6 +42,12 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
      */
     final Map<String, String> wrappedSearchResults = new LinkedHashMap<String, String>();
     String lastCql;
+    /** Query parameters of the last request to the search endpoint {@code /rest/api/search}. */
+    Map<String, String> lastSearchQuery;
+    /** Search pages carry no {@code _links.next}; the client must page by {@code start} and {@code totalSize}. */
+    boolean searchWithoutNextLinks;
+    /** Search results that lack {@code content.version} and {@code _links.webui} (wrapper fields only). */
+    boolean searchContentWithoutVersionAndLinks;
     /** Pages the user may not see: 403 on reading, missing from lists and searches. */
     final Set<String> restricted = new LinkedHashSet<String>();
     /** Erzwingt eine feste Antwort für alle Requests (Fehlerfälle). */
@@ -185,6 +191,23 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             }
             return json(page(results, nextLink(uri, start + results.size(), inSpace.size())));
         }
+        if (path.equals("/rest/api/search")) {
+            lastCql = query.get("cql");
+            lastSearchQuery = query;
+            int start = Integer.parseInt(query.getOrDefault("start", "0"));
+            int limit = Integer.parseInt(query.get("limit"));
+            JsonArray results = new JsonArray();
+            for (int i = start; i < searchResults.size() && results.size() < limit; i++) {
+                results.add(siteSearchEntry(searchResults.get(i), query.get("expand")));
+            }
+            JsonObject response = page(results, searchWithoutNextLinks ? null
+                    : nextLink(uri, start + results.size(), searchResults.size()));
+            response.addProperty("start", start);
+            response.addProperty("limit", limit);
+            response.addProperty("size", results.size());
+            response.addProperty("totalSize", searchResults.size());
+            return json(response);
+        }
         if (path.equals("/rest/api/content/search")) {
             lastCql = query.get("cql");
             List<String> found = searchResults;
@@ -283,6 +306,29 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         }
         page.add("_links", links);
         return page;
+    }
+
+    /** A result of {@code /rest/api/search} as Confluence Data Center sends it: always a wrapper. */
+    private JsonObject siteSearchEntry(String id, String expand) {
+        String contentExpand = expand == null ? null : expand.replace("content.", "");
+        JsonObject content = pages.containsKey(id) ? pageJson(pages.get(id), contentExpand)
+                : attachmentJson(attachments.get(id));
+        String title = content.get("title").getAsString();
+        if (searchContentWithoutVersionAndLinks) {
+            content.remove("version");
+            content.remove("_links");
+        }
+        JsonObject wrapper = new JsonObject();
+        wrapper.add("content", content);
+        wrapper.addProperty("title", title);
+        if (wrappedSearchResults.containsKey(id)) {
+            wrapper.addProperty("excerpt", wrappedSearchResults.get(id));
+        }
+        wrapper.addProperty("url", "/pages/viewpage.action?pageId=" + id);
+        wrapper.addProperty("entityType", "content");
+        wrapper.addProperty("lastModified", "2026-03-04T05:06:07.000+01:00");
+        wrapper.addProperty("friendlyLastModified", "Mär 04, 2026");
+        return wrapper;
     }
 
     private JsonObject searchEntry(String id, String expand) {
