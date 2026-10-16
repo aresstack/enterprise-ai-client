@@ -150,6 +150,7 @@ public final class CompositionRoot {
     private final KnowledgeMcpTools knowledgeTools;
     /** Browser tools of the chats (#141), {@code null} without a browser engine. */
     private final com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools browserTools;
+    private volatile java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> agentConversation;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
@@ -367,7 +368,7 @@ public final class CompositionRoot {
         this.browserTools = ports.browsers() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers());
         if (browserTools != null) {
-            toolCatalog.registerDefinitions(ORIGIN_BROWSER, EnumSet.of(ToolChannel.CHAT), () -> {
+            toolCatalog.registerDefinitions(ORIGIN_BROWSER, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT), () -> {
                 List<com.aresstack.enterpriseai.chat.api.ToolDefinition> definitions =
                         new ArrayList<com.aresstack.enterpriseai.chat.api.ToolDefinition>();
                 for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : McpChatTool.all(
@@ -534,7 +535,42 @@ public final class CompositionRoot {
 
     /** Die Werkzeuge am MCP-Endpoint jedes Agenten: Kanal {@link ToolChannel#AGENT} im {@link #toolCatalog()}. */
     public List<McpToolContribution> agentTools() {
-        return toolCatalog.tools(EnumSet.of(ToolChannel.AGENT));
+        List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
+                toolCatalog.tools(EnumSet.of(ToolChannel.AGENT)));
+        com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation =
+                agentConversation == null ? null : agentConversation.get();
+        if (browserTools != null && conversation != null) {
+            // #141: the agent gets the browser of the chat it works for; the host binds the chat, never the model.
+            for (McpToolContribution tool : browserTools.contributionsFor(conversation)) {
+                if (toolCatalog.isEnabled(tool.getName())) {
+                    tools.add(tool);
+                }
+            }
+        }
+        return tools;
+    }
+
+    /**
+     * Binds the agent's browser tools to the current chat (#141). The shell passes the supplier of the open
+     * conversation; the agent session ends on a chat switch, so its tools follow the chat it was launched for.
+     */
+    public void bindAgentConversation(
+            java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> current) {
+        this.agentConversation = current;
+    }
+
+    /**
+     * Deletes the browser profile of a deleted chat (#141). Failures are logged, the chat deletion goes on.
+     */
+    public void deleteChatBrowserProfile(String chatId) {
+        if (ports.browsers() == null || chatId == null) {
+            return;
+        }
+        try {
+            ports.browsers().deleteProfile(new com.aresstack.enterpriseai.astu.chat.ChatConversationId(chatId));
+        } catch (com.aresstack.enterpriseai.browser.api.BrowserException | RuntimeException e) {
+            LOG.warning("Browser-Profil des Chats " + chatId + " nicht gelöscht: " + e.getMessage());
+        }
     }
 
     /** Die zentrale Werkzeug-Registry; neue Werkzeuge werden hier registriert, nicht in Chat oder Oberfläche. */

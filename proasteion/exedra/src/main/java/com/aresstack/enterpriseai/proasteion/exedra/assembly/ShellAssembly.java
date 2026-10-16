@@ -131,6 +131,7 @@ public final class ShellAssembly {
         root.onStopIndexing(() -> root.uiExecutor().execute(knowledgeStatus::requestCancel));
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
+        root.bindAgentConversation(chatActions::conversationId); // #141: agent browser = browser of the open chat
         // Chat-Historie neben der Konfigurationsdatei: chats/<chatId>.json, Anhänge im Ordner chats/<chatId>/.
         final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
         if (root.ports().chat() != null) {
@@ -364,6 +365,7 @@ public final class ShellAssembly {
             @Override
             public void delete(String chatId) {
                 history.delete(chatId);
+                root.deleteChatBrowserProfile(chatId); // #141: the chat's browser profile goes with the chat
             }
         }, agentService == null ? null : new ConversationLifecycle.AgentSessions() {
             @Override
