@@ -1040,7 +1040,8 @@ final class ConfluenceRestClient {
 
     /**
      * Page search over the Confluence search endpoint {@code /rest/api/search} (the one the web search uses), with
-     * {@code excerpt=highlight} so every hit carries real page text without loading the page. Each result is a search
+     * {@code excerpt=highlight}, which requests real page text per hit without loading the page (a hit without an
+     * excerpt stays valid with an empty snippet). Each result is a search
      * wrapper {@code {content: {...}, title, excerpt, url, lastModified}}; results without a page as content (spaces,
      * users, attachments) are skipped. Pages through {@code _links.next} or, when the server sends none, by
      * {@code start} offsets while {@code totalSize} says more hits exist, until {@code limit} pages are collected.
