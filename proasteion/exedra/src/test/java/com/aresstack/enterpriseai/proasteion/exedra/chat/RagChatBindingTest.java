@@ -908,7 +908,11 @@ public class RagChatBindingTest {
         gated.release();
         awaitIdle(fixture.model);
 
-        TranscriptEntry answer = entries(fixture.model).get(1);
+        // #156: the research card stays as "Recherche abgebrochen"; the answer behind it is cancelled
+        List<TranscriptEntry> all = entries(fixture.model);
+        assertEquals(all.toString(), TranscriptEntry.Author.ACTIVITY, all.get(1).getAuthor());
+        assertTrue(all.get(1).getActivitySummary(), all.get(1).getActivitySummary().startsWith("Recherche abgebrochen"));
+        TranscriptEntry answer = all.get(2);
         assertEquals(TranscriptEntry.State.CANCELLED, answer.getState());
         assertEquals("", answer.getActivity());
         List<ChatMessage> history = chat.conversation(conversation).messages();

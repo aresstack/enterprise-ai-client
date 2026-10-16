@@ -265,6 +265,17 @@ final class ChatResearchCard {
         return text.toString();
     }
 
+    /**
+     * Takes over the final funnel of the turn (#156): the balance must show the definitive counts, "used" in
+     * particular, even when the card already burst with the first answer text.
+     */
+    void settle(KnowledgeFunnel last) {
+        funnel(last);
+        if (opened && !open) {
+            model.updateActivitySummary(key, summary());
+        }
+    }
+
     private void update() {
         if (open && model.isActivityRunning(key)) {
             model.startActivity(key, TITLE, KIND, body());

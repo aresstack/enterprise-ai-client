@@ -1026,8 +1026,12 @@ public final class RagChatBinding implements ChatShellActions {
         // Merge, never replace: sources a tool already recorded for this answer stay (issue #118).
         model.mergeSources(request.answer, describe(ragTurn.sources()));
         request.ragTurn = ragTurn;
-        if (request.card != null && !request.cancelRequested) {
-            // Nach einem Stop bleibt die Karte bei „Wird abgebrochen …“; der Abbruch des Turns räumt sie weg.
+        if (request.card != null) {
+            // The card always ends with the final funnel of the turn; after a stop as "Recherche abgebrochen · …"
+            // with the counts honestly reached, and a finished card stays in the transcript of the cancelled turn.
+            if (ragTurn.funnel().isPresent()) {
+                request.card.settle(ragTurn.funnel().get());
+            }
             request.card.finish();
         }
         // Ohne Werkzeuge steht die Wissensbeschaffung jetzt fest; mit Werkzeugen erst, wenn die Antwort fertig ist.
