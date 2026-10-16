@@ -29,7 +29,13 @@ final class KnowledgeIndexSearchTool implements McpToolHandler {
     KnowledgeIndexSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
                              Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
                              KnowledgeToolSettings settings) {
-        this.search = new KnowledgeSearchTool(retrieval, live, catalogs, enabled, settings, true);
+        this(retrieval, live, catalogs, enabled, settings, null);
+    }
+
+    KnowledgeIndexSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
+                             Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
+                             KnowledgeToolSettings settings, SourceAddress visibleProject) {
+        this.search = new KnowledgeSearchTool(retrieval, live, catalogs, enabled, settings, true, visibleProject);
         this.settings = settings;
     }
 

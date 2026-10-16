@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
+import com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.TurnContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
@@ -464,7 +467,7 @@ public final class RagChatUseCase {
                 break;
             }
             try {
-                RetrievalResult result = retrieval.retrieve(query, rag.sources(), progress);
+                RetrievalResult result = retrieval.retrieve(query, rag.sources(), visibleProject(id), progress);
                 progress.contentExamined(result.hits());
                 hitCounts.add(result.hits().size());
                 hits = newestFirst(result.hits(), hits);
@@ -518,6 +521,16 @@ public final class RagChatUseCase {
         return context == null ? ConversationKnowledgeContext.empty() : context;
     }
 
+    /**
+     * The project source whose files the conversation may use now (#143), {@code null} without a project or with an
+     * unresolved assignment (then no project file is visible at all).
+     */
+    SourceAddress visibleProject(ChatConversationId id) {
+        EffectiveProjectContext context = projectContext(id);
+        return context.isResolved() && context.projectId() != null
+                ? ProjectKnowledge.source(context.projectId()) : null;
+    }
+
     /** The project scope the knowledge context of the conversation is valid under now (saved with the chat). */
     public String knowledgeScope(ChatConversationId id) {
         return projectContext(id).scope();
@@ -540,8 +553,16 @@ public final class RagChatUseCase {
             contexts.remove(id);
             return;
         }
-        List<RetrievedChunk> restored = retrieval.restore(chunkIds);
+        List<RetrievedChunk> found = retrieval.restore(chunkIds);
         EffectiveProjectContext now = projectContext(id);
+        SourceAddress visible = now.isResolved() && now.projectId() != null
+                ? ProjectKnowledge.source(now.projectId()) : null;
+        List<RetrievedChunk> restored = new ArrayList<RetrievedChunk>(found.size());
+        for (RetrievedChunk chunk : found) {
+            if (ProjectKnowledge.isVisible(chunk.chunk().sourceId(), visible)) {
+                restored.add(chunk);
+            }
+        }
         if (restored.isEmpty() || !now.sameScope(savedScope)) {
             contexts.remove(id);
         } else {
@@ -806,7 +827,7 @@ public final class RagChatUseCase {
             for (int round = 0; outcome == null; round++) {
                 RetrievalResult result;
                 try {
-                    result = retrieval.retrieve(query, rag.sources(), progress);
+                    result = retrieval.retrieve(query, rag.sources(), visibleProject(id), progress);
                     progress.contentExamined(result.hits());
                 } catch (KnowledgeRetrievalException e) {
                     if (round == 0) {

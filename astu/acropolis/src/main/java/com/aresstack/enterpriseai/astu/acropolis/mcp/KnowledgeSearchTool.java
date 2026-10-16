@@ -51,6 +51,8 @@ final class KnowledgeSearchTool implements McpToolHandler {
     private final KnowledgeToolSettings settings;
     /** Only the local index, no live source search (the handler of {@code knowledge_index_search}). */
     private final boolean indexOnly;
+    /** The one chat project whose files this instance may search (#143), {@code null}: none. */
+    private final SourceAddress visibleProject;
 
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
                         Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
@@ -61,7 +63,14 @@ final class KnowledgeSearchTool implements McpToolHandler {
     KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
                         Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
                         KnowledgeToolSettings settings, boolean indexOnly) {
+        this(retrieval, live, catalogs, enabled, settings, indexOnly, null);
+    }
+
+    KnowledgeSearchTool(RetrieveKnowledgeUseCase retrieval, SearchDrivenIndexingUseCase live,
+                        Supplier<KnowledgeSourceCatalog> catalogs, Predicate<SourceAddress> enabled,
+                        KnowledgeToolSettings settings, boolean indexOnly, SourceAddress visibleProject) {
         this.indexOnly = indexOnly;
+        this.visibleProject = visibleProject;
         this.retrieval = retrieval;
         this.live = live;
         this.catalogs = catalogs;
@@ -111,13 +120,13 @@ final class KnowledgeSearchTool implements McpToolHandler {
                 sources.add(id);
             }
         }
-        if (sources.isEmpty()) {
+        if (sources.isEmpty() && visibleProject == null) {
             return McpToolResult.ok("Query: " + ToolText.oneLine(text, 200)
                     + "\nNo knowledge source is enabled. Ask the user to check a source in the drawer.");
         }
 
         SearchDrivenIndexingUseCase.Result found = null;
-        if (!indexOnly) {
+        if (!indexOnly && !sources.isEmpty()) {
             try {
                 found = live.search(PREFETCH_CHANNEL, catalog, sources, text, Math.max(limit, LIVE_HITS));
             } catch (RuntimeException e) {
@@ -127,7 +136,13 @@ final class KnowledgeSearchTool implements McpToolHandler {
         List<RetrievedChunk> hits;
         boolean indexFailed = false;
         try {
-            RetrievalResult result = retrieval.retrieve(text, sources);
+            // The chat's project files (#143) only through the project the turn resolved; with no checked source,
+            // only them (an explicit filter, never "all sources").
+            List<SourceAddress> searched = new ArrayList<SourceAddress>(sources);
+            if (visibleProject != null) {
+                searched.add(visibleProject);
+            }
+            RetrievalResult result = retrieval.retrieve(text, searched, visibleProject, null);
             hits = result.hits();
         } catch (RuntimeException e) { // auch KnowledgeRetrievalException: alle Suchpfade ausgefallen
             hits = Collections.emptyList();

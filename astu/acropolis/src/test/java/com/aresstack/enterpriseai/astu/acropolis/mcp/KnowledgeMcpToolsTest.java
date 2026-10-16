@@ -114,6 +114,43 @@ public class KnowledgeMcpToolsTest {
     }
 
     @Test
+    public void projectFilesOnlyForTheProjectsOwnScopedTools() {
+        com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId planId =
+                com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.resource("pA", "att-0000000a");
+        indexing.indexDocumentIfChanged(com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument.of(
+                com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource.builder(planId,
+                        com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.source("pA"))
+                        .title("plan.txt").revision(com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision.version("1"))
+                        .build(), "Der Zielwert der Projektplanung ist 42."));
+        KnowledgeMcpTools inA = tools.scopedTo(
+                com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.source("pA"));
+        KnowledgeMcpTools inB = tools.scopedTo(
+                com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.source("pB"));
+
+        String found = call(inA.knowledgeIndexSearch(), "query", "Zielwert Projektplanung").getText();
+        assertTrue(found, found.contains(planId.value()));
+        McpToolResult read = call(inA.knowledgeRead(), "id", planId.value());
+        assertFalse(read.getText(), read.isError());
+        assertTrue(read.getText(), read.getText().contains("Zielwert"));
+        assertEquals("chatproject://pA", read.contextResources().get(0).sourceId());
+
+        // the general tools (agent/MCP, chats without project) and another project's chats never see it, not even
+        // with the exact id a previous turn returned
+        for (KnowledgeMcpTools other : new KnowledgeMcpTools[]{tools, inB}) {
+            String search = call(other.knowledgeIndexSearch(), "query", "Zielwert Projektplanung").getText();
+            assertFalse(search, search.contains(planId.value()));
+            McpToolResult denied = call(other.knowledgeRead(), "id", planId.value());
+            assertTrue(denied.getText(), denied.isError());
+            assertFalse(denied.getText(), denied.getText().contains("Zielwert"));
+            String many = call(other.knowledgeReadMany(), "ids", java.util.Collections.singletonList(planId.value()))
+                    .getText();
+            assertFalse(many, many.contains("Zielwert"));
+        }
+        inA.shutdown();
+        inB.shutdown();
+    }
+
+    @Test
     public void readLoadsAndIndexesOnDemand() {
         McpToolResult read = call(tools.knowledgeRead(), "id", wiki.idOf("Kaffee").value());
         assertFalse(read.getText(), read.isError());

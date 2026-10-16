@@ -73,6 +73,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ActorType;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.tamias.ClientResourceAccessPolicy;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
+import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.help.ClasspathHelpDocuments;
 import com.aresstack.enterpriseai.proasteion.help.HelpCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.speech.ModelLinguisticAnalyzer;
@@ -124,7 +125,6 @@ public final class CompositionRoot {
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
     static final String ORIGIN_BROWSER = "Browser des Chats (BrowserMcpTools)";
-    static final String ORIGIN_PROJECT_FILES = "Gemeinsame Projektdateien je Chat-Projekt (ProjectFileTools)";
     static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
@@ -160,7 +160,12 @@ public final class CompositionRoot {
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement;
     /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
     private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
-    private volatile com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore projectFiles;
+    private volatile com.aresstack.enterpriseai.proasteion.application.knowledge.ProjectFileKnowledge projectFiles;
+    /** Knowledge tools of the chats of one project (#143), by project source; shut down when the project goes. */
+    private final java.util.concurrent.ConcurrentHashMap<SourceAddress, ProjectScopedTools> projectTools =
+            new java.util.concurrent.ConcurrentHashMap<SourceAddress, ProjectScopedTools>();
+    /** The model the research delegation talks to, {@code null} without a chat port. */
+    private com.aresstack.enterpriseai.research.runtime.team.MainModelChat researchChat;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
@@ -365,9 +370,9 @@ public final class CompositionRoot {
                 && researchTools.getAsBoolean();
         if (delegated) {
             final ToolCatalog catalog = toolCatalog;
+            this.researchChat = new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions());
             final ResearchDelegationTool research = new ResearchDelegationTool(
-                    name -> catalog.find(name, ToolChannel.AGENT),
-                    new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()), ports.searchRuns());
+                    name -> catalog.find(name, ToolChannel.AGENT), researchChat, ports.searchRuns());
             toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
                     () -> researchTools.getAsBoolean()
                             ? Collections.singletonList(research.contribution())
@@ -414,10 +419,6 @@ public final class CompositionRoot {
                     () -> McpChatTool.definitions(
                             MemoryTools.forChat(null, "")));
         }
-        // Project files (#143): chat only, bound to the turn's chat; each call resolves the chat's current project and
-        // fails closed. They never enter the knowledge index, and the agent endpoint gets no project file tools.
-        toolCatalog.registerDefinitions(ORIGIN_PROJECT_FILES, EnumSet.of(ToolChannel.CHAT),
-                com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileTools::definitions);
         registerHelpTools(toolCatalog, config.agent().toolSettings());
         // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
@@ -789,43 +790,119 @@ public final class CompositionRoot {
         return memoryManagement;
     }
 
-    /** Where the shared project files live (#143); {@code null}: no project file tools. */
+    /**
+     * Where the shared project files live (#143). They go into the normal knowledge index under their project's
+     * source; {@code null}: no project files.
+     */
     public void storeProjectFilesIn(com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore store) {
-        this.projectFiles = store;
+        this.projectFiles = store == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.knowledge.ProjectFileKnowledge(store,
+                attachmentText, prefetch, ports.index(), ports.rawIndex());
+    }
+
+    /** The project files and their indexing (#143), {@code null} without a store. */
+    public com.aresstack.enterpriseai.proasteion.application.knowledge.ProjectFileKnowledge projectFiles() {
+        return projectFiles;
+    }
+
+    /** Drops the knowledge tools of a deleted project (#143). */
+    public void forgetProjectTools(String projectId) {
+        ProjectScopedTools tools = projectTools.remove(
+                com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.source(projectId));
+        if (tools != null) {
+            tools.knowledge.shutdown();
+        }
     }
 
     /**
-     * The active project file tools bound to the chat {@code chatId}, plus its memory tools: everything the chat path
-     * offers per turn with the trusted chat id. Project file tools are offered only while the chat belongs to a
-     * project; each call checks the assignment again.
+     * Everything the chat path offers per turn with the trusted chat id: the memory tools and, while the chat belongs
+     * to a project, the knowledge tools of that project (#143). Those replace the general {@code knowledge_search},
+     * {@code knowledge_read}, {@code knowledge_read_many} and {@code knowledge_research} of the same name for this
+     * turn and also find and read the project's files; the general ones see no project file at all. The project comes
+     * from the chat's current assignment, asked on every turn and checked again on every read.
      */
     public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> chatBoundTools(String chatId) {
         List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
                 new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(memoryChatTools(chatId));
-        com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore store = projectFiles;
-        com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects = memoryProjects;
-        if (store == null || projects == null || chatId == null || chatId.trim().isEmpty()) {
+        SourceAddress project = visibleProject(chatId);
+        if (project == null) {
             return tools;
         }
-        com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation =
-                new com.aresstack.enterpriseai.astu.chat.ChatConversationId(chatId);
-        com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext context;
-        try {
-            context = projects.resolve(conversation);
-        } catch (RuntimeException e) {
-            return tools;
-        }
-        if (context == null || !context.isResolved() || context.projectId() == null) {
-            return tools;
-        }
-        for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool
-                : new com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileTools(store, attachmentText,
-                projects, conversation).tools()) {
-            if (toolCatalog.isEnabled(tool.name())) {
-                tools.add(tool);
+        ProjectScopedTools scoped = projectTools.get(project);
+        if (scoped == null) {
+            ProjectScopedTools created = new ProjectScopedTools(knowledgeTools.scopedTo(project));
+            scoped = projectTools.putIfAbsent(project, created);
+            if (scoped == null) {
+                scoped = created;
+            } else {
+                created.knowledge.shutdown();
             }
         }
+        List<McpToolContribution> replacements = new ArrayList<McpToolContribution>();
+        for (McpToolContribution tool : toolCatalog.tools(EnumSet.of(ToolChannel.CHAT))) {
+            McpToolContribution replacement = scoped.replacement(tool.getName());
+            if (replacement != null) {
+                replacements.add(replacement);
+            }
+        }
+        tools.addAll(McpChatTool.all(replacements));
         return tools;
+    }
+
+    /** The project source the chat may see now, {@code null} without a project or an unresolved assignment. */
+    private SourceAddress visibleProject(String chatId) {
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects = memoryProjects;
+        if (projects == null || chatId == null || chatId.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext context =
+                    projects.resolve(new com.aresstack.enterpriseai.astu.chat.ChatConversationId(chatId));
+            return context == null || !context.isResolved() || context.projectId() == null ? null
+                    : com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge.source(context.projectId());
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The knowledge tools of one project's chats, plus a research delegation that uses exactly them. */
+    private final class ProjectScopedTools {
+        final KnowledgeMcpTools knowledge;
+        final ResearchDelegationTool research;
+
+        ProjectScopedTools(final KnowledgeMcpTools knowledge) {
+            this.knowledge = knowledge;
+            final ToolCatalog catalog = toolCatalog;
+            this.research = researchChat == null ? null : new ResearchDelegationTool(name -> {
+                McpToolContribution general = catalog.find(name, ToolChannel.AGENT);
+                McpToolContribution own = general == null ? null : knowledgeTool(name);
+                return own != null ? own : general;
+            }, researchChat, ports.searchRuns());
+        }
+
+        /** The project's own variant of the knowledge tool {@code name}, {@code null} if it has none. */
+        McpToolContribution knowledgeTool(String name) {
+            if (KnowledgeMcpTools.KNOWLEDGE_SEARCH.equals(name)) {
+                return knowledge.knowledgeSearch();
+            }
+            if (KnowledgeMcpTools.KNOWLEDGE_INDEX_SEARCH.equals(name)) {
+                return knowledge.knowledgeIndexSearch();
+            }
+            if (KnowledgeMcpTools.KNOWLEDGE_READ.equals(name)) {
+                return knowledge.knowledgeRead();
+            }
+            if (KnowledgeMcpTools.KNOWLEDGE_READ_MANY.equals(name)) {
+                return knowledge.knowledgeReadMany();
+            }
+            return null;
+        }
+
+        McpToolContribution replacement(String name) {
+            if (ResearchDelegationTool.NAME.equals(name)) {
+                return research == null ? null : research.contribution();
+            }
+            return knowledgeTool(name);
+        }
     }
 
     /** Removes the memories of a finally deleted chat (project and global memories stay). */

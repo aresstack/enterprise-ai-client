@@ -180,11 +180,24 @@ public final class ShellAssembly {
         root.ragChat().withProjectContext(chatProjects);
         // Memories (#144): scope=project follows the chat's current project; an unresolved assignment has none.
         root.resolveMemoryProjectsWith(chatProjects);
-        // Shared project files (#143): outside the knowledge index, read only through the chat-bound project file
-        // tools, which check the chat's current project on every call.
+        // Shared project files (#143): normal knowledge under the project's own source, visible only to chats of
+        // that project (checked per turn and per read). At start, files missing from the index (e.g. after a rebuild)
+        // are indexed again in the background; unchanged ones are skipped.
         final FileProjectFileStore projectFiles =
                 new FileProjectFileStore(chatsDirectory.resolveSibling(PROJECT_FILES_DIRECTORY));
         root.storeProjectFilesIn(projectFiles);
+        final Executor projectIndexing = java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "project-file-indexing");
+            thread.setDaemon(true);
+            return thread;
+        });
+        projectIndexing.execute(() -> {
+            List<String> ids = new ArrayList<String>();
+            for (ChatProjectRecord project : chatProjects.projects()) {
+                ids.add(project.getId());
+            }
+            root.projectFiles().indexAll(ids);
+        });
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
@@ -540,8 +553,9 @@ public final class ShellAssembly {
                 }
                 chatProjects.delete(projectId);
                 for (String id : removed) {
+                    root.forgetProjectTools(id);
                     try {
-                        projectFiles.deleteProject(id);
+                        root.projectFiles().deleteProject(id);
                     } catch (RuntimeException e) {
                         LOG.log(Level.WARNING, "Projektdateien von " + id + " nicht gelöscht: " + e.getMessage(), e);
                     }
@@ -568,7 +582,16 @@ public final class ShellAssembly {
                 StringBuilder problems = new StringBuilder();
                 for (File file : files) {
                     try {
-                        projectFiles.add(projectId, file.toPath());
+                        final Attachment added = projectFiles.add(projectId, file.toPath());
+                        // Extracting and embedding take a while: off the UI thread, in the normal index pipeline.
+                        projectIndexing.execute(() -> {
+                            try {
+                                root.projectFiles().index(projectId, added);
+                            } catch (RuntimeException e) {
+                                LOG.log(Level.WARNING, "Projektdatei " + added.fileName() + " nicht indexiert: "
+                                        + e.getMessage(), e);
+                            }
+                        });
                     } catch (RuntimeException e) {
                         problems.append(problems.length() == 0 ? "" : "\n").append(e.getMessage());
                     }
@@ -578,7 +601,7 @@ public final class ShellAssembly {
 
             @Override
             public void removeProjectFileRequested(String projectId, String fileId) {
-                projectFiles.remove(projectId, fileId);
+                root.projectFiles().remove(projectId, fileId);
             }
 
             @Override

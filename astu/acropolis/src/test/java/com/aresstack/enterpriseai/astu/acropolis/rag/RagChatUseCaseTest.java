@@ -87,6 +87,7 @@ public class RagChatUseCaseTest {
     @Test
     public void ragOnPutsContextIntoTheSystemPartAndLeavesTheQuestionUnchanged() throws Exception {
         ChatConversationId id = chat.openConversation("Du bist hilfsbereit.");
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
         chatPort.enqueueAnswer("Mit apt [1].");
 
         RagChatTurn turn = rag.send(id, QUESTION, RagOptions.enabled(), listener());
@@ -573,6 +574,54 @@ public class RagChatUseCaseTest {
         awaitDone(rag.send(id, "Und ohne Projekt?", RagOptions.disabled(), listener()));
         assertEquals("Du bist hilfsbereit.", chatPort.lastRequest().messages().get(0).content());
         assertEquals("history keeps only questions and answers", 6, chat.conversation(id).messages().size());
+    }
+
+    /** #143: a project chat retrieves its own project's files, never another project's, and loses them on a move. */
+    @Test
+    public void ragSeesOnlyTheFilesOfTheChatsCurrentProject() throws Exception {
+        RagChatUseCase rag = withFollowUps(FollowUpResearch.DEFAULT_MAX_FOLLOW_UPS);
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects = projects();
+        rag.withProjectContext(projects);
+        ChatConversationId id = chat.openConversation();
+        String a = projects.create("A", null);
+        String b = projects.create("B", null);
+        index.index(java.util.Arrays.asList(
+                entry(resource("chatproject:" + a + "/att-0000000a", "chatproject://" + a), 0,
+                        "Projekt A: Java unter Linux nur mit dem internen Spiegel", vector(SPACE_3D, 1, 0, 0)),
+                entry(resource("chatproject:" + b + "/att-0000000b", "chatproject://" + b), 0,
+                        "Projekt B: Java unter Linux nur als Container", vector(SPACE_3D, 1, 0, 0))));
+
+        projects.assign(id.value(), a);
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Über den Spiegel [1].");
+        awaitDone(rag.send(id, QUESTION, RagOptions.enabled(), listener()));
+        java.util.List<String> inA = contextResources(rag, id);
+        assertTrue(inA.toString(), inA.contains("chatproject:" + a + "/att-0000000a"));
+        assertFalse(inA.toString(), inA.contains("chatproject:" + b + "/att-0000000b"));
+
+        projects.assign(id.value(), b);
+        assertTrue("A's chunks are gone at once", rag.knowledgeContext(id).isEmpty());
+        chatPort.enqueueAnswer("{\"sufficient\": true}");
+        chatPort.enqueueAnswer("Als Container [1].");
+        awaitDone(rag.send(id, QUESTION, RagOptions.enabled(), listener()));
+        java.util.List<String> inB = contextResources(rag, id);
+        assertTrue(inB.toString(), inB.contains("chatproject:" + b + "/att-0000000b"));
+        assertFalse(inB.toString(), inB.contains("chatproject:" + a + "/att-0000000a"));
+
+        projects.assign(id.value(), null);
+        chatPort.enqueueAnswer("Mit apt [1].");
+        awaitDone(rag.send(id, QUESTION, RagOptions.enabled(), listener()));
+        for (String resource : contextResources(rag, id)) {
+            assertFalse(resource, resource.startsWith("chatproject:"));
+        }
+    }
+
+    private static java.util.List<String> contextResources(RagChatUseCase use, ChatConversationId id) {
+        java.util.List<String> ids = new java.util.ArrayList<String>();
+        for (RetrievedChunk hit : use.knowledgeContext(id).hits()) {
+            ids.add(hit.resource().id().value());
+        }
+        return ids;
     }
 
     /** #143: knowledge context cached under project A is not reused after a move, not even after moving back. */

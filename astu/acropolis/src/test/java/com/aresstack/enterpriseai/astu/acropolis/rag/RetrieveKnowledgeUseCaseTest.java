@@ -100,6 +100,38 @@ public class RetrieveKnowledgeUseCaseTest {
     }
 
     @Test
+    public void projectFilesAreVisibleOnlyToTheirOwnProject() {
+        KnowledgeResource planA = resource("chatproject:pA/att-0000000a", "chatproject://pA");
+        KnowledgeResource planB = resource("chatproject:pB/att-0000000b", "chatproject://pB");
+        index.index(Arrays.asList(
+                entry(planA, 0, "Kaffeemaschine Projekt A", vector(SPACE_3D, 0, 0, 1)),
+                entry(planB, 0, "Kaffeemaschine Projekt B", vector(SPACE_3D, 0, 0, 1))));
+        RetrieveKnowledgeUseCase retrieval = useCase(null);
+
+        List<String> all = resourceIds(retrieval.retrieve("Kaffeemaschine"));
+        assertTrue(all.contains("confluence:42"));
+        assertFalse("all sources never means all projects", all.contains("chatproject:pA/att-0000000a"));
+        assertFalse(all.contains("chatproject:pB/att-0000000b"));
+
+        List<String> inA = resourceIds(retrieval.retrieve("Kaffeemaschine", Collections.<SourceAddress>emptySet(),
+                SourceAddress.of("chatproject://pA"), null));
+        assertTrue(inA.contains("confluence:42"));
+        assertTrue(inA.contains("chatproject:pA/att-0000000a"));
+        assertFalse(inA.contains("chatproject:pB/att-0000000b"));
+
+        List<String> namedB = resourceIds(retrieval.retrieve("Kaffeemaschine",
+                Collections.singleton(SourceAddress.of("chatproject://pB")), SourceAddress.of("chatproject://pA"),
+                null));
+        assertFalse("naming another project's source does not open it",
+                namedB.contains("chatproject:pB/att-0000000b"));
+
+        List<String> restricted = resourceIds(retrieval.retrieve("Kaffeemaschine",
+                Collections.singleton(SourceAddress.of("wiki")), SourceAddress.of("chatproject://pA"), null));
+        assertTrue(restricted.contains("chatproject:pA/att-0000000a"));
+        assertFalse(restricted.contains("confluence:42"));
+    }
+
+    @Test
     public void limitsTheFusedResult() {
         RetrievalResult result = useCase(RetrievalSettings.builder().maxResults(1).build()).retrieve("Linux");
 
