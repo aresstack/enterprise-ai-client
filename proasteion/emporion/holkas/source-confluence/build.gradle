@@ -15,5 +15,7 @@ dependencies {
     implementation libs.jgraphx
 
     testFixturesImplementation libs.gson
+    // Vertragstest ConfluenceAsyncHttpTransportContract für Implementierungen außerhalb dieses Moduls
+    testFixturesApi libs.junit
     testImplementation testFixtures(project(':source-api'))
 }
