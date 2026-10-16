@@ -365,7 +365,7 @@ public class ConfluenceKnowledgeSourceTest {
 
         List<SourceSearchHit> hits = source().search(new SourceQuery("x", 10));
 
-        assertEquals(Arrays.asList(page("100"), page("101"), page("102"), page("103")), ids(hits));
+        assertEquals(Arrays.asList(page("100"), page("101"), page("102"), page("103")), hitIds(hits));
         assertEquals(2, confluence.requestCount("/rest/api/search"));
         assertEquals("3", confluence.lastSearchQuery.get("start"));
     }
@@ -459,7 +459,7 @@ public class ConfluenceKnowledgeSourceTest {
 
         List<SourceSearchHit> hits = source().search(new SourceQuery("x", 10));
 
-        assertEquals(Arrays.asList(page("103"), page("101"), page("100")), ids(hits));
+        assertEquals(Arrays.asList(page("103"), page("101"), page("100")), hitIds(hits));
         assertEquals("Eins", hits.get(1).snippet());
     }
 
@@ -473,7 +473,7 @@ public class ConfluenceKnowledgeSourceTest {
         assertKind(Kind.INVALID_RESPONSE, () -> source().search(new SourceQuery("x", 5)));
     }
 
-    private static List<KnowledgeResourceId> ids(List<SourceSearchHit> hits) {
+    private static List<KnowledgeResourceId> hitIds(List<SourceSearchHit> hits) {
         List<KnowledgeResourceId> ids = new ArrayList<KnowledgeResourceId>();
         for (SourceSearchHit hit : hits) {
             ids.add(hit.resourceId());
