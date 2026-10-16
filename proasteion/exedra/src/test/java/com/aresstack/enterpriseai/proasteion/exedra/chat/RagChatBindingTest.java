@@ -883,6 +883,83 @@ public class RagChatBindingTest {
         assertEquals("Aklima bitte erstmal das Programm", entries(fixture.model).get(0).getText());
     }
 
+    /** #156: the balance of a stopped research survives a further turn and closing and reopening the chat. */
+    @Test
+    public void stoppedResearchBalanceSurvivesANewTurnAndReopening() throws Exception {
+        indexAll();
+        final GatedIndex gated = new GatedIndex(index);
+        port.enqueueHanging("Zu spät");
+        final Fixture fixture = fixture(gated, embeddings);
+        final FileChatHistoryStore store = new FileChatHistoryStore(folder.newFolder("chats").toPath());
+        final ChatHistoryBinding history = onEdt(new Callable<ChatHistoryBinding>() {
+            @Override
+            public ChatHistoryBinding call() {
+                return new ChatHistoryBinding(store, chat, fixture.binding, fixture.model, "Antworte knapp.",
+                        () -> 5L);
+            }
+        });
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Wie lange ist die Kündigungsfrist?", true);
+            }
+        });
+        awaitActivity(fixture.model, ChatResearchCard.TITLE);
+        assertTrue(gated.awaitSearch());
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.stopRequested();
+            }
+        });
+        gated.release();
+        awaitIdle(fixture.model);
+
+        port.enqueueAnswer("Drei Monate [1].");
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                fixture.binding.sendRequested("Und die Probezeit?", true);
+            }
+        });
+        awaitIdle(fixture.model);
+        assertTrue("Abbruchbilanz bleibt nach einem weiteren Turn: " + entries(fixture.model),
+                hasLine(entries(fixture.model), "Recherche abgebrochen"));
+
+        com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord old =
+                new com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord("alt", 1L);
+        old.getMessages().add(new com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord(
+                com.aresstack.enterpriseai.astu.acropolis.history.ChatMessageRecord.ROLE_USER, "Was ist IAR?", 1L,
+                null));
+        old.setTitle("Was ist IAR?");
+        store.save(old);
+        assertTrue(onEdt(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return history.open("alt");
+            }
+        }));
+        assertTrue(onEdt(new Callable<Boolean>() {
+            @Override
+            public Boolean call() {
+                return history.open(conversation.value());
+            }
+        }));
+        assertTrue("Abbruchbilanz nach dem Wiederöffnen: " + entries(fixture.model),
+                hasLine(entries(fixture.model), "Recherche abgebrochen"));
+    }
+
+    private static boolean hasLine(List<TranscriptEntry> entries, String prefix) {
+        for (TranscriptEntry entry : entries) {
+            String line = entry.getAuthor() == TranscriptEntry.Author.ACTIVITY ? entry.getActivitySummary()
+                    : entry.getText();
+            if (line.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Test
     public void stopDuringRetrievalCancelsTheTurnAsSoonAsItExists() throws Exception {
         indexAll();

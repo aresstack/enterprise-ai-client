@@ -455,7 +455,15 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                 return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getText(),
                         entry.getCreatedAtMillis(), null);
             case ACTIVITY:
-                return null; // Werkzeugwolken gehören zum Lauf, nicht zum gespeicherten Gespräch
+                // Werkzeugwolken gehören zum Lauf, nicht zum gespeicherten Gespräch. Only the balance of a research
+                // card that outlived its turn (stopped or failed, #156) stays: it comes back as a notice line.
+                if (ChatResearchCard.TITLE.equals(entry.getActivityTitle())
+                        && entry.getState() != TranscriptEntry.State.STREAMING
+                        && !entry.getActivitySummary().trim().isEmpty()) {
+                    return new ChatMessageRecord(ChatMessageRecord.ROLE_INFO, entry.getActivitySummary(),
+                            entry.getCreatedAtMillis(), null);
+                }
+                return null;
             default:
                 boolean finished = entry.getState() == TranscriptEntry.State.COMPLETE
                         || entry.getState() == TranscriptEntry.State.CANCELLED;
