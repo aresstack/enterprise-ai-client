@@ -1,5 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.application.memory;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPolicy;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.memory.api.Memory;
 import com.aresstack.enterpriseai.memory.api.MemoryId;
 import com.aresstack.enterpriseai.memory.api.MemoryOwner;
@@ -11,7 +16,6 @@ import org.junit.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,18 +33,25 @@ public class MemoryServiceTest {
 
     private final InMemoryStore store = new InMemoryStore();
     private final Map<String, String> projectOf = new HashMap<String, String>();
-    private final List<MemoryDeletionRequest> asked = new ArrayList<MemoryDeletionRequest>();
+    private final List<ApprovalRequest> asked = new ArrayList<ApprovalRequest>();
     private boolean approve;
+    private Runnable whileAsking = () -> { };
 
-    private MemoryService service(Map<MemoryScope, MemoryPolicy> policies) {
-        return new MemoryService(store, "alice", projectOf::get, policies, request -> {
+    private ToolApprovalGate gate(ApprovalRules rules) {
+        return new ToolApprovalGate(() -> rules, (request, timeoutMillis) -> {
             asked.add(request);
-            return approve;
-        });
+            whileAsking.run();
+            return ApprovalDecision.of(request, approve ? ApprovalDecision.Outcome.APPROVED
+                    : ApprovalDecision.Outcome.REJECTED);
+        }, 1000L);
+    }
+
+    private MemoryService service(ApprovalRules rules) {
+        return new MemoryService(store, "alice", projectOf::get, gate(rules));
     }
 
     private MemoryService service() {
-        return service(null);
+        return service(ApprovalRules.none());
     }
 
     private static String id(MemoryResult result) {
@@ -69,7 +80,7 @@ public class MemoryServiceTest {
         service().save("chat-a", "Antworte auf Deutsch", "global");
         assertEquals(MemoryOwner.global("alice"), store.only().owner());
         assertTrue(service().search("chat-b", "deutsch", null, 0).text().contains("[global"));
-        MemoryService bob = new MemoryService(store, "bob", null, null, null);
+        MemoryService bob = new MemoryService(store, "bob", null, null);
         assertEquals("No memories found.", bob.search("chat-c", "deutsch", null, 0).text());
     }
 
@@ -128,8 +139,9 @@ public class MemoryServiceTest {
         approve = false;
         assertTrue(service().delete("chat-a", id).isError());
         assertEquals(1, asked.size());
-        assertEquals(MemoryScope.GLOBAL, asked.get(0).scope());
-        assertEquals(id, asked.get(0).id().visible());
+        assertEquals("global", asked.get(0).target().scope());
+        assertEquals("delete", asked.get(0).target().action());
+        assertEquals(id, asked.get(0).target().targetId());
         assertEquals(1, store.all.size());
 
         approve = true;
@@ -140,7 +152,7 @@ public class MemoryServiceTest {
     @Test
     public void withoutHostApprovalProjectAndGlobalDeletionsAreBlocked() {
         String id = id(service().save("chat-a", "Bitte duzen", "global"));
-        MemoryService noHost = new MemoryService(store, "alice", null, null, null);
+        MemoryService noHost = new MemoryService(store, "alice", null, null);
         assertTrue(noHost.delete("chat-a", id).isError());
         assertEquals(1, store.all.size());
     }
@@ -148,10 +160,8 @@ public class MemoryServiceTest {
     @Test
     public void denyPolicyPreventsDeletionWithoutAsking() {
         String id = id(service().save("chat-a", "Bitte duzen", "global"));
-        Map<MemoryScope, MemoryPolicy> policies = new EnumMap<MemoryScope, MemoryPolicy>(MemoryScope.class);
-        policies.put(MemoryScope.GLOBAL, MemoryPolicy.DENY);
         approve = true;
-        assertTrue(service(policies).delete("chat-a", id).isError());
+        assertTrue(service(ApprovalRules.parse("memory_delete:delete/global=DENY")).delete("chat-a", id).isError());
         assertTrue(asked.isEmpty());
         assertEquals(1, store.all.size());
     }
@@ -159,13 +169,29 @@ public class MemoryServiceTest {
     @Test
     public void staleApprovalDoesNotDeleteAChangedMemory() {
         final String id = id(service().save("chat-a", "Bitte duzen", "global"));
-        MemoryService racing = new MemoryService(store, "alice", null, null, request -> {
-            store.bumpVersion(request.id());
-            return true;
-        });
-        MemoryResult result = racing.delete("chat-a", id);
+        approve = true;
+        whileAsking = () -> store.bumpVersion(MemoryId.parse(id));
+        MemoryResult result = service().delete("chat-a", id);
         assertTrue(result.text(), result.isError());
         assertEquals(1, store.all.size());
+    }
+
+    @Test
+    public void settingsCanAllowGlobalDeletionWithoutAsking() {
+        String id = id(service().save("chat-a", "Bitte duzen", "global"));
+        assertFalse(service(ApprovalRules.parse("memory_delete:delete/global=ALLOW")).delete("chat-a", id).isError());
+        assertTrue(asked.isEmpty());
+        assertTrue(store.all.isEmpty());
+    }
+
+    @Test
+    public void defaultsAreRegisteredWithTheGate() {
+        ToolApprovalGate gate = gate(ApprovalRules.none());
+        new MemoryService(store, "alice", null, gate);
+        assertEquals(3, gate.subRules(MemoryService.DELETE_TOOL).size());
+        String id = id(service().save("chat-a", "x", "global"));
+        assertEquals(ApprovalPolicy.ASK, gate.policy(MemoryService.DELETE_TOOL,
+                java.util.Collections.<String, Object>singletonMap("id", id)));
     }
 
     @Test

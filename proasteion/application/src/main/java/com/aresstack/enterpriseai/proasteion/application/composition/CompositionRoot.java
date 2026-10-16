@@ -370,11 +370,11 @@ public final class CompositionRoot {
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
         // Memories (#144): chat only, built per turn with the trusted chat id (memoryChatTools). The agent endpoint
-        // has no verifiable chat or user, so it gets no memory tools. Project scope waits for #143, the approval
-        // of project/global deletions for the host approval of #145.
+        // has no verifiable chat or user, so it gets no memory tools. memory_delete goes through the catalog's
+        // approval gate (#145; project/global ASK by default). Project scope waits for the chat projects of #143.
         this.memories = ports.memories() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
-                System.getProperty("user.name", "local"), null, null, null);
+                System.getProperty("user.name", "local"), null, toolCatalog.approvals());
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
                     () -> McpChatTool.definitions(

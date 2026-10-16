@@ -1,5 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.application.memory;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalPolicy;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ApprovalTarget;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.memory.api.Memory;
 import com.aresstack.enterpriseai.memory.api.MemoryId;
 import com.aresstack.enterpriseai.memory.api.MemoryOwner;
@@ -10,7 +15,8 @@ import com.aresstack.enterpriseai.memory.api.MemoryStorePort;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -20,6 +26,10 @@ import java.util.logging.Logger;
  * Use cases behind the memory tools (#144). Every call resolves what the chat may see from trusted context: the chat
  * itself, the project it is assigned to now, and the running user. A scope argument can only narrow that, never widen
  * it. Results are model-facing text; memory content is never logged.
+ *
+ * <p>Deletion goes through the generic {@link ToolApprovalGate} (#145): this service registers the side-effect-free
+ * target resolver of {@code memory_delete} with the built-in defaults chat ALLOW, project and global ASK, which
+ * {@code tools.approval} can override per scope.
  */
 public final class MemoryService {
 
@@ -27,44 +37,62 @@ public final class MemoryService {
     public static final int MAX_LIMIT = 50;
     static final int MAX_CONTENT_LENGTH = 2000;
     private static final int PREVIEW_LENGTH = 200;
+    /** Name of the delete tool; the approval rules are keyed by it. */
+    public static final String DELETE_TOOL = "memory_delete";
+    static final String DELETE_ACTION = "delete";
+    private static final String ID_ARGUMENT = "id";
 
     private static final Logger LOG = Logger.getLogger(MemoryService.class.getName());
 
     private final MemoryStorePort store;
     private final String userId;
     private final ChatProjectResolver projects;
-    private final Map<MemoryScope, MemoryPolicy> deletePolicies;
-    private final MemoryDeletionApproval approval;
+    private final ToolApprovalGate approvals;
 
     /**
-     * @param userId         the running user/profile; key of the global memories
-     * @param projects       current project of a chat, asked on every call; {@code null}: no chat has a project
-     * @param deletePolicies per scope; missing scopes use {@link #defaultDeletePolicies()}
-     * @param approval       asked for deletions with {@link MemoryPolicy#ASK}; {@code null}: no host approval, so
-     *                       nothing that needs confirmation is deleted
+     * @param userId    the running user/profile; key of the global memories
+     * @param projects  current project of a chat, asked on every call; {@code null}: no chat has a project
+     * @param approvals the application's approval gate; this service registers {@value #DELETE_TOOL} with it.
+     *                  {@code null}: a gate without rules and without anyone to ask, so only chat memories can be
+     *                  deleted
      */
     public MemoryService(MemoryStorePort store, String userId, ChatProjectResolver projects,
-                         Map<MemoryScope, MemoryPolicy> deletePolicies, MemoryDeletionApproval approval) {
+                         ToolApprovalGate approvals) {
         if (store == null || userId == null || userId.trim().isEmpty()) {
             throw new IllegalArgumentException("store and userId must be given");
         }
         this.store = store;
         this.userId = userId;
         this.projects = projects == null ? chatId -> null : projects;
-        this.deletePolicies = defaultDeletePolicies();
-        if (deletePolicies != null) {
-            this.deletePolicies.putAll(deletePolicies);
-        }
-        this.approval = approval == null ? request -> false : approval;
+        this.approvals = approvals == null ? new ToolApprovalGate(ApprovalRules::none,
+                ApprovalPromptPort.unavailable(), ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS) : approvals;
+        this.approvals.registerResolver(DELETE_TOOL, (toolName, arguments) -> deletionTarget(arguments),
+                defaultDeletePolicies());
     }
 
-    /** chat {@code ALLOW}, project and global {@code ASK}. */
-    public static Map<MemoryScope, MemoryPolicy> defaultDeletePolicies() {
-        Map<MemoryScope, MemoryPolicy> policies = new EnumMap<MemoryScope, MemoryPolicy>(MemoryScope.class);
-        policies.put(MemoryScope.CHAT, MemoryPolicy.ALLOW);
-        policies.put(MemoryScope.PROJECT, MemoryPolicy.ASK);
-        policies.put(MemoryScope.GLOBAL, MemoryPolicy.ASK);
+    /** Built-in rules of {@value #DELETE_TOOL}: chat {@code ALLOW}, project and global {@code ASK}. */
+    static Map<String, ApprovalPolicy> defaultDeletePolicies() {
+        Map<String, ApprovalPolicy> policies = new LinkedHashMap<String, ApprovalPolicy>();
+        policies.put(DELETE_ACTION + "/" + MemoryScope.CHAT.wireName(), ApprovalPolicy.ALLOW);
+        policies.put(DELETE_ACTION + "/" + MemoryScope.PROJECT.wireName(), ApprovalPolicy.ASK);
+        policies.put(DELETE_ACTION + "/" + MemoryScope.GLOBAL.wireName(), ApprovalPolicy.ASK);
         return policies;
+    }
+
+    /**
+     * Side-effect-free resolver for the gate: the memory's real scope and version from the store. Throws for an
+     * unknown id, so the gate does not run the call.
+     */
+    private ApprovalTarget deletionTarget(Map<String, Object> arguments) {
+        Object raw = arguments == null ? null : arguments.get(ID_ARGUMENT);
+        MemoryId id = MemoryId.parse(raw == null ? null : String.valueOf(raw));
+        Memory memory = id == null ? null : store.find(id);
+        if (memory == null) {
+            throw new IllegalArgumentException("unknown memory");
+        }
+        return new ApprovalTarget(DELETE_ACTION, memory.scope().wireName(), id.visible(),
+                String.valueOf(memory.version()), "Erinnerung " + id.visible() + " ("
+                + memory.scope().wireName() + ") löschen: " + preview(memory.content()));
     }
 
     /** {@code memory_save}: {@code scope} {@code null} or blank means chat. */
@@ -183,30 +211,19 @@ public final class MemoryService {
                 return MemoryResult.error("Nothing deleted: there is no memory " + id.visible()
                         + " accessible from this chat.");
             }
-            MemoryPolicy policy = deletePolicies.get(memory.scope());
-            if (policy == MemoryPolicy.DENY) {
-                return MemoryResult.error("Nothing deleted: deleting " + memory.scope().wireName()
-                        + " memories with a tool is not allowed by the settings. The user can delete "
-                        + id.visible() + " in the memory management.");
+            // Ownership is checked above, so the confirmation never shows another chat's memory. The gate resolves
+            // scope and version from the store, asks on ASK and re-checks the target after the answer; the delete
+            // below is bound to the version read here, which closes the window up to the write.
+            ToolApprovalGate.Verdict verdict = approvals.check(DELETE_TOOL,
+                    Collections.<String, Object>singletonMap(ID_ARGUMENT, id.visible()));
+            if (!verdict.permitted()) {
+                return MemoryResult.error("Nothing deleted: deleting the " + memory.scope().wireName() + " memory "
+                        + id.visible() + " was not permitted (" + verdict.reason() + ").");
             }
-            if (policy != MemoryPolicy.ALLOW) {
-                boolean approved;
-                try {
-                    approved = approval.approve(new MemoryDeletionRequest(id, memory.scope(), memory.version(),
-                            preview(memory.content())));
-                } catch (RuntimeException e) {
-                    LOG.log(Level.WARNING, "Memory deletion approval failed: " + e.getMessage(), e);
-                    approved = false;
-                }
-                if (!approved) {
-                    return MemoryResult.error("Nothing deleted: deleting the " + memory.scope().wireName()
-                            + " memory " + id.visible() + " needs the user's confirmation, which was not given.");
-                }
-                // The project assignment may have changed while the user decided.
-                if (!accessibleOwners(chatId).contains(memory.owner())) {
-                    return MemoryResult.error("Nothing deleted: memory " + id.visible()
-                            + " is no longer accessible from this chat.");
-                }
+            // The project assignment may have changed while the user decided.
+            if (!accessibleOwners(chatId).contains(memory.owner())) {
+                return MemoryResult.error("Nothing deleted: memory " + id.visible()
+                        + " is no longer accessible from this chat.");
             }
             if (!store.delete(id, memory.version())) {
                 return MemoryResult.error("Nothing deleted: memory " + id.visible()
