@@ -54,12 +54,13 @@ public class RagBoundaryTest {
     public void indexingSeesOnlySourceEmbeddingAndIndexPorts() {
         assertRule(classes().that().resideInAPackage(APPLICATION_KNOWLEDGE)
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
-                        "java.lang..", "java.util..",
+                        "java.lang..", "java.util..", "java.time..",
                         ROOT + ".astu.embedding..", ROOT + ".astu.knowledge..",
                         ROOT + ".embedding.api..", ROOT + ".astu.acropolis.chalcotheca..", ROOT + ".source.api..", ROOT + ".astu.resource..",
-                        APPLICATION_KNOWLEDGE)
+                        ROOT + ".searchrun.api..", APPLICATION_KNOWLEDGE)
                 .because("die Indexierung kennt Quellen nur über den Source-Port; kein Adapter, kein Chat, "
-                        + "kein Security-Typ – Zugangsdaten bleiben im Source-Adapter"));
+                        + "kein Security-Typ – Zugangsdaten bleiben im Source-Adapter; the search run log (#153) "
+                        + "only through its port"));
     }
 
     @Test

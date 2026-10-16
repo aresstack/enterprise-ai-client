@@ -284,6 +284,16 @@ public final class SearchDrivenIndexingUseCase {
             return runRecorded;
         }
 
+        /** Id of the recorded run as text, or {@code null} when it is not in the run log. */
+        public String recordedRunId() {
+            return runRecorded ? run.id().value() : null;
+        }
+
+        /** How many candidates the run received. */
+        public int candidateCount() {
+            return run.candidates().size();
+        }
+
         /** Die Vorlade-Serie der Treffer. */
         public KnowledgePrefetchService.Series series() {
             return series;

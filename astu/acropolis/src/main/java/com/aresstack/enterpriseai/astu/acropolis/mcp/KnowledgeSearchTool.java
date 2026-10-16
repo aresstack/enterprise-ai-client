@@ -146,8 +146,8 @@ final class KnowledgeSearchTool implements McpToolHandler {
         out.append("Query: ").append(ToolText.oneLine(query, 200)).append('\n');
         if (found != null && found.runRecorded()) {
             // The run keeps every live candidate (#153); candidates are not sources until read and judged.
-            out.append("Search run: ").append(found.run().id().value()).append(" (")
-                    .append(found.run().candidates().size()).append(" live candidates recorded)\n");
+            out.append("Search run: ").append(found.recordedRunId()).append(" (")
+                    .append(found.candidateCount()).append(" live candidates recorded)\n");
         }
         if (found != null) {
             for (Map.Entry<SourceAddress, String> failure : found.failures().entrySet()) {
