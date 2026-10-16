@@ -1,5 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.settings;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /** Eine Zeile des Reiters „Tools“: nur Werte, keine Registry- oder Port-Typen. */
 public final class ToolOverviewEntry {
 
@@ -9,6 +13,7 @@ public final class ToolOverviewEntry {
     private final String availability;
     private final boolean enabled;
     private final boolean required;
+    private final List<String> approvalSubRules;
 
     /** Wie unten, aktiv. */
     public ToolOverviewEntry(String name, String description, String origin, String availability) {
@@ -27,6 +32,15 @@ public final class ToolOverviewEntry {
     /** @param required Pflichtwerkzeug: immer aktiv, das Häkchen lässt sich nicht abwählen */
     public ToolOverviewEntry(String name, String description, String origin, String availability, boolean enabled,
                              boolean required) {
+        this(name, description, origin, availability, enabled, required, Collections.<String>emptyList());
+    }
+
+    /**
+     * @param approvalSubRules actions or {@code action/scope} combinations with their own approval rule, e.g.
+     *                         {@code delete/project}; empty: only one policy for the whole tool
+     */
+    public ToolOverviewEntry(String name, String description, String origin, String availability, boolean enabled,
+                             boolean required, List<String> approvalSubRules) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
@@ -36,6 +50,12 @@ public final class ToolOverviewEntry {
         this.availability = availability == null ? "" : availability;
         this.enabled = enabled || required;
         this.required = required;
+        this.approvalSubRules = approvalSubRules == null ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<String>(approvalSubRules));
+    }
+
+    public List<String> approvalSubRules() {
+        return approvalSubRules;
     }
 
     public boolean required() {
