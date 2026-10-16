@@ -119,6 +119,37 @@ public class ConfluencePartitionListingTest {
     }
 
     @Test
+    public void cursorOfAnotherSpaceIsUnsupported() throws Exception {
+        String devCursor = source.resources("DEV", "", 2).nextCursor();
+        assertFalse(devCursor.isEmpty());
+
+        try {
+            source.resources("OPS", devCursor, 2);
+            fail("expected UNSUPPORTED");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.UNSUPPORTED, e.kind());
+        }
+    }
+
+    @Test
+    public void bareNumericPositionIsNotACursor() throws Exception {
+        try {
+            source.resources("DEV", "2", 2);
+            fail("expected UNSUPPORTED");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(Kind.UNSUPPORTED, e.kind());
+        }
+    }
+
+    @Test
+    public void hugeLimitIsCappedPerRequestButNotOverall() throws Exception {
+        source.resources("DEV", "", Integer.MAX_VALUE);
+
+        String last = confluence.requests().get(confluence.requests().size() - 1).toString();
+        assertTrue(last, last.endsWith("&limit=" + ConfluenceKnowledgeSource.MAX_PARTITION_BATCH));
+    }
+
+    @Test
     public void emptySpaceIsCompleteRightAway() throws Exception {
         confluence.space("EMPTY", "Nothing yet");
 
