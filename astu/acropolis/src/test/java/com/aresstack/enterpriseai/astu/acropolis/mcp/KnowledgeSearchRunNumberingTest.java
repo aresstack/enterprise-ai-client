@@ -2,7 +2,6 @@ package com.aresstack.enterpriseai.astu.acropolis.mcp;
 
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.testing.InMemoryKnowledgeIndex;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
-import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgePrefetchService;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
@@ -19,6 +18,7 @@ import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
 import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.After;
@@ -48,8 +48,11 @@ public class KnowledgeSearchRunNumberingTest {
             new KnowledgeSourceRegistration(wiki, SourceScope.of("a", "b")));
     private final IndexKnowledgeUseCase indexing = new IndexKnowledgeUseCase(index, embeddings,
             embeddings.modelIdentity(), new KnowledgeChunker(KnowledgeChunkingPolicy.defaults()));
+    /** Prefetching never loads here, so the live hits stay live hits instead of racing into the index. */
     private final KnowledgePrefetchService prefetch = new KnowledgePrefetchService(indexing,
-            KnowledgeDocumentReader.direct(), KnowledgePrefetchService.Settings::defaults);
+            (owner, source, id) -> {
+                throw new KnowledgeSourceException(KnowledgeSourceException.Kind.UNAVAILABLE, "not in this test");
+            }, KnowledgePrefetchService.Settings::defaults);
     private final Map<SearchRunId, KnowledgeSearchRun> runs = new LinkedHashMap<SearchRunId, KnowledgeSearchRun>();
 
     @After
