@@ -26,6 +26,7 @@ import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
@@ -42,6 +43,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
@@ -409,6 +411,100 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             latestAnswer = entry.getText(); // gezeigt oder geladen, aber nie von selbst vorgelesen
         }
         refresh(true);
+    }
+
+    /** Label of the approve button in a tool approval bubble. */
+    public static final String APPROVE_TEXT = "Bestätigen";
+    /** Label of the reject button in a tool approval bubble. */
+    public static final String REJECT_TEXT = "Abbrechen";
+
+    /**
+     * Shows a waiting tool approval as an amber activity bubble with "Bestätigen" and "Abbrechen" below it. The
+     * first click wins: both buttons are disabled at once and {@code answer} gets {@code true} (approved) or
+     * {@code false}; later clicks do nothing. Close the returned handle with the actual outcome. Only on the EDT.
+     */
+    public ApprovalBubble showApproval(String title, String description, final Consumer<Boolean> answer) {
+        flushPendingUpdates();
+        messageList.remove(emptyState);
+        final AgentActivityBubblePanel thought = new AgentActivityBubblePanel(BubbleSide.LEFT, bubblePalette,
+                title, description);
+        thought.setHeaderTimestamp(System.currentTimeMillis());
+        final JPanel row = new JPanel();
+        row.setName("transcript.approval");
+        row.setOpaque(false);
+        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
+        BubbleMessageRow bubbleRow = new BubbleMessageRow(thought, BubbleSide.LEFT);
+        bubbleRow.setAlignmentX(LEFT_ALIGNMENT);
+        row.add(bubbleRow);
+        final JButton approve = new JButton(APPROVE_TEXT);
+        final JButton reject = new JButton(REJECT_TEXT);
+        final JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        buttons.setOpaque(false);
+        buttons.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 12));
+        buttons.add(approve);
+        buttons.add(reject);
+        buttons.setAlignmentX(LEFT_ALIGNMENT);
+        buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, buttons.getPreferredSize().height));
+        row.add(buttons);
+        final boolean[] answered = {false};
+        ActionListener click = event -> {
+            if (answered[0]) {
+                return;
+            }
+            answered[0] = true;
+            approve.setEnabled(false);
+            reject.setEnabled(false);
+            answer.accept(event.getSource() == approve);
+        };
+        approve.addActionListener(click);
+        reject.addActionListener(click);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        messageList.add(row);
+        messageList.add(spacer());
+        refresh(true);
+        return new ApprovalBubble() {
+            @Override
+            public void close(boolean approved, String outcome) {
+                answered[0] = true;
+                approve.setEnabled(false);
+                reject.setEnabled(false);
+                row.remove(buttons);
+                if (thought.getVisualState() == AnimatedThoughtBubblePanel.VisualState.RUNNING) {
+                    Runnable remove = () -> {
+                        removeRowAndSpacer(row);
+                        refresh(isNearBottom());
+                    };
+                    if (approved) {
+                        thought.completeSuccessfully(outcome, remove);
+                    } else {
+                        thought.completeWithFailure(outcome, remove);
+                    }
+                }
+                row.revalidate();
+                row.repaint();
+            }
+
+            @Override
+            public JButton approveButton() {
+                return approve;
+            }
+
+            @Override
+            public JButton rejectButton() {
+                return reject;
+            }
+        };
+    }
+
+    /** A tool approval shown by {@link #showApproval}. Only on the EDT. */
+    public interface ApprovalBubble {
+
+        /** Ends the question: no more clicks; the bubble bursts with {@code outcome} and leaves the transcript. */
+        void close(boolean approved, String outcome);
+
+        JButton approveButton();
+
+        JButton rejectButton();
     }
 
     /**

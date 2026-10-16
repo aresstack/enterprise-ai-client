@@ -72,9 +72,10 @@ import java.util.regex.Pattern;
  *       {@code includeAttachments}); die Originaldatei lädt {@link #loadAttachment} über den Download-Pfad, Vorschauen
  *       {@link #loadAttachmentPreview} über die Dokumentkonvertierung ({@code /rest/documentConversion/latest/
  *       conversion/<art>/<id>/<version>}, Muster aus Seite und Files-Endpunkt eines echten Mitschnitts).</li>
- *   <li>Suche: CQL {@code type=page AND text ~ "..."} über {@code /rest/api/content/search} (wie MainframeMate),
- *       optional auf konfigurierte Spaces beschränkt; dieser Endpunkt liefert keine Textausschnitte, Treffer
- *       haben deshalb einen leeren Snippet.</li>
+ *   <li>Search (issue #150): CQL {@code siteSearch ~ "..." AND type=page} over the search endpoint
+ *       {@code /rest/api/search} with {@code excerpt=highlight}, like the Confluence web search, optionally limited
+ *       to configured spaces; every hit carries the normalised excerpt as plain-text snippet without loading the
+ *       page, in Confluence order. Content and navigation queries keep using the content endpoints.</li>
  *   <li>Navigation ({@link PageNavigationSource}, Issue #97): Wurzel ist der Space der Seite ({@code space:KEY}),
  *       darunter die Seiten ohne Eltern ({@code depth=root}), je Ebene die Kindseiten, blätternd in Stapeln der
  *       Seitengröße; Querverweise sind die Seitenlinks des gerenderten Inhalts, geprüft über CQL {@code id in (...)}.
@@ -605,8 +606,8 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             @Override
             public List<SourceSearchHit> run(Session session) throws KnowledgeSourceException {
                 List<SourceSearchHit> hits = new ArrayList<SourceSearchHit>();
-                for (Page page : client.search(session, cql, query.limit())) {
-                    // Version und URL liefert die Suche mit (expand=version): unveränderte Treffer werden nicht geladen.
+                for (Page page : client.search(session, cql, query.limit()).pages) {
+                    // The search delivers version and URL (expand=content.version): unchanged hits are not loaded.
                     hits.add(new SourceSearchHit(ConfluenceIds.page(locator, page.id), page.title, page.excerpt,
                             KnowledgeRevision.of(page.modifiedAt, page.version), location(page.webUi)));
                 }
@@ -867,14 +868,15 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         return parsed;
     }
 
-    /** CQL für die Volltextsuche; Anführungszeichen und Backslashes im Suchtext werden maskiert. */
+    /** CQL of the page search; quotes and backslashes in the search text are escaped. */
     static String cql(String text, List<String> spaceKeys) {
         return cql(text, spaceKeys, Collections.<String>emptySet());
     }
 
     /** Wie MainframeMate: abgehakte Spaces fallen über {@code space not in (...)} aus der Suche. */
     static String cql(String text, List<String> spaceKeys, Collection<String> excludedSpaces) {
-        StringBuilder cql = new StringBuilder("type=page AND text ~ \"").append(escapeCql(text.trim())).append('"');
+        StringBuilder cql = new StringBuilder("siteSearch ~ \"").append(escapeCql(text.trim()))
+                .append("\" AND type=page");
         appendSpaces(cql, " AND space in (", spaceKeys);
         appendSpaces(cql, " AND space not in (", excludedSpaces);
         return cql.toString();

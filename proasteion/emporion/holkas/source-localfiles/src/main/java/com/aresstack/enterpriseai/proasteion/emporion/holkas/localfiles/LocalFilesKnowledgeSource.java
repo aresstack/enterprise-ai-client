@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles;
 
+import com.aresstack.enterpriseai.source.api.files.FilePatterns;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ContentCategory;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.ContentDetector;
 import com.aresstack.enterpriseai.proasteion.emporion.deigma.DetectedContentType;

@@ -1032,40 +1032,119 @@ final class ConfluenceRestClient {
         return end < 0 ? location : location.substring(0, end);
     }
 
+    /** Expansion of the search endpoint: the hit's content with version and space (revision, partition). */
+    private static final String SEARCH_EXPAND = "content.version,content.space";
+
+    /** Maximum length of a normalised search excerpt. */
+    static final int EXCERPT_MAX_LENGTH = 300;
+
     /**
-     * CQL-Suche über {@code /rest/api/content/search}, blättert bis {@code limit} Seiten-Treffer. Wie MainframeMate
-     * ({@code ConfluenceSearchProvider.search()}) kommt ein Treffer entweder als Seite selbst oder als Such-Hülle
-     * {@code {content: {...}, excerpt: "..."}}; der Ausschnitt der Hülle wird übernommen.
+     * Page search over the Confluence search endpoint {@code /rest/api/search} (the one the web search uses), with
+     * {@code excerpt=highlight}, which requests real page text per hit without loading the page (a hit without an
+     * excerpt stays valid with an empty snippet). Each result is a search
+     * wrapper {@code {content: {...}, title, excerpt, url, lastModified}}; results without a page as content (spaces,
+     * users, attachments) are skipped. Pages through {@code _links.next} or, when the server sends none, by
+     * {@code start} offsets while {@code totalSize} says more hits exist, until {@code limit} pages are collected.
+     * The order of the hits is the order of Confluence.
      */
-    List<Page> search(Session session, String cql, int limit) throws KnowledgeSourceException {
-        final int[] httpResults = new int[1];
-        List<Page> pages = paged(session, "/rest/api/content/search?cql=" + query(cql) + "&expand=" + LIST_EXPAND,
-                "Suche", limit, new Item<Page>() {
-                    @Override
-                    public Page map(JsonObject json) throws KnowledgeSourceException {
-                        httpResults[0]++;
-                        JsonObject content = object(json, "content");
-                        if (content == null) {
-                            content = json;
-                        }
-                        String type = string(content, "type");
-                        if (type != null && !"page".equals(type)) {
-                            return null;
-                        }
-                        return toPage(content).withExcerpt(excerpt(string(json, "excerpt")));
+    SearchResults search(Session session, String cql, int limit) throws KnowledgeSourceException {
+        String what = "Suche";
+        String base = "/rest/api/search?cql=" + query(cql) + "&excerpt=highlight&expand=" + SEARCH_EXPAND
+                + "&includeArchivedSpaces=false";
+        int pageSize = Math.min(config.pageSize(), limit);
+        List<Page> pages = new ArrayList<Page>();
+        Set<String> visited = new HashSet<String>();
+        int httpResults = 0;
+        long totalSize = -1;
+        int start = 0;
+        String next = base + "&start=0&limit=" + pageSize;
+        while (pages.size() < limit && next != null) {
+            if (!visited.add(next)) {
+                throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Folgelink wiederholt sich");
+            }
+            JsonObject json = getJson(session, next, what);
+            List<JsonObject> results = results(json, what);
+            httpResults += results.size();
+            for (JsonObject result : results) {
+                Page page = searchHit(result);
+                if (page != null) {
+                    pages.add(page);
+                    if (pages.size() >= limit) {
+                        break;
                     }
-                });
-        LOG.info("[Confluence] Suche: HTTP-Ergebnisse=" + httpResults[0] + ", erkannte Seiten=" + pages.size());
-        return pages;
+                }
+            }
+            long reportedTotal = number(json, "totalSize");
+            if (reportedTotal >= 0) {
+                totalSize = reportedTotal;
+            }
+            start += results.size();
+            next = nextLink(json, what);
+            if (next == null && !results.isEmpty() && totalSize > start) {
+                next = base + "&start=" + start + "&limit=" + pageSize;
+            }
+        }
+        LOG.info("[Confluence] Suche: HTTP-Ergebnisse=" + httpResults + ", erkannte Seiten=" + pages.size()
+                + ", totalSize=" + totalSize);
+        return new SearchResults(pages, totalSize);
     }
 
-    /** Wie MainframeMate: Markup und Hervorhebungsmarken entfernen, auf 300 Zeichen kürzen. */
+    /** One result of {@code /rest/api/search} as page, or {@code null} if it is no page. */
+    private Page searchHit(JsonObject result) throws KnowledgeSourceException {
+        JsonObject content = object(result, "content");
+        if (content == null || !"page".equals(string(content, "type"))) {
+            return null;
+        }
+        Page page = toPage(content);
+        if (page.title.isEmpty()) {
+            page = page.withTitle(excerpt(string(result, "title")));
+        }
+        return page.withExcerpt(excerpt(string(result, "excerpt")))
+                .withSearchFallbacks(string(result, "url"), instant(string(result, "lastModified")));
+    }
+
+    /**
+     * Plain text of a search excerpt: highlight markers and HTML markup removed, HTML entities decoded, whitespace
+     * collapsed, cut to {@link #EXCERPT_MAX_LENGTH} characters; empty for {@code null}.
+     */
     static String excerpt(String raw) {
         if (raw == null) {
             return "";
         }
-        String text = raw.replaceAll("<[^>]+>", "").replaceAll("@@@hl@@@|@@@endhl@@@", "").trim();
-        return text.length() > 300 ? text.substring(0, 300) + "…" : text;
+        // Block-level tags separate words, inline tags (highlight spans, bold) do not.
+        String text = raw.replace("@@@hl@@@", "").replace("@@@endhl@@@", "")
+                .replaceAll("(?i)<(br|/?p|/?div|/?li|/?tr|/?td|/?th|/?h[1-6])\\b[^>]*>", " ")
+                .replaceAll("<[^>]*>", "");
+        text = decodeEntities(text).replaceAll("[\\s\\u00A0]+", " ").trim();
+        return text.length() > EXCERPT_MAX_LENGTH ? text.substring(0, EXCERPT_MAX_LENGTH).trim() + "…" : text;
+    }
+
+    /** Decodes all HTML entities (named and numeric) with Jsoup's entity table. */
+    static String decodeEntities(String text) {
+        return org.jsoup.parser.Parser.unescapeEntities(text, false);
+    }
+
+    private static long number(JsonObject json, String key) {
+        JsonElement value = json == null ? null : json.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            return -1;
+        }
+        return value.getAsLong();
+    }
+
+    /**
+     * Pages of one search in Confluence order plus Confluence's {@code totalSize} ({@code -1} if not reported).
+     * {@code totalSize} counts potential hits of the query, not pages whose content was evaluated; it stays inside
+     * the adapter until the source search contract gains a neutral total (follow-up of issue #150).
+     */
+    static final class SearchResults {
+        final List<Page> pages;
+        final long totalSize;
+
+        SearchResults(List<Page> pages, long totalSize) {
+            this.pages = Collections.unmodifiableList(pages);
+            this.totalSize = totalSize;
+        }
     }
 
     // --- Navigation (issue #97) ---------------------------------------------------------------------------
@@ -1554,7 +1633,7 @@ final class ConfluenceRestClient {
         final String html;
         final String webUi;
         final List<String> labels;
-        /** Klartext-Ausschnitt aus der Suche; leer außerhalb der Suche. */
+        /** Plain-text excerpt from the search; empty outside the search. */
         final String excerpt;
         /**
          * {@code _links.base} der Antwort: die Basis-URL, die Confluence selbst für sich eingestellt hat und mit der
@@ -1588,6 +1667,19 @@ final class ConfluenceRestClient {
 
         Page withExcerpt(String excerpt) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
+                    serverBase, storage);
+        }
+
+        Page withTitle(String newTitle) {
+            return new Page(id, newTitle, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
+                    serverBase, storage);
+        }
+
+        /** Fill web address and modification time from the search wrapper where the content lacks them. */
+        Page withSearchFallbacks(String url, Instant lastModified) {
+            String address = webUi == null || webUi.trim().isEmpty() ? url : webUi;
+            Instant when = modifiedAt == null ? lastModified : modifiedAt;
+            return new Page(id, title, spaceKey, version, when, parentId, html, address, labels, excerpt,
                     serverBase, storage);
         }
 

@@ -21,6 +21,7 @@ dependencies {
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     implementation project(':proasteion:emporion:holkas:source-localfiles')
+    implementation project(':proasteion:emporion:holkas:source-git')
     implementation project(':proasteion:emporion:holkas:source-ftp')
     implementation project(':proasteion:emporion:holkas:source-ndv')
     implementation project(':proasteion:emporion:holkas:source-outlook')

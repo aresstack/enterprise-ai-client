@@ -18,6 +18,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchConceptViewAss
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchWorkflowAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatHistoryBinding;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatTranscriptPanel;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatApprovalPrompt;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatOneTimeCodePrompt;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileAttachmentStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.KnowledgeIndexingBinding;
@@ -212,6 +214,14 @@ public final class ShellAssembly {
         }, root.uiExecutor());
         chatModel.addListener(oneTimeCodes);
         root.askOneTimeCodesWith(oneTimeCodes);
+        // Tool approvals (tools.approval = ASK): an amber bubble with Bestätigen/Abbrechen in the transcript; chat,
+        // agent and research tool calls wait for it.
+        final ChatShellPanel approvals = chatShell;
+        root.askToolApprovalsWith(new ChatApprovalPrompt((title, description, answer) -> {
+            final ChatTranscriptPanel.ApprovalBubble bubble = approvals.transcript().showApproval(title, description,
+                    answer);
+            return bubble::close;
+        }, root.uiExecutor()));
         chatShell.composer().setModelName(root.config().chat().model());
         // Anzeigename über den Antworten: aus den Einstellungen, nach jedem Speichern sofort (ohne Neustart).
         chatShell.transcript().setAssistantName(ChatConfig.assistantDisplayNameOf(root.config()));

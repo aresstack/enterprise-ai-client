@@ -26,6 +26,8 @@ pdfbox = "2.0.29"
 poi = "5.2.3"
 jgraphx = "4.2.2"
 commonsNet = "3.9.0"
+# Last Java 8 line of JGit (6.x needs Java 11); 5.13.4 is miscompiled for Java 8, hence 5.13.5.
+jgit = "5.13.5.202508271544-r"
 huggingface4j = "0.1.1"
 onnxruntime = "1.30.0"
 opennlp = "1.9.4"
@@ -87,6 +89,8 @@ tika-parsers-standard = { module = "org.apache.tika:tika-parsers-standard-packag
 
 # source-ftp: FTP/MVS wie MainframeMate (Apache Commons Net); nur in source-ftp als implementation.
 commons-net = { module = "commons-net:commons-net", version.ref = "commonsNet" }
+# source-git: reads Git repositories (#137); internal to the adapter only.
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
 
 # model-huggingface: lokale Stimmen vom Hugging Face Hub (Angelos Bibliothek, Java 8, nur Gson).
 huggingface4j = { module = "com.aresstack:huggingface4j", version.ref = "huggingface4j" }

@@ -1,5 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.application.composition;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.RetryingSourceAccess;
 import com.aresstack.enterpriseai.proasteion.application.retry.RetryPolicy;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeDocumentReader;
@@ -151,6 +153,7 @@ public final class CompositionRoot {
     /** Persistent memories (#144), {@code null} without a memory store. */
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
+    private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
     private final ToolCatalog toolCatalog;
@@ -182,7 +185,12 @@ public final class CompositionRoot {
                             LongSupplier clock, ZoneId zone) {
         this.settings = settings;
         // Aktiv oder abgeschaltet: tools.disabled der aktuellen Einstellungen, bei jedem Aufruf frisch.
-        this.toolCatalog = new ToolCatalog(name -> settings.current().isToolEnabled(name));
+        // Approvals: tools.approval of the current settings on every call; questions go to the UI set later.
+        this.toolCatalog = new ToolCatalog(name -> settings.current().isToolEnabled(name),
+                new ToolApprovalGate(() -> settings.current().toolApprovals(), (request, timeoutMillis) -> {
+                    ApprovalPromptPort prompt = approvalPrompt;
+                    return (prompt == null ? ApprovalPromptPort.unavailable() : prompt).ask(request, timeoutMillis);
+                }, ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS));
         AppConfig config = settings.current();
         this.ports = ports;
         this.uiExecutor = uiExecutor;
@@ -786,6 +794,13 @@ public final class CompositionRoot {
      */
     public void askOneTimeCodesWith(OneTimeCodePrompt prompt) {
         this.oneTimeCodePrompt = prompt;
+    }
+
+    /**
+     * Where tool approval questions ({@code ASK}) go; {@code null}: nobody can be asked, such calls do not run.
+     */
+    public void askToolApprovalsWith(ApprovalPromptPort prompt) {
+        this.approvalPrompt = prompt;
     }
 
     /** Bildbeschreibung für Bildanhänge, beim ersten Bild angelegt; derselbe Zwischenspeicher wie im Lesebereich. */

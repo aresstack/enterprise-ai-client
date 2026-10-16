@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
+import com.aresstack.enterpriseai.proasteion.katagogion.ApprovingMcpToolHandler;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,6 +40,7 @@ public final class ToolCatalog {
 
     private final List<Registration> registrations = new CopyOnWriteArrayList<Registration>();
     private final Predicate<String> enabled;
+    private final ToolApprovalGate approvals;
 
     /** Alle Werkzeuge aktiv. */
     public ToolCatalog() {
@@ -46,10 +49,25 @@ public final class ToolCatalog {
 
     /** @param enabled sagt je Aufruf, ob das Werkzeug mit diesem Namen aktiv ist */
     public ToolCatalog(Predicate<String> enabled) {
-        if (enabled == null) {
-            throw new IllegalArgumentException("enabled must not be null");
+        this(enabled, ToolApprovalGate.allowAll());
+    }
+
+    /**
+     * @param enabled   sagt je Aufruf, ob das Werkzeug mit diesem Namen aktiv ist
+     * @param approvals the binding approval check: every handler handed out by {@link #tools} and {@link #find} runs
+     *                  only after it permits the call, for chat, agent and research paths alike
+     */
+    public ToolCatalog(Predicate<String> enabled, ToolApprovalGate approvals) {
+        if (enabled == null || approvals == null) {
+            throw new IllegalArgumentException("enabled and approvals must not be null");
         }
         this.enabled = enabled;
+        this.approvals = approvals;
+    }
+
+    /** The approval check applied to every tool of this catalog. */
+    public ToolApprovalGate approvals() {
+        return approvals;
     }
 
     /**
@@ -118,11 +136,19 @@ public final class ToolCatalog {
             }
             for (McpToolContribution tool : registration.tools.get()) {
                 if (isEnabled(tool.getName()) && names.add(tool.getName())) {
-                    result.add(tool);
+                    result.add(gated(tool));
                 }
             }
         }
         return result;
+    }
+
+    private McpToolContribution gated(McpToolContribution tool) {
+        if (tool.getHandler() instanceof ApprovingMcpToolHandler) {
+            return tool;
+        }
+        return new McpToolContribution(tool.getName(), tool.getDescription(), tool.getParameters(),
+                new ApprovingMcpToolHandler(approvals, tool.getHandler()));
     }
 
     /** Das aktive ausführbare Werkzeug mit diesem Namen im Kanal oder {@code null}. */

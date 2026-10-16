@@ -24,6 +24,7 @@ public final class AppPaths {
     public static final String MEMORY_DIRECTORY_NAME = "memories";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
     public static final String LOG_DIRECTORY_NAME = "logs";
+    public static final String GIT_CACHE_DIRECTORY_NAME = "git-cache";
     /** Zwischenspeicher der letzten Modellabfrage (Reiter „Modelle“). */
     public static final String MODEL_CATALOG_FILE_NAME = "model-catalog.properties";
     /** Anwendungszustand der Oberfläche (Fenster, Drawer), getrennt von der Konfiguration. */
@@ -68,6 +69,11 @@ public final class AppPaths {
     /** Protokolldateien: {@code <appDirectory>/logs/enterprise-ai-client.<n>.log}. */
     public static Path defaultLogDirectory() {
         return appDirectory().resolve(LOG_DIRECTORY_NAME);
+    }
+
+    /** Bare copies of the Git sources (#137): {@code <appDirectory>/git-cache/<hash>}; owned by the application. */
+    public static Path defaultGitCacheDirectory() {
+        return appDirectory().resolve(GIT_CACHE_DIRECTORY_NAME);
     }
 
     /** Der Anwendungszustand liegt neben der Konfigurationsdatei (wie die Chat-Historie). */
