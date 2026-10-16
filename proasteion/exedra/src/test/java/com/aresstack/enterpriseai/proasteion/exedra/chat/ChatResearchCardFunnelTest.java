@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
 import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
 import com.aresstack.enterpriseai.searchrun.api.FunnelResource;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
@@ -49,6 +50,32 @@ public class ChatResearchCardFunnelTest {
 
         assertTrue(card.body(), card.body().startsWith("57 Seiten geprüft · 8 relevant\n"));
         assertFalse("the provider total (discovered) is never shown as examined", card.body().contains("60"));
+    }
+
+    @Test
+    public void finalFunnelReplacesTheBalanceOfACardThatAlreadyBurst() {
+        card.open();
+        card.searchStarted("Vault", 1, 1);
+        card.funnel(funnel(60, 57, 8, 0, FunnelPhase.ANSWER, false));
+        card.finish(); // the first answer text bursts the card with the intermediate counts
+
+        card.settle(funnel(60, 57, 8, 3, FunnelPhase.DONE, true));
+
+        TranscriptEntry entry = model.getEntries().get(0);
+        assertEquals("Recherche abgeschlossen · 57 Seiten geprüft · 8 relevante Quellen · 3 verwendet",
+                entry.getActivitySummary());
+    }
+
+    @Test
+    public void stoppedCardSettlesWithTheCountsReached() {
+        card.open();
+        card.searchStarted("Vault", 1, 1);
+        card.cancelling();
+        card.settle(funnel(60, 31, 5, 0, FunnelPhase.EVIDENCE, false));
+        card.finish();
+
+        assertEquals("Recherche abgebrochen · 31 Seiten geprüft · 5 relevante Quellen · 0 verwendet",
+                model.getEntries().get(0).getActivitySummary());
     }
 
     @Test

@@ -266,6 +266,19 @@ public final class ChatShellModel {
         fireEntryUpdated(activity);
     }
 
+    /**
+     * Replaces the result line of a step that has already finished (the research card takes its final funnel only
+     * after it burst with the first answer text). Unknown or still running key: nothing.
+     */
+    public void updateActivitySummary(String key, String summary) {
+        TranscriptEntry activity = activities.get(key);
+        if (activity == null || activity.getState() == TranscriptEntry.State.STREAMING) {
+            return;
+        }
+        activity.finishActivity(activity.getState(), summary);
+        fireEntryUpdated(activity);
+    }
+
     /** Ob der laufende Auftrag einen Arbeitsschritt mit dieser Kennung kennt (laufend oder beendet). */
     public boolean hasActivity(String key) {
         return activities.containsKey(key);

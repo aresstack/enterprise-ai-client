@@ -252,7 +252,7 @@ public class ChatResearchActivityTest {
     }
 
     @Test
-    public void stopDuringRetrievalSkipsFurtherStepsAndRemovesTheCard() throws Exception {
+    public void stopDuringRetrievalSkipsFurtherStepsAndKeepsTheCardWithItsCounts() throws Exception {
         indexAll();
         final RagChatBindingTest.GatedIndex gated = new RagChatBindingTest.GatedIndex(index);
         port.enqueueHanging("Zu spät");
@@ -271,8 +271,12 @@ public class ChatResearchActivityTest {
         awaitIdle(shell.model);
 
         List<TranscriptEntry> entries = entries(shell.model);
-        assertEquals(entries.toString(), 2, entries.size());
-        assertEquals(TranscriptEntry.State.CANCELLED, entries.get(1).getState());
+        // #156: the card is not removed; it ends as "Recherche abgebrochen" with the counts reached so far
+        assertEquals(entries.toString(), 3, entries.size());
+        assertEquals(TranscriptEntry.Author.ACTIVITY, entries.get(1).getAuthor());
+        assertTrue(entries.get(1).getActivitySummary(),
+                entries.get(1).getActivitySummary().startsWith("Recherche abgebrochen"));
+        assertEquals(TranscriptEntry.State.CANCELLED, entries.get(2).getState());
         assertEquals("keine Nachsuche nach dem Stop (nur die Antwort ging an das Modell)", 1, port.requests().size());
         assertFalse(chat.isBusy(conversation));
     }
