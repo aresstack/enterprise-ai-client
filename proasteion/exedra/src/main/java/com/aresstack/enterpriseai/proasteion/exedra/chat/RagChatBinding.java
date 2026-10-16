@@ -24,6 +24,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.TurnContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUpSuggestion;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuoteFollowUps;
 import com.aresstack.enterpriseai.astu.acropolis.chat.QuotedPassage;
@@ -461,7 +462,8 @@ public final class RagChatBinding implements ChatShellActions {
                 public void run() {
                     final RagChatTurn turn;
                     try {
-                        String extraContext = quoteContext;
+                        TurnContext extraContext = TurnContext.empty()
+                                .with(TurnContext.Section.QUOTES, quoteContext);
                         ChatCompletionPort via = capabilityQuestion && support == null
                                 ? new FixedAnswerPort(ToolCapabilities.answer(
                                         Collections.<ToolDefinition>emptyList(), answerModel))
@@ -506,9 +508,13 @@ public final class RagChatBinding implements ChatShellActions {
                             for (AiTool tool : available) {
                                 offered.add(tool.name());
                             }
-                            extraContext = join(ToolUsePolicy.context(offered),
-                                    join(join(attachments.context(), ChatBookmark.context(chatPages)),
-                                            join(ChatReferences.context(references), quoteContext)));
+                            // One structured turn context (#126); ChatService composes it with the system prompt.
+                            extraContext = extraContext
+                                    .with(TurnContext.Section.ATTACHMENTS, attachments.context())
+                                    .with(TurnContext.Section.BOOKMARKS, ChatBookmark.context(chatPages))
+                                    .with(TurnContext.Section.REFERENCES, ChatReferences.context(references))
+                                    .withRule(ToolUsePolicy.context(offered))
+                                    .withPlanRouting(ToolUsePolicy.routing(offered));
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),
@@ -520,7 +526,7 @@ public final class RagChatBinding implements ChatShellActions {
                                         chatOptions == null ? null : chatOptions.model()));
                             }
                         }
-                        turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via,
+                        turn = rag.sendInContext(conversation, text, options, chatOptions, listener, extraContext, via,
                                 progress(request), origin);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
@@ -607,14 +613,6 @@ public final class RagChatBinding implements ChatShellActions {
         return passages;
     }
 
-    /** Zwei System-Anteile hintereinander; {@code null}, wenn beide fehlen. */
-    private static String join(String first, String second) {
-        if (first == null) {
-            return second;
-        }
-        return second == null ? first : first + "\n\n" + second;
-    }
-
     /** Muss auf dem UI-Thread gerufen werden. */
     @Override
     public void stopRequested() {
@@ -631,14 +629,15 @@ public final class RagChatBinding implements ChatShellActions {
     }
 
     /**
-     * RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}; {@code extraContext} (Zitate)
+     * RAG aus: der bisherige Weg, synchron gestartet wie in {@link ChatServiceBinding}; {@code quoteContext} (Zitate)
      * nur für diesen Turn, sonst {@code null}.
      */
-    private void startWithoutRetrieval(String text, TurnListener listener, String extraContext,
+    private void startWithoutRetrieval(String text, TurnListener listener, String quoteContext,
                                        ChatCompletionPort via, MessageOrigin origin) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
-                    extraContext, via, RetrievalProgress.none(), origin).turn();
+            ChatTurn turn = rag.sendInContext(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
+                    TurnContext.empty().with(TurnContext.Section.QUOTES, quoteContext), via, RetrievalProgress.none(),
+                    origin).turn();
             if (!turn.isDone()) {
                 runningTurn = turn;
             }

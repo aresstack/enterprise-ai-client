@@ -151,7 +151,8 @@ public class ApplicationCompositionTest {
         TranscriptEntry answer = awaitAnswer(view.get());
         assertEquals("Hallo aus dem Fake.", answer.getText());
         String greeting = chatPort.lastRequest().messages().get(0).content();
-        assertTrue(greeting, greeting.startsWith("Antworte kurz.\n\n<client-answer-plan>"));
+        assertTrue(greeting, greeting.startsWith("<client-answer-plan>"));
+        assertTrue(greeting, greeting.endsWith("</client-answer-plan>\n\nAntworte kurz."));
         assertTrue(greeting, greeting.contains("original-user-message: Hi"));
         assertTrue(greeting, greeting.contains("intent: GREETING"));
         assertEquals("Antwortplan und Antwort", 2, chatPort.requests().size());

@@ -198,7 +198,8 @@ public class RagShellIntegrationTest {
         assertEquals("Bearer " + TOKEN, request.authorization());
         assertEquals("application/json; charset=utf-8", request.contentType());
         assertTrue(request.streamRequested());
-        assertTrue(request.systemContent(), request.systemContent().startsWith(SYSTEM_PROMPT + "\n\n"));
+        assertTrue(request.systemContent(), request.systemContent().indexOf("\n\n" + SYSTEM_PROMPT)
+                > request.systemContent().indexOf("--- KONTEXT ---")); // prompt after the turn context (#126)
         assertTrue(request.systemContent().contains("--- KONTEXT ---"));
         assertTrue(request.systemContent().contains("[1] Kündigungsfrist"));
         assertTrue(request.systemContent().contains("drei Monate zum Quartalsende"));

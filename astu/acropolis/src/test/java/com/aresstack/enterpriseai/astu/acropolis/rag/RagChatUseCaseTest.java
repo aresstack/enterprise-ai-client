@@ -97,7 +97,7 @@ public class RagChatUseCaseTest {
         List<ChatMessage> sent = chatPort.lastRequest().messages();
         assertEquals(2, sent.size());
         assertEquals(ChatRole.SYSTEM, sent.get(0).role());
-        assertEquals("Du bist hilfsbereit.\n\n" + turn.context().text(), sent.get(0).content());
+        assertEquals(turn.context().text() + "\n\nDu bist hilfsbereit.", sent.get(0).content());
         assertTrue(sent.get(0).content().contains("apt install openjdk-8-jdk"));
         assertEquals(ChatMessage.user(QUESTION), sent.get(1));
         assertNoDeveloperRole(chatPort.requests());
@@ -787,7 +787,7 @@ public class RagChatUseCaseTest {
         String triage = chatPort.requests().get(0).messages().get(1).content();
         assertTrue(triage, triage.contains(note));
         assertTrue(triage, triage.endsWith("Aktuelle Nachricht: Aklima bitte erstmal das Programm"));
-        assertEquals(ChatMessage.system("System\n\n" + note), chatPort.lastRequest().messages().get(0));
+        assertEquals(ChatMessage.system(note + "\n\nSystem"), chatPort.lastRequest().messages().get(0));
         assertEquals("the note stays out of the history",
                 ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
     }
@@ -924,7 +924,7 @@ public class RagChatUseCaseTest {
         assertTrue(block, block.contains("suspected-tokens: Aklima"));
         String triage = chatPort.requests().get(0).messages().get(1).content();
         assertTrue(triage, triage.contains(block + "\n\nAktuelle Nachricht: Aklima bitte erstmal das Programm"));
-        assertEquals(ChatMessage.system("System\n\n" + block), chatPort.lastRequest().messages().get(0));
+        assertEquals(ChatMessage.system(block + "\n\nSystem"), chatPort.lastRequest().messages().get(0));
         assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
     }
 
@@ -988,8 +988,10 @@ public class RagChatUseCaseTest {
         assertTrue(answer, answer.contains("planned-next-action: USE_APPLICATION_HELP"));
         assertTrue(answer, answer.contains("sag kurz, wie du die Nachricht verstanden hast"));
         assertFalse("the answer reads the interpretation, not the raw analysis", answer.contains("<client-turn-analysis>"));
-        assertEquals(Collections.singletonList(answer.substring(answer.indexOf("<client-answer-plan>"))),
-                planned);
+        // The plan block comes first, the editable system prompt follows it (#126).
+        assertEquals(Collections.singletonList(answer.substring(answer.indexOf("<client-answer-plan>"),
+                answer.indexOf("</client-answer-plan>") + "</client-answer-plan>".length())), planned);
+        assertTrue(answer, answer.endsWith("\n\nSystem"));
         assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
         assertEquals(2, chat.conversation(id).messages().size());
     }
