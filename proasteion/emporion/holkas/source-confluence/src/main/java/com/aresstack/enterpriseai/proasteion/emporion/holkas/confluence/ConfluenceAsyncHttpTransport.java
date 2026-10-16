@@ -23,8 +23,15 @@ import java.util.concurrent.CompletionStage;
  *     höchstens fünfmal verfolgt; unterwegs gesetzte Cookies gehen bei den folgenden Schritten mit und stehen in
  *     {@link ConfluenceHttpResponse#cookies()}. Andere Weiterleitungen kommen als 3xx-Antwort mit
  *     {@link ConfluenceHttpResponse#location()} zurück.</li>
- *     <li>Proxy-Route je Ziel, TLS-Client-Zertifikat und Timeouts legt die Composition Root fest. Header können ein
+ *     <li>Proxy-Route je Ziel ({@code HttpRoutePort}, vor jedem Verbindungsaufbau, auch bei Weiterleitungen),
+ *     TLS-Client-Zertifikat und Timeouts legt die Composition Root fest. Eine nicht verfügbare Route beendet die
+ *     Stufe mit einer {@link java.io.IOException}, nie mit einer direkten Verbindung. Header können ein
  *     {@code Authorization} enthalten; Implementierungen loggen Header nie.</li>
+ *     <li>Verbindungs- und Lese-Timeout melden die Stufe als {@link java.io.IOException}. Bricht der Aufrufer die
+ *     Stufe ab ({@code toCompletableFuture().cancel(true)}), bricht die Implementierung die Anfrage ab, gibt die
+ *     Verbindung frei und puffert nichts weiter.</li>
+ *     <li>Die Obergrenze gilt für den empfangenen Körper auch ohne {@code Content-Length} (chunked); die
+ *     Implementierung bricht beim Überschreiten ab, statt erst vollständig zu puffern.</li>
  * </ul>
  *
  * <p>Die Testfixtures enthalten {@code ConfluenceAsyncHttpTransportContract}, mit dem eine Implementierung diese

@@ -69,6 +69,29 @@ public final class ClientCertificates {
      */
     public static SSLSocketFactory fromKeyStore(KeyStore store, char[] keyPassword, String alias,
                                                 X509TrustManager trust) throws GeneralSecurityException {
+        return contextFromKeyStore(store, keyPassword, alias, trust).getSocketFactory();
+    }
+
+    /**
+     * Wie {@link #windowsMy(String, X509TrustManager)}, aber als {@link SSLContext} für Transporte, die eine
+     * {@code SSLEngine} brauchen (asynchrone Clients wie Netty oder JDK {@code HttpClient}).
+     */
+    public static SSLContext windowsMyContext(String alias, X509TrustManager trust) throws GeneralSecurityException {
+        KeyStore store = KeyStore.getInstance("Windows-MY");
+        try {
+            store.load(null, null);
+        } catch (IOException e) {
+            throw new GeneralSecurityException("Windows-Zertifikatsspeicher nicht lesbar", e);
+        }
+        return contextFromKeyStore(store, null, alias, trust);
+    }
+
+    /**
+     * Wie {@link #fromKeyStore(KeyStore, char[], String, X509TrustManager)}, aber als {@link SSLContext} mit
+     * demselben erzwungenen Alias, für Transporte, die eine {@code SSLEngine} brauchen.
+     */
+    public static SSLContext contextFromKeyStore(KeyStore store, char[] keyPassword, String alias,
+                                                 X509TrustManager trust) throws GeneralSecurityException {
         if (alias == null || alias.trim().isEmpty()) {
             throw new IllegalArgumentException("Zertifikat-Alias fehlt");
         }
@@ -77,7 +100,7 @@ public final class ClientCertificates {
         X509KeyManager forced = forceAlias(findX509(factory.getKeyManagers()), alias.trim());
         SSLContext context = SSLContext.getInstance("TLS");
         context.init(new KeyManager[] {forced}, trust == null ? null : new TrustManager[] {trust}, null);
-        return context.getSocketFactory();
+        return context;
     }
 
     static X509KeyManager forceAlias(X509KeyManager delegate, String alias) throws GeneralSecurityException {

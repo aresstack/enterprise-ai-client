@@ -42,6 +42,20 @@ public class ClientCertificatesTest {
     }
 
     @Test
+    public void buildsAContextForEngineBasedTransportsWithTheSameChecks() throws Exception {
+        javax.net.ssl.SSLContext context = ClientCertificates.contextFromKeyStore(testStore(), PASSWORD,
+                " test-client ", null);
+
+        assertNotNull(context.createSSLEngine("confluence.test", 443));
+        try {
+            ClientCertificates.contextFromKeyStore(testStore(), PASSWORD, "abgelaufen", null);
+            fail();
+        } catch (GeneralSecurityException expected) {
+            assertEquals("keine Zertifikatskette für Alias 'abgelaufen'", expected.getMessage());
+        }
+    }
+
+    @Test
     public void acceptsAnOwnTrustManagerForServerCertificates() throws Exception {
         X509TrustManager trust = new X509TrustManager() {
             @Override
