@@ -136,7 +136,7 @@ public class AdapterAssemblyTest {
             java.util.List<String> resources = new java.util.ArrayList<String>(ports.resourceNames());
             resources.remove("chat-browsers");
             assertEquals(Arrays.asList("local-models", "mcp-server", "knowledge-index", "raw-knowledge-index",
-                    "fact-store", "memory-store"),
+                    "fact-store", "memory-store", "search-run-store"),
                     resources);
             assertFalse(ports.toString().toLowerCase().contains("password"));
         } finally {

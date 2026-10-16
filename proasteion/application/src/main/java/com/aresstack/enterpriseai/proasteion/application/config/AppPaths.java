@@ -22,6 +22,8 @@ public final class AppPaths {
     public static final String INDEX_DIRECTORY_NAME = "index";
     public static final String FACT_DIRECTORY_NAME = "facts";
     public static final String MEMORY_DIRECTORY_NAME = "memories";
+    /** Knowledge search run log (#153), next to the facts directory. */
+    public static final String SEARCH_RUN_DIRECTORY_NAME = "search-runs";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
     public static final String LOG_DIRECTORY_NAME = "logs";
     public static final String GIT_CACHE_DIRECTORY_NAME = "git-cache";

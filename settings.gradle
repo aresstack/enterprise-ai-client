@@ -50,6 +50,10 @@ include 'fact-h2'
 include 'memory-api'
 include 'memory-h2'
 
+// Knowledge search run log (#153): port and embedded H2 behind it
+include 'search-run-api'
+include 'search-run-h2'
+
 // Strang E – Knowledge Sources (Strang F: source-confluence)
 include 'source-api'
 include 'proasteion:emporion:holkas:source-mediawiki'

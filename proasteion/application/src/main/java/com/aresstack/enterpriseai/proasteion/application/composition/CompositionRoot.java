@@ -267,7 +267,7 @@ public final class CompositionRoot {
         // Neustart.
         this.prefetch = new KnowledgePrefetchService(indexing, ports.rawIndex(), retryingDocuments,
                 () -> settings.current().knowledge().prefetch());
-        this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch, sourceRetry);
+        this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch, sourceRetry, ports.searchRuns());
         // Adaptiv (ein Evidenz-Bewerter je Kandidatenrunde, gestufte Live-Suche). Alle Grenzen (Quellen, Mindestzahl,
         // Nachsuchen, Live-Suche, Kandidaten) gelten ohne Neustart ab dem nächsten Turn; FollowUpResearch prüft hier
         // nur den Wissenskontext früherer Nachrichten, die Zahl der Nachsuchen kommt aus retrieval.maxFollowUps.

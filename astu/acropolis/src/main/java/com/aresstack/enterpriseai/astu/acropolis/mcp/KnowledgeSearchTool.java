@@ -144,6 +144,12 @@ final class KnowledgeSearchTool implements McpToolHandler {
                           boolean indexFailed) {
         StringBuilder out = new StringBuilder();
         out.append("Query: ").append(ToolText.oneLine(query, 200)).append('\n');
+        if (found != null && found.runRecorded()) {
+            // The run keeps every live candidate (#153); candidates are not sources until read and judged.
+            out.append("Search run: ").append(found.recordedRunId()).append(" (")
+                    .append(found.candidateCount())
+                    .append(" live candidates recorded; \"run candidate\" is a hit's number in that run)\n");
+        }
         if (found != null) {
             for (Map.Entry<SourceAddress, String> failure : found.failures().entrySet()) {
                 out.append("Note: source ").append(failure.getKey().value()).append(" could not be searched (")
@@ -180,7 +186,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
                 if (!listed.add(resource.resourceId())) {
                     continue;
                 }
-                String block = renderLive(shown + 1, resource);
+                String block = renderLive(shown + 1, resource, found);
                 if (out.length() + block.length() > maxChars) {
                     break;
                 }
@@ -226,7 +232,7 @@ final class KnowledgeSearchTool implements McpToolHandler {
         return block.toString();
     }
 
-    private String renderLive(int number, FoundResource resource) {
+    private String renderLive(int number, FoundResource resource, SearchDrivenIndexingUseCase.Result found) {
         StringBuilder block = new StringBuilder();
         block.append('\n').append('[').append(number).append("] ")
                 .append(ToolText.oneLine(resource.title(), TITLE_CHARS)).append('\n');
@@ -235,6 +241,11 @@ final class KnowledgeSearchTool implements McpToolHandler {
             block.append("url: ").append(resource.url()).append('\n');
         }
         block.append("source: ").append(resource.sourceId().value()).append(" (not read yet)\n");
+        int candidate = found.runRecorded() ? found.candidateNumber(resource.resourceId()) : 0;
+        if (candidate > 0) {
+            // the run numbers live candidates on their own; the list number above is only this answer's order
+            block.append("run candidate: ").append(candidate).append('\n');
+        }
         if (!resource.snippet().isEmpty()) {
             block.append(ToolText.snippet(resource.snippet(), settings.snippetChars())).append('\n');
         }

@@ -2,12 +2,20 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.searchrun.api.CandidateOccurrence;
+import com.aresstack.enterpriseai.searchrun.api.CandidateOrigin;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeCandidate;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
+import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceQuery;
 import com.aresstack.enterpriseai.source.api.SourceSearchHit;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,6 +41,10 @@ import java.util.Set;
  * <p>Durchsucht werden nur Quellen mit eigener Suche ({@link SearchableKnowledgeSource}); alle anderen liegen nur
  * über ihren Index vor (Vollindex auf Knopfdruck, wie NDV in MainframeMate). Ein Fehler einer Quelle betrifft nur
  * sie und steht in {@link Result#failures()}. Blockiert für die Live-Suche.
+ *
+ * <p>Every search is also recorded as a {@link KnowledgeSearchRun} (#153): all received candidates in merged order,
+ * with every occurrence per source, so a hit can be deepened later without searching again. Recording never changes
+ * the search; when the run log fails, the run stays in the {@link Result} and {@link Result#runRecorded()} is false.
  */
 public final class SearchDrivenIndexingUseCase {
 
@@ -43,6 +55,8 @@ public final class SearchDrivenIndexingUseCase {
 
     private final KnowledgePrefetchService prefetch;
     private final SourceCalls sourceCalls;
+    private final KnowledgeSearchRunPort runs;
+    private final Clock clock;
 
     /** Mit eigenem Vorlader (direktes Lesen aus der Quelle, Standard-Einstellungen). */
     public SearchDrivenIndexingUseCase(IndexKnowledgeUseCase indexing) {
@@ -60,11 +74,26 @@ public final class SearchDrivenIndexingUseCase {
      *                    Treffer der übrigen gelten
      */
     public SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch, SourceCalls sourceCalls) {
-        if (prefetch == null || sourceCalls == null) {
+        this(prefetch, sourceCalls, null);
+    }
+
+    /**
+     * @param runs where every search is recorded (#153); {@code null}: runs are built but not persisted
+     */
+    public SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch, SourceCalls sourceCalls,
+                                       KnowledgeSearchRunPort runs) {
+        this(prefetch, sourceCalls, runs, Clock.systemUTC());
+    }
+
+    SearchDrivenIndexingUseCase(KnowledgePrefetchService prefetch, SourceCalls sourceCalls,
+                                KnowledgeSearchRunPort runs, Clock clock) {
+        if (prefetch == null || sourceCalls == null || clock == null) {
             throw new IllegalArgumentException("prefetch und sourceCalls sind Pflicht");
         }
         this.prefetch = prefetch;
         this.sourceCalls = sourceCalls;
+        this.runs = runs;
+        this.clock = clock;
     }
 
     /** Der Vorlader (Cache, Priority-Lesen) dieser Suche. */
@@ -110,6 +139,8 @@ public final class SearchDrivenIndexingUseCase {
             throw new IllegalArgumentException("hitLimit >= 1 erwartet");
         }
         Map<SourceAddress, String> failures = new LinkedHashMap<SourceAddress, String>();
+        List<SourceAddress> asked = new ArrayList<SourceAddress>();
+        Instant startedAt = clock.instant();
         List<List<SourceSearchHit>> perSource = new ArrayList<List<SourceSearchHit>>();
         List<KnowledgeSourcePort> searched = new ArrayList<KnowledgeSourcePort>();
         for (KnowledgeSourcePort source : sources == null ? Collections.<KnowledgeSourcePort>emptyList() : sources) {
@@ -117,6 +148,7 @@ public final class SearchDrivenIndexingUseCase {
                 continue;
             }
             final SearchableKnowledgeSource searchable = (SearchableKnowledgeSource) source;
+            asked.add(source.sourceId());
             final SourceQuery sourceQuery = new SourceQuery(query.trim(), hitLimit);
             try {
                 perSource.add(sourceCalls.call(() -> searchable.search(sourceQuery)));
@@ -134,6 +166,9 @@ public final class SearchDrivenIndexingUseCase {
         List<FoundResource> found = new ArrayList<FoundResource>();
         List<KnowledgePrefetchService.Candidate> candidates = new ArrayList<KnowledgePrefetchService.Candidate>();
         Set<KnowledgeResourceId> seen = new LinkedHashSet<KnowledgeResourceId>();
+        // Every place a resource appeared, also the duplicates the merge drops (#153: no provenance is lost).
+        Map<KnowledgeResourceId, List<CandidateOccurrence>> occurrences =
+                new LinkedHashMap<KnowledgeResourceId, List<CandidateOccurrence>>();
         for (int rank = 0; ; rank++) {
             boolean any = false;
             for (int s = 0; s < perSource.size(); s++) {
@@ -143,10 +178,16 @@ public final class SearchDrivenIndexingUseCase {
                 }
                 any = true;
                 SourceSearchHit hit = hits.get(rank);
+                KnowledgeSourcePort source = searched.get(s);
+                List<CandidateOccurrence> places = occurrences.get(hit.resourceId());
+                if (places == null) {
+                    places = new ArrayList<CandidateOccurrence>();
+                    occurrences.put(hit.resourceId(), places);
+                }
+                places.add(new CandidateOccurrence(source.sourceId(), rank));
                 if (!seen.add(hit.resourceId())) {
                     continue;
                 }
-                KnowledgeSourcePort source = searched.get(s);
                 found.add(new FoundResource(source.sourceId(), hit.resourceId(), hit.title(), hit.snippet(),
                         hit.resourceId().value(), FoundResource.Origin.SOURCE, hit.revision(),
                         hit.urlText()));
@@ -157,9 +198,36 @@ public final class SearchDrivenIndexingUseCase {
                 break;
             }
         }
+        KnowledgeSearchRun run = run(query, startedAt, asked, failures, found, occurrences);
+        boolean recorded = record(run);
         KnowledgePrefetchService.Series series = prefetch.prefetch(channel == null ? DEFAULT_CHANNEL : channel,
                 candidates, 0, awaited);
-        return new Result(found, series, failures);
+        return new Result(found, series, failures, run, recorded);
+    }
+
+    private static KnowledgeSearchRun run(String query, Instant startedAt, List<SourceAddress> asked,
+                                          Map<SourceAddress, String> failures, List<FoundResource> found,
+                                          Map<KnowledgeResourceId, List<CandidateOccurrence>> occurrences) {
+        List<KnowledgeCandidate> received = new ArrayList<KnowledgeCandidate>(found.size());
+        for (FoundResource resource : found) {
+            received.add(new KnowledgeCandidate(received.size() + 1, resource.sourceId(), resource.resourceId(),
+                    resource.title(), resource.snippet(), resource.url(), resource.revision(), CandidateOrigin.SOURCE,
+                    occurrences.get(resource.resourceId())));
+        }
+        return new KnowledgeSearchRun(SearchRunId.random(), query, startedAt, asked, failures, received);
+    }
+
+    /** Writes the run to the log; a failing log never fails the search. */
+    private boolean record(KnowledgeSearchRun run) {
+        if (runs == null) {
+            return false;
+        }
+        try {
+            runs.record(run);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** Wie {@link #searchAndIndex(Collection, String, int, int)} über alle Quellen des Katalogs. */
@@ -193,13 +261,50 @@ public final class SearchDrivenIndexingUseCase {
         private final List<FoundResource> hits;
         private final KnowledgePrefetchService.Series series;
         private final Map<SourceAddress, String> failures;
+        private final KnowledgeSearchRun run;
+        private final boolean runRecorded;
         private volatile List<ResourceIndexingOutcome> outcomes = Collections.emptyList();
 
         Result(List<FoundResource> hits, KnowledgePrefetchService.Series series,
-               Map<SourceAddress, String> failures) {
+               Map<SourceAddress, String> failures, KnowledgeSearchRun run, boolean runRecorded) {
             this.hits = Collections.unmodifiableList(new ArrayList<FoundResource>(hits));
             this.series = series;
             this.failures = Collections.unmodifiableMap(new LinkedHashMap<SourceAddress, String>(failures));
+            this.run = run;
+            this.runRecorded = runRecorded;
+        }
+
+        /** What this search received, candidate by candidate (#153); candidates are not sources. */
+        public KnowledgeSearchRun run() {
+            return run;
+        }
+
+        /** {@code true} when {@link #run()} is in the persistent run log and can be addressed later. */
+        public boolean runRecorded() {
+            return runRecorded;
+        }
+
+        /** Id of the recorded run as text, or {@code null} when it is not in the run log. */
+        public String recordedRunId() {
+            return runRecorded ? run.id().value() : null;
+        }
+
+        /**
+         * Number of the live hit {@code id} in the run ("Treffer 18"), or 0 when the run has no such candidate. The
+         * run numbers only the live candidates in discovery order, independent of how a caller lists hits.
+         */
+        public int candidateNumber(KnowledgeResourceId id) {
+            for (KnowledgeCandidate candidate : run.candidates()) {
+                if (candidate.resourceId().equals(id)) {
+                    return candidate.number();
+                }
+            }
+            return 0;
+        }
+
+        /** How many candidates the run received. */
+        public int candidateCount() {
+            return run.candidates().size();
         }
 
         /** Die Vorlade-Serie der Treffer. */

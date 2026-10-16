@@ -22,6 +22,8 @@ dependencies {
     // Persistent memories (#144): port and embedded H2 adapter.
     implementation project(':memory-api')
     implementation project(':memory-h2')
+    implementation project(':search-run-api')
+    implementation project(':search-run-h2')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     implementation project(':proasteion:emporion:holkas:source-localfiles')
