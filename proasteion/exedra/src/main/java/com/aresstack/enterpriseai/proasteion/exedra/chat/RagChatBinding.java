@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellActions;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.SourceReference;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.TranscriptEntry;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentException;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTools;
@@ -740,6 +741,16 @@ public final class RagChatBinding implements ChatShellActions {
         };
     }
 
+    /** The chat project scope the conversation's knowledge context is valid under now (#143). */
+    String knowledgeScope(ChatConversationId conversation) {
+        return rag.knowledgeScope(conversation);
+    }
+
+    /** The project context of the conversation's next turn (#143). */
+    EffectiveProjectContext projectContext(ChatConversationId conversation) {
+        return rag.projectContext(conversation);
+    }
+
     /** Der zuletzt verwendete Wissenskontext der Unterhaltung (für die Chat-Historie). */
     ConversationKnowledgeContext knowledgeContext(ChatConversationId conversation) {
         return rag.knowledgeContext(conversation);
@@ -750,9 +761,9 @@ public final class RagChatBinding implements ChatShellActions {
      * dem Arbeits-Executor).
      */
     void restoreKnowledgeContext(final ChatConversationId conversation, final List<String> queries,
-                                 final List<KnowledgeChunkId> chunkIds) {
+                                 final List<KnowledgeChunkId> chunkIds, final String savedScope) {
         try {
-            workExecutor.execute(() -> rag.restoreKnowledgeContext(conversation, queries, chunkIds));
+            workExecutor.execute(() -> rag.restoreKnowledgeContext(conversation, queries, chunkIds, savedScope));
         } catch (RuntimeException rejected) {
             // Ohne Arbeits-Thread sucht die nächste Frage eben neu.
         }

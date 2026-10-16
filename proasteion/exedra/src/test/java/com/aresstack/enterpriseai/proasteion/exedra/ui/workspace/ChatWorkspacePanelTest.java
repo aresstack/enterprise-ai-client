@@ -526,6 +526,126 @@ public class ChatWorkspacePanelTest {
         });
     }
 
+    /** #143: projects list their chats below them; a chat in a project is not repeated in the date groups. */
+    private static final class ProjectActions implements WorkspaceActions {
+        final java.util.Map<String, String> assignment = new java.util.HashMap<String, String>();
+        final List<ChatProjectItem> projects = Arrays.asList(
+                new ChatProjectItem("p-a", "Vertrieb", null, 0, ""),
+                new ChatProjectItem("p-a1", "Nord", "p-a", 1, ""));
+        boolean streaming;
+
+        @Override
+        public boolean newChatRequested(ShellMode mode) {
+            return true;
+        }
+
+        @Override
+        public void settingsRequested() {
+        }
+
+        @Override
+        public List<SavedChatItem> savedChats() {
+            long now = System.currentTimeMillis();
+            return Arrays.asList(new SavedChatItem("c-1", "Angebot Nordwind", now, 2, 0),
+                    new SavedChatItem("c-2", "Urlaubsantrag", now, 2, 0));
+        }
+
+        @Override
+        public List<ChatProjectItem> chatProjects() {
+            return projects;
+        }
+
+        @Override
+        public String projectOfChat(String chatId) {
+            return assignment.get(chatId);
+        }
+
+        @Override
+        public String moveChatRequested(String chatId, String projectId) {
+            if (streaming) {
+                return "läuft";
+            }
+            if (projectId == null) {
+                assignment.remove(chatId);
+            } else {
+                assignment.put(chatId, projectId);
+            }
+            return null;
+        }
+
+        @Override
+        public boolean canMoveProject(String projectId, String parentId) {
+            return !"p-a".equals(projectId) || parentId == null;
+        }
+    }
+
+    @Test
+    public void projectsShowTheirChatsAndChatsMoveBetweenProjects() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                ProjectActions actions = new ProjectActions();
+                actions.assignment.put("c-1", "p-a");
+                workspace.setActions(actions);
+                workspace.openDrawer();
+                workspace.refreshChatList();
+
+                assertEquals("collapsed: only the top-level project", 1, workspace.projectRows().size());
+                assertTrue(workspace.projectRows().get(0).getTitle().endsWith("Vertrieb"));
+                assertFalse("a chat in a project is not in the date groups", titles(workspace).contains("Angebot Nordwind"));
+                assertTrue(titles(workspace).contains("Urlaubsantrag"));
+
+                workspace.projectRows().get(0).open(); // expands
+                assertEquals(2, workspace.projectRows().size());
+                assertTrue(titles(workspace).contains("Angebot Nordwind"));
+
+                javax.swing.JPopupMenu menu = workspace.chatMenu("c-2", "Urlaubsantrag");
+                javax.swing.JMenu move = (javax.swing.JMenu) menu.getComponent(1);
+                assertEquals(ChatWorkspacePanel.MOVE_CHAT_LABEL, move.getText());
+                assertFalse("already without project", move.getItem(0).isEnabled());
+                move.getItem(3).doClick(); // "Nord"
+                assertEquals("p-a1", actions.assignment.get("c-2"));
+
+                workspace.chatFilter().setText("urlaub");
+                workspace.refreshChatList();
+                assertEquals("the search shows the project path to a matching chat", 2, workspace.projectRows().size());
+                assertEquals(Collections.singletonList("Urlaubsantrag"), titles(workspace));
+            }
+        });
+    }
+
+    @Test
+    public void projectMenuOffersNewChatContextAndTreeActions() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                ProjectActions actions = new ProjectActions();
+                workspace.setActions(actions);
+                List<String> labels = new ArrayList<String>();
+                for (Component item : workspace.projectMenu(actions.projects.get(0)).getComponents()) {
+                    if (item instanceof javax.swing.JMenuItem) {
+                        labels.add(((javax.swing.JMenuItem) item).getText());
+                    }
+                }
+                assertEquals(Arrays.asList(ChatWorkspacePanel.NEW_CHAT_IN_PROJECT_LABEL,
+                        ChatWorkspacePanel.PROJECT_CONTEXT_LABEL, ChatWorkspacePanel.NEW_SUBPROJECT_LABEL,
+                        ChatWorkspacePanel.RENAME_PROJECT_LABEL, ChatWorkspacePanel.DELETE_PROJECT_LABEL), labels);
+            }
+        });
+    }
+
+    private static List<String> titles(ChatWorkspacePanel workspace) {
+        List<String> titles = new ArrayList<String>();
+        for (com.aresstack.enterpriseai.proasteion.exedra.ui.sidebar.ChatHistoryRow row : workspace.chatRows()) {
+            if (!row.isSelected()) {
+                titles.add(row.getTitle());
+            }
+        }
+        return titles;
+    }
+
     @Test
     public void exportFileNameFollowsTitleAndTime() {
         long millis = java.time.LocalDateTime.of(2026, 10, 12, 3, 43).atZone(java.time.ZoneId.of("UTC"))

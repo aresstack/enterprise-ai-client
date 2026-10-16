@@ -6,11 +6,15 @@ import java.util.List;
 /**
  * Der zuletzt verwendete Wissenskontext eines gespeicherten Chats: die Suchanfragen und je Auszug nur die stabilen
  * Kennungen (Chunk, Ressource, Quelle), nie der Text; beim Öffnen kommen die Auszüge wieder aus dem Index.
+ *
+ * <p>The record also keeps the chat project scope it was created under (#143); it is only restored while the chat
+ * still has that scope. Records saved before chat projects existed have no scope, which means "never in a project".
  */
 public final class KnowledgeContextRecord {
 
     private List<String> queries = new ArrayList<String>();
     private List<Chunk> chunks = new ArrayList<Chunk>();
+    private String scope;
 
     /** Für die Deserialisierung. */
     public KnowledgeContextRecord() {
@@ -19,6 +23,16 @@ public final class KnowledgeContextRecord {
     public KnowledgeContextRecord(List<String> queries, List<Chunk> chunks) {
         this.queries = new ArrayList<String>(queries == null ? new ArrayList<String>() : queries);
         this.chunks = new ArrayList<Chunk>(chunks == null ? new ArrayList<Chunk>() : chunks);
+    }
+
+    public KnowledgeContextRecord(List<String> queries, List<Chunk> chunks, String scope) {
+        this(queries, chunks);
+        this.scope = scope;
+    }
+
+    /** The chat project scope the context was created under; empty for records from before chat projects. */
+    public String getScope() {
+        return scope != null ? scope : "";
     }
 
     public List<String> getQueries() {
