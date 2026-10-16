@@ -82,6 +82,11 @@ import java.util.logging.Logger;
  */
 public final class AdapterAssembly {
 
+    /** System property naming the Firefox executable for the chat browsers (#141). */
+    static final String FIREFOX_PROPERTY = "enterpriseai.firefox";
+    static final String BROWSER_PROFILES_DIRECTORY = "browser-profiles";
+    private static final long FIREFOX_START_TIMEOUT_MILLIS = 30000L;
+
     private static final Logger LOG = Logger.getLogger(AdapterAssembly.class.getName());
 
     private AdapterAssembly() {
@@ -100,6 +105,27 @@ public final class AdapterAssembly {
      * Der Security-Port der Anwendung (KeePass bzw. „Manuell“) mit der Schlüsselablage der Konfiguration; einmal je
      * Start, damit ein Pairing für Adresse und Secrets gilt.
      */
+    /**
+     * Browser per chat (#141): a visible Firefox on a persistent profile per chat under
+     * {@code <appDirectory>/browser-profiles}. Firefox is taken from {@code -Denterpriseai.firefox} or the usual
+     * install location; without Firefox there are no browser tools. Closing the app ends the browsers, the profiles
+     * stay.
+     */
+    private static void browsers(ApplicationPorts.Builder ports) {
+        java.nio.file.Path firefox = com.aresstack.enterpriseai.browser.firefox.FirefoxEngine.locate(
+                System.getProperty(FIREFOX_PROPERTY));
+        if (firefox == null) {
+            return;
+        }
+        final com.aresstack.enterpriseai.browser.runtime.ChatBrowserRuntime browsers =
+                new com.aresstack.enterpriseai.browser.runtime.ChatBrowserRuntime(
+                        new com.aresstack.enterpriseai.browser.firefox.FirefoxEngine(firefox, FIREFOX_START_TIMEOUT_MILLIS),
+                        new com.aresstack.enterpriseai.browser.runtime.BrowserProfileStore(
+                                AppPaths.appDirectory().resolve(BROWSER_PROFILES_DIRECTORY)));
+        ports.browsers(browsers);
+        ports.closing("chat-browsers", browsers::releaseAll);
+    }
+
     public static SecretProvider secrets(AppConfig config, KeePassPairingCallback pairing,
                                          AskedSecretProvider.CredentialPrompt prompt) {
         KeePassConfig keePass = config.keePass();
@@ -299,6 +325,7 @@ public final class AdapterAssembly {
         final H2FactStore facts = new H2FactStore(config.facts().directory(), config.facts().lockTimeoutMillis());
         ports.facts(facts);
         ports.closing("fact-store", facts);
+        browsers(ports);
         return ports.build();
     }
 

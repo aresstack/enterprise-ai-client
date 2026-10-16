@@ -14,6 +14,8 @@ jsoup = "1.17.2"
 javaLibpst = "0.9.3"
 jwbf = "3.1.1"
 javaWebsocket = "1.5.2"
+# WD4J (vendored in browser-firefox) discovers its JSON wrapper types with Reflections, as upstream.
+reflections = "0.10.2"
 slf4j = "2.0.17"
 winProxy = "0.2.0"
 winTrust = "0.1.0"
@@ -57,6 +59,7 @@ jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 java-libpst = { module = "com.pff:java-libpst", version.ref = "javaLibpst" }
 jwbf = { module = "net.sourceforge:jwbf", version.ref = "jwbf" }
 java-websocket = { module = "org.java-websocket:Java-WebSocket", version.ref = "javaWebsocket" }
+reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 
 # exedra (app.net): Proxy-Auflösung je Ziel-URL wie Browser und PowerShell (Angelos Bibliothek, Java 8; alle

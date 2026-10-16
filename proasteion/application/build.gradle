@@ -18,6 +18,7 @@ dependencies {
     // Browser per chat (#141): port and runtime (profile per chat, lazy start, recovery).
     implementation project(':browser-api')
     implementation project(':browser-runtime')
+    implementation project(':browser-firefox')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     implementation project(':proasteion:emporion:holkas:source-localfiles')
