@@ -25,6 +25,8 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.ImageSource;
 import com.aresstack.enterpriseai.source.api.PageView;
 import com.aresstack.enterpriseai.source.api.PageViewSource;
+import com.aresstack.enterpriseai.source.api.PartitionListingSource;
+import com.aresstack.enterpriseai.source.api.PartitionResources;
 import com.aresstack.enterpriseai.source.api.SearchableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourcePartition;
@@ -87,7 +89,7 @@ import java.util.regex.Pattern;
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
 public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource,
-        AddressableKnowledgeSource, PageNavigationSource {
+        AddressableKnowledgeSource, PageNavigationSource, PartitionListingSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
 
@@ -525,6 +527,47 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
             nodes.add(treeNode(child));
         }
         return new NavigationChildren(nodes, batch.next);
+    }
+
+    /**
+     * Alle Seiten eines Space ohne Inhalt und ohne Anhänge, flach in Confluence-Reihenfolge
+     * ({@code /rest/api/content?type=page&spaceKey=...}), auch Seiten außerhalb des Baums der Startseite. Ein weiterer
+     * Stapel folgt genau dann, wenn Confluence einen {@code next}-Link liefert; der Cursor ist dessen Position
+     * ({@code start}), es gibt keine Obergrenze für die Gesamtzahl.
+     */
+    @Override
+    public PartitionResources resources(final String partitionKey, String cursor, final int limit)
+            throws KnowledgeSourceException {
+        if (!ConfluenceIds.isSpaceKey(partitionKey)) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Kein Space dieser Quelle: " + partitionKey);
+        }
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be at least 1");
+        }
+        final boolean first = cursor == null || cursor.isEmpty();
+        final int start;
+        if (first) {
+            start = 0;
+        } else if (cursor.matches("[0-9]{1,9}")) {
+            start = Integer.parseInt(cursor);
+        } else {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Cursor gehört nicht zu Space " + partitionKey);
+        }
+        ConfluenceRestClient.PageBatch batch = withSession(new Operation<ConfluenceRestClient.PageBatch>() {
+            @Override
+            public ConfluenceRestClient.PageBatch run(Session session) throws KnowledgeSourceException {
+                // Ein unbekannter Space liefert eine leere Liste; nur am Anfang eigens nachfragen.
+                if (first && client.space(session, partitionKey) == null) {
+                    throw new KnowledgeSourceException(Kind.NOT_FOUND, "Space nicht gefunden: " + partitionKey);
+                }
+                return client.spacePageBatch(session, partitionKey, start, limit);
+            }
+        });
+        List<KnowledgeResource> resources = new ArrayList<KnowledgeResource>();
+        for (Page page : batch.pages) {
+            resources.add(pageResource(page, page.parentId));
+        }
+        return new PartitionResources(resources, batch.nextStart < 0 ? "" : String.valueOf(batch.nextStart));
     }
 
     /** Outgoing page links of the rendered body; Confluence has no reliable list of incoming links. */
