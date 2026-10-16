@@ -1,0 +1,7 @@
+description = 'Memory store adapter (#144): one embedded H2 database (in-process, file in the app data directory) ' +
+        'behind MemoryStorePort.'
+
+dependencies {
+    api project(':memory-api')
+    implementation libs.h2
+}

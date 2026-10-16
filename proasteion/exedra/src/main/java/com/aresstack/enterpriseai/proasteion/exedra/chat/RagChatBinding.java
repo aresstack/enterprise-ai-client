@@ -500,6 +500,8 @@ public final class RagChatBinding implements ChatShellActions {
                                     available.add(tool);
                                 }
                             }
+                            // Memories (#144) bound to this chat: offered on every tool turn.
+                            available.addAll(support.chatTools(conversation.value()));
                             List<String> offered = new ArrayList<String>(available.size());
                             for (AiTool tool : available) {
                                 offered.add(tool.name());

@@ -154,7 +154,9 @@ public final class ShellAssembly {
                     // Werkzeugrunden je Antwort: je Anfrage frisch aus den Einstellungen (ohne Neustart).
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
-                    .withDiagnostics(root.turnDiagnostics()));
+                    .withDiagnostics(root.turnDiagnostics())
+                    // Memories (#144): bound to the chat of each turn.
+                    .withChatTools(root::memoryChatTools));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.
@@ -162,6 +164,8 @@ public final class ShellAssembly {
         final ChatProjects chatProjects = new ChatProjects(
                 new FileChatProjectStore(chatsDirectory.resolveSibling(CHAT_PROJECTS_FILE)));
         root.ragChat().withProjectContext(chatProjects);
+        // Memories (#144): scope=project follows the chat's current project; an unresolved assignment has none.
+        root.resolveMemoryProjectsWith(chatProjects);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
@@ -383,6 +387,8 @@ public final class ShellAssembly {
             @Override
             public void delete(String chatId) {
                 history.delete(chatId);
+                // Chat memories (#144) go with their chat; project and global memories stay.
+                root.deleteChatMemories(chatId);
             }
         }, agentService == null ? null : new ConversationLifecycle.AgentSessions() {
             @Override

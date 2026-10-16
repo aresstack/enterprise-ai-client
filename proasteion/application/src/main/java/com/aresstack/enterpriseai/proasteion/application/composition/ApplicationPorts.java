@@ -44,6 +44,7 @@ public final class ApplicationPorts implements Closeable {
     private final KnowledgeIndexPort index;
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
+    private final com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -72,6 +73,7 @@ public final class ApplicationPorts implements Closeable {
         this.index = builder.index;
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
+        this.memories = builder.memories;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -137,6 +139,11 @@ public final class ApplicationPorts implements Closeable {
      */
     public FactStorePort facts() {
         return facts;
+    }
+
+    /** Persistent memories (#144), or {@code null} without a memory store: then the chat has no memory tools. */
+    public com.aresstack.enterpriseai.memory.api.MemoryStorePort memories() {
+        return memories;
     }
 
     /**
@@ -251,6 +258,7 @@ public final class ApplicationPorts implements Closeable {
         private KnowledgeIndexPort index;
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
+        private com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -313,6 +321,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder facts(FactStorePort value) {
             this.facts = value;
+            return this;
+        }
+
+        public Builder memories(com.aresstack.enterpriseai.memory.api.MemoryStorePort value) {
+            this.memories = value;
             return this;
         }
 

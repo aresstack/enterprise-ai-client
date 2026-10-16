@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -35,6 +36,7 @@ public final class ToolSupport {
     private final Executor loopExecutor;
     private final IntSupplier maxRounds;
     private final ToolActivityListener diagnostics;
+    private final Function<String, List<AiTool>> chatTools;
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -67,9 +69,15 @@ public final class ToolSupport {
         };
         this.maxRounds = () -> ChatCompletionsToolLoop.DEFAULT_MAX_ROUNDS;
         this.diagnostics = null;
+        this.chatTools = chatId -> Collections.<AiTool>emptyList();
     }
 
     private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics) {
+        this(base, maxRounds, diagnostics, base.chatTools);
+    }
+
+    private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics,
+                        Function<String, List<AiTool>> chatTools) {
         this.chat = base.chat;
         this.store = base.store;
         this.extractor = base.extractor;
@@ -79,6 +87,24 @@ public final class ToolSupport {
         this.loopExecutor = base.loopExecutor;
         this.maxRounds = maxRounds;
         this.diagnostics = diagnostics;
+        this.chatTools = chatTools;
+    }
+
+    /**
+     * Copy that offers, on every tool turn, the tools bound to the turn's chat (e.g. memories, #144). The chat id comes
+     * from the turn, never from the model.
+     */
+    public ToolSupport withChatTools(Function<String, List<AiTool>> chatTools) {
+        if (chatTools == null) {
+            throw new IllegalArgumentException("chatTools must not be null");
+        }
+        return new ToolSupport(this, maxRounds, diagnostics, chatTools);
+    }
+
+    /** The active tools bound to the chat {@code chatId}, empty without any. */
+    public List<AiTool> chatTools(String chatId) {
+        List<AiTool> tools = chatTools.apply(chatId);
+        return tools == null ? Collections.<AiTool>emptyList() : tools;
     }
 
     /**

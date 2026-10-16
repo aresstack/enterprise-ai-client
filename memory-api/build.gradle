@@ -1,0 +1,6 @@
+description = 'Port for persistent user memories (#144): chat, project and global memories with short visible ids. ' +
+        'No storage types.'
+
+dependencies {
+    api project(':astu')
+}

@@ -21,6 +21,7 @@ public final class AppPaths {
     public static final String CONFIG_FILE_NAME = "enterprise-ai-client.properties";
     public static final String INDEX_DIRECTORY_NAME = "index";
     public static final String FACT_DIRECTORY_NAME = "facts";
+    public static final String MEMORY_DIRECTORY_NAME = "memories";
     public static final String PAIRING_KEY_FILE_NAME = "keepassrpc-pairing.key";
     public static final String LOG_DIRECTORY_NAME = "logs";
     public static final String GIT_CACHE_DIRECTORY_NAME = "git-cache";
