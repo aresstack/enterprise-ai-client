@@ -60,7 +60,27 @@ final class SearchRunSchema {
                     + " FOREIGN KEY (RUN_ID, CANDIDATE_NUMBER) REFERENCES SEARCH_CANDIDATE(RUN_ID, CANDIDATE_NUMBER)"
                     + " ON DELETE CASCADE)",
             "CREATE INDEX IF NOT EXISTS IDX_SEARCH_CANDIDATE_EVENT_RUN ON SEARCH_CANDIDATE_EVENT(RUN_ID, EVENT_NUMBER)",
-            "CREATE INDEX IF NOT EXISTS IDX_SEARCH_RUN_STARTED ON SEARCH_RUN(STARTED_AT)"}};
+            "CREATE INDEX IF NOT EXISTS IDX_SEARCH_RUN_STARTED ON SEARCH_RUN(STARTED_AT)"}, {
+            // #155: the funnel of a research run; replaced as a whole while the run progresses.
+            "CREATE TABLE IF NOT EXISTS SEARCH_FUNNEL ("
+                    + " FUNNEL_ID VARCHAR(64) PRIMARY KEY,"
+                    + " STARTED_AT TIMESTAMP(9) WITH TIME ZONE NOT NULL,"
+                    + " DISCOVERED INT NOT NULL CHECK (DISCOVERED >= 0),"
+                    + " PHASE VARCHAR(32) NOT NULL,"
+                    + " COMPLETE BOOLEAN NOT NULL)",
+            // The live search runs of the funnel; no foreign key, a run may have failed to be recorded.
+            "CREATE TABLE IF NOT EXISTS SEARCH_FUNNEL_RUN ("
+                    + " FUNNEL_ID VARCHAR(64) NOT NULL REFERENCES SEARCH_FUNNEL(FUNNEL_ID) ON DELETE CASCADE,"
+                    + " POSITION INT NOT NULL,"
+                    + " RUN_ID VARCHAR(64) NOT NULL,"
+                    + " PRIMARY KEY (FUNNEL_ID, POSITION))",
+            "CREATE TABLE IF NOT EXISTS SEARCH_FUNNEL_RESOURCE ("
+                    + " FUNNEL_ID VARCHAR(64) NOT NULL REFERENCES SEARCH_FUNNEL(FUNNEL_ID) ON DELETE CASCADE,"
+                    + " STAGE VARCHAR(16) NOT NULL CHECK (STAGE IN ('EXAMINED', 'RELEVANT', 'USED')),"
+                    + " POSITION INT NOT NULL,"
+                    + " SOURCE_ID VARCHAR(2048) NOT NULL,"
+                    + " RESOURCE_ID VARCHAR(1000000) NOT NULL,"
+                    + " PRIMARY KEY (FUNNEL_ID, STAGE, POSITION))"}};
 
     static final int CURRENT_VERSION = MIGRATIONS.length;
 

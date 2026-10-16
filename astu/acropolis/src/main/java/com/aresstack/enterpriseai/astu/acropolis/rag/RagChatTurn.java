@@ -1,10 +1,13 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
+
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Ein gestarteter Chat-Turn mit seinem RAG-Kontext. Streaming, Abbruch und Abschluss laufen wie gewohnt über
@@ -21,6 +24,7 @@ public final class RagChatTurn {
     private final List<String> queries;
     private final List<Integer> hitCounts;
     private final int reusedSources;
+    private final KnowledgeFunnel funnel;
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed) {
@@ -35,6 +39,12 @@ public final class RagChatTurn {
 
     RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context, List<RetrievalWarning> warnings,
                 boolean retrievalFailed, List<String> queries, List<Integer> hitCounts, int reusedSources) {
+        this(turn, retrievalRequested, context, warnings, retrievalFailed, queries, hitCounts, reusedSources, null);
+    }
+
+    private RagChatTurn(ChatTurn turn, boolean retrievalRequested, PromptContext context,
+                        List<RetrievalWarning> warnings, boolean retrievalFailed, List<String> queries,
+                        List<Integer> hitCounts, int reusedSources, KnowledgeFunnel funnel) {
         this.turn = turn;
         this.retrievalRequested = retrievalRequested;
         this.context = context;
@@ -43,6 +53,20 @@ public final class RagChatTurn {
         this.queries = Collections.unmodifiableList(new ArrayList<String>(queries));
         this.hitCounts = Collections.unmodifiableList(new ArrayList<Integer>(hitCounts));
         this.reusedSources = reusedSources;
+        this.funnel = funnel;
+    }
+
+    /** This turn with the funnel of its retrieval. */
+    RagChatTurn withFunnel(KnowledgeFunnel counted) {
+        return new RagChatTurn(turn, retrievalRequested, context, warnings, retrievalFailed, queries, hitCounts,
+                reusedSources, counted);
+    }
+
+    /**
+     * The funnel of this turn's retrieval (#155): discovered, examined, relevant and used; empty when RAG was off.
+     */
+    public Optional<KnowledgeFunnel> funnel() {
+        return Optional.ofNullable(funnel);
     }
 
     /**

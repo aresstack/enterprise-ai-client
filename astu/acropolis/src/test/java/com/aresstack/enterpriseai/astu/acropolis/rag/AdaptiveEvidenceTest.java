@@ -27,6 +27,10 @@ import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingBatch;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingPort;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
+import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
+import com.aresstack.enterpriseai.searchrun.api.FunnelResource;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
+import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
 import com.aresstack.enterpriseai.source.api.testing.InMemoryKnowledgeSource;
 import org.junit.Before;
 import org.junit.Test;
@@ -103,6 +107,62 @@ public class AdaptiveEvidenceTest {
         assertEquals("nur der Bewerter, keine weitere Nebenanfrage", 1, model.requests);
         assertFalse(model.lastAnswerSystem.contains("Käse"));
         assertFalse(model.lastAnswerSystem.contains("Lücke"));
+    }
+
+    @Test
+    public void turnFunnelCountsWhatRetrievalEvaluatorAndAnswerActuallyDid() throws Exception {
+        model.relevant(QUARK, DETAIL).sufficientWith(QUARK);
+        MemoryFunnelLog log = new MemoryFunnelLog();
+        final SearchRunId run = log.run("wiki", 1, "wiki:Neu", "wiki:Alt");
+        RetrievalPreparation live = new RetrievalPreparation() {
+            @Override
+            public void prepare(String query, Collection<SourceAddress> sources) {
+            }
+
+            @Override
+            public Stage begin(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
+                progress.liveSearchRecorded(run.value());
+                return Stage.done();
+            }
+        };
+        RagChatUseCase rag = adaptive(EvidencePolicy::defaults, new PromptContextAssembler(ContextSettings.defaults()),
+                live).recordFunnelsIn(log);
+        final List<KnowledgeFunnel> seen = new java.util.concurrent.CopyOnWriteArrayList<KnowledgeFunnel>();
+        RecordingListener listener = new RecordingListener();
+
+        RagChatTurn turn = rag.send(chat.openConversation("System"), QUESTION, RagOptions.enabled(), null, listener,
+                null, null, new RetrievalProgress() {
+                    @Override
+                    public void funnelChanged(KnowledgeFunnel funnel) {
+                        seen.add(funnel);
+                    }
+                });
+        listener.await();
+
+        KnowledgeFunnel funnel = turn.funnel().get();
+        assertEquals("the run's candidates, never a provider total", 2, funnel.discovered());
+        assertTrue("the reranked excerpt", funnel.examined().contains(new FunnelResource("wiki", "wiki:Neu")));
+        assertFalse("not reranked, only discovered", funnel.examined().contains(new FunnelResource("wiki", "wiki:Alt")));
+        assertTrue("indexed content scored by retrieval, no reload", funnel.examined().containsAll(
+                Arrays.asList(key(QUARK), key(DETAIL), key(CHEESE))));
+        assertEquals(new HashSet<FunnelResource>(Arrays.asList(key(QUARK), key(DETAIL))),
+                new HashSet<FunnelResource>(funnel.relevant()));
+        assertEquals("the provenance of the answer", Collections.singletonList(key(QUARK)), funnel.used());
+        assertTrue(funnel.complete());
+        assertEquals(FunnelPhase.DONE, funnel.phase());
+        assertTrue("stored for later", log.funnel(funnel.id()).isPresent());
+        List<FunnelPhase> phases = new ArrayList<FunnelPhase>();
+        for (KnowledgeFunnel step : seen) {
+            if (phases.isEmpty() || phases.get(phases.size() - 1) != step.phase()) {
+                phases.add(step.phase());
+            }
+        }
+        assertEquals(Arrays.asList(FunnelPhase.DISCOVERY, FunnelPhase.HARVESTING, FunnelPhase.RETRIEVAL,
+                FunnelPhase.EVIDENCE, FunnelPhase.ANSWER, FunnelPhase.DONE), phases);
+    }
+
+    private static FunnelResource key(KnowledgeResource resource) {
+        return FunnelRecorder.resource(resource.sourceId(), resource.id());
     }
 
     @Test

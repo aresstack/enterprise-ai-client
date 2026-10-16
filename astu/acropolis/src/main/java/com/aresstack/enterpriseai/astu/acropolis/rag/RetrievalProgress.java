@@ -1,6 +1,9 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
+
+import java.util.List;
 
 /**
  * Fortschritt der Wissenssuche eines RAG-Turns, während sie läuft ({@link RagChatUseCase}): welche Suche gerade läuft
@@ -107,6 +110,32 @@ public interface RetrievalProgress {
 
     /** Die Nachricht braucht kein Wissen aus den Quellen; es wird nicht gesucht, der Turn startet ohne Kontext. */
     default void searchSkipped() {
+    }
+
+    /**
+     * The live search of the current query was recorded in the run log under {@code runId} (#153); the funnel reads
+     * its candidates and scored excerpts from there.
+     */
+    default void liveSearchRecorded(String runId) {
+    }
+
+    /** The retrieval scored the content of these hits in this turn (they count as examined). */
+    default void contentExamined(List<RetrievedChunk> hits) {
+    }
+
+    /** These hits survived the relevance stage of this turn (they count as relevant). */
+    default void contentRelevant(List<RetrievedChunk> hits) {
+    }
+
+    /** These sources are the provenance of the answer (they count as used). */
+    default void sourcesUsed(List<RagSource> sources) {
+    }
+
+    /**
+     * The funnel of this turn changed (#155): discovered, examined, relevant and used, plus the work phase. Progress
+     * is the phase; the counts are never a percentage.
+     */
+    default void funnelChanged(KnowledgeFunnel funnel) {
     }
 
     /** {@code true}, wenn der Nutzer abgebrochen hat: weitere Suchschritte entfallen. */

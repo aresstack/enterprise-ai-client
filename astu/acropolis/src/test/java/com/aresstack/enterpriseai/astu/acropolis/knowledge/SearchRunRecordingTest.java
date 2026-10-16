@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOccurrence;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOrigin;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeCandidate;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
 import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
@@ -224,6 +225,18 @@ public class SearchRunRecordingTest {
                 }
             }
             return result;
+        }
+
+        final Map<SearchRunId, KnowledgeFunnel> funnels = new LinkedHashMap<SearchRunId, KnowledgeFunnel>();
+
+        @Override
+        public synchronized void recordFunnel(KnowledgeFunnel funnel) {
+            funnels.put(funnel.id(), funnel);
+        }
+
+        @Override
+        public synchronized Optional<KnowledgeFunnel> funnel(SearchRunId id) {
+            return Optional.ofNullable(funnels.get(id));
         }
     }
 }
