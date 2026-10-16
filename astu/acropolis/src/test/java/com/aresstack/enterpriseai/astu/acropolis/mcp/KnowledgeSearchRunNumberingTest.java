@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkingPolicy;
 import com.aresstack.enterpriseai.embedding.api.testing.DeterministicEmbeddingPort;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
 import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
@@ -108,6 +109,15 @@ public class KnowledgeSearchRunNumberingTest {
             @Override
             public List<CandidateEvent> events(SearchRunId id) {
                 return new ArrayList<CandidateEvent>();
+            }
+
+            @Override
+            public void recordFunnel(KnowledgeFunnel funnel) {
+            }
+
+            @Override
+            public Optional<KnowledgeFunnel> funnel(SearchRunId id) {
+                return Optional.empty();
             }
         };
     }

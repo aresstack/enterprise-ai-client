@@ -7,7 +7,10 @@ import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
 import com.aresstack.enterpriseai.searchrun.api.CandidateEventKind;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOccurrence;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOrigin;
+import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
+import com.aresstack.enterpriseai.searchrun.api.FunnelResource;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeCandidate;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
 import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
@@ -232,6 +235,123 @@ public final class H2KnowledgeSearchRunStore implements KnowledgeSearchRunPort, 
             return events;
         } catch (SQLException e) {
             throw failure("read the events of search run " + id, e);
+        }
+    }
+
+    @Override
+    public void recordFunnel(KnowledgeFunnel funnel) {
+        if (funnel == null) {
+            throw new IllegalArgumentException("funnel must not be null");
+        }
+        String id = funnel.id().value();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM SEARCH_FUNNEL WHERE FUNNEL_ID = ?")) {
+                    delete.setString(1, id);
+                    delete.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("INSERT INTO SEARCH_FUNNEL(FUNNEL_ID,"
+                        + " STARTED_AT, DISCOVERED, PHASE, COMPLETE) VALUES (?, ?, ?, ?, ?)")) {
+                    insert.setString(1, id);
+                    insert.setObject(2, OffsetDateTime.ofInstant(funnel.startedAt(), ZoneOffset.UTC));
+                    insert.setInt(3, funnel.discovered());
+                    insert.setString(4, funnel.phase().name());
+                    insert.setBoolean(5, funnel.complete());
+                    insert.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO SEARCH_FUNNEL_RUN(FUNNEL_ID, POSITION, RUN_ID) VALUES (?, ?, ?)")) {
+                    int position = 0;
+                    for (SearchRunId run : funnel.runs()) {
+                        insert.setString(1, id);
+                        insert.setInt(2, position++);
+                        insert.setString(3, run.value());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("INSERT INTO SEARCH_FUNNEL_RESOURCE("
+                        + "FUNNEL_ID, STAGE, POSITION, SOURCE_ID, RESOURCE_ID) VALUES (?, ?, ?, ?, ?)")) {
+                    addStage(insert, id, "EXAMINED", funnel.examined());
+                    addStage(insert, id, "RELEVANT", funnel.relevant());
+                    addStage(insert, id, "USED", funnel.used());
+                    insert.executeBatch();
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw failure("record research funnel " + id, e);
+        }
+    }
+
+    private static void addStage(PreparedStatement insert, String id, String stage, List<FunnelResource> resources)
+            throws SQLException {
+        int position = 0;
+        for (FunnelResource resource : resources) {
+            insert.setString(1, id);
+            insert.setString(2, stage);
+            insert.setInt(3, position++);
+            insert.setString(4, resource.sourceId());
+            insert.setString(5, resource.resourceId());
+            insert.addBatch();
+        }
+    }
+
+    @Override
+    public Optional<KnowledgeFunnel> funnel(SearchRunId id) {
+        if (id == null) {
+            throw new IllegalArgumentException("id must not be null");
+        }
+        try (Connection connection = connection()) {
+            Instant startedAt;
+            int discovered;
+            FunnelPhase phase;
+            boolean complete;
+            try (PreparedStatement select = connection.prepareStatement("SELECT STARTED_AT, DISCOVERED, PHASE,"
+                    + " COMPLETE FROM SEARCH_FUNNEL WHERE FUNNEL_ID = ?")) {
+                select.setString(1, id.value());
+                try (ResultSet rows = select.executeQuery()) {
+                    if (!rows.next()) {
+                        return Optional.empty();
+                    }
+                    startedAt = rows.getObject(1, OffsetDateTime.class).toInstant();
+                    discovered = rows.getInt(2);
+                    phase = FunnelPhase.valueOf(rows.getString(3));
+                    complete = rows.getBoolean(4);
+                }
+            }
+            List<SearchRunId> runs = new ArrayList<SearchRunId>();
+            try (PreparedStatement select = connection.prepareStatement(
+                    "SELECT RUN_ID FROM SEARCH_FUNNEL_RUN WHERE FUNNEL_ID = ? ORDER BY POSITION")) {
+                select.setString(1, id.value());
+                try (ResultSet rows = select.executeQuery()) {
+                    while (rows.next()) {
+                        runs.add(SearchRunId.of(rows.getString(1)));
+                    }
+                }
+            }
+            Map<String, List<FunnelResource>> stages = new LinkedHashMap<String, List<FunnelResource>>();
+            stages.put("EXAMINED", new ArrayList<FunnelResource>());
+            stages.put("RELEVANT", new ArrayList<FunnelResource>());
+            stages.put("USED", new ArrayList<FunnelResource>());
+            try (PreparedStatement select = connection.prepareStatement("SELECT STAGE, SOURCE_ID, RESOURCE_ID"
+                    + " FROM SEARCH_FUNNEL_RESOURCE WHERE FUNNEL_ID = ? ORDER BY STAGE, POSITION")) {
+                select.setString(1, id.value());
+                try (ResultSet rows = select.executeQuery()) {
+                    while (rows.next()) {
+                        stages.get(rows.getString(1)).add(new FunnelResource(rows.getString(2), rows.getString(3)));
+                    }
+                }
+            }
+            return Optional.of(new KnowledgeFunnel(id, startedAt, runs, discovered, stages.get("EXAMINED"),
+                    stages.get("RELEVANT"), stages.get("USED"), phase, complete));
+        } catch (SQLException e) {
+            throw failure("read research funnel " + id, e);
         }
     }
 

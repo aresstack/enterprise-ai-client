@@ -7,7 +7,10 @@ import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
 import com.aresstack.enterpriseai.searchrun.api.CandidateEventKind;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOccurrence;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOrigin;
+import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
+import com.aresstack.enterpriseai.searchrun.api.FunnelResource;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeCandidate;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRun;
 import com.aresstack.enterpriseai.searchrun.api.SearchRunId;
 import com.aresstack.enterpriseai.searchrun.api.SearchRunStoreException;
@@ -53,6 +56,33 @@ public class H2KnowledgeSearchRunStoreTest {
     @After
     public void close() {
         store.close();
+    }
+
+    @Test
+    public void funnelSurvivesRestartAndIsReplacedAsAWhole() {
+        SearchRunId id = SearchRunId.random();
+        SearchRunId live = SearchRunId.random();
+        FunnelResource a = new FunnelResource("wiki", "confluence:a");
+        FunnelResource b = new FunnelResource("wiki", "confluence:b");
+        FunnelResource c = new FunnelResource("files", "file:c");
+        store.recordFunnel(new KnowledgeFunnel(id, STARTED, Collections.singletonList(live), 57,
+                Arrays.asList(a, b), Collections.singletonList(a), Collections.<FunnelResource>emptyList(),
+                FunnelPhase.EVIDENCE, false));
+        store.recordFunnel(new KnowledgeFunnel(id, STARTED, Collections.singletonList(live), 57,
+                Arrays.asList(a, b, c), Arrays.asList(a, c), Collections.singletonList(c), FunnelPhase.DONE, true));
+        store.close();
+
+        store = new H2KnowledgeSearchRunStore(directory, 1000);
+        KnowledgeFunnel read = store.funnel(id).get();
+        assertEquals(STARTED, read.startedAt());
+        assertEquals(Collections.singletonList(live), read.runs());
+        assertEquals(57, read.discovered());
+        assertEquals(Arrays.asList(a, b, c), read.examined());
+        assertEquals(Arrays.asList(a, c), read.relevant());
+        assertEquals(Collections.singletonList(c), read.used());
+        assertEquals(FunnelPhase.DONE, read.phase());
+        assertTrue(read.complete());
+        assertFalse(store.funnel(SearchRunId.random()).isPresent());
     }
 
     @Test

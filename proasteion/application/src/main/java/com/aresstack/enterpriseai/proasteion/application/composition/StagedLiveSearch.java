@@ -39,6 +39,11 @@ final class StagedLiveSearch implements RetrievalPreparation {
          * @param listener erfährt jede verfügbar gewordene Seite (Anzahl bisher)
          */
         void awaitAvailable(int count, IntConsumer listener);
+
+        /** The id of this search in the run log (#153); {@code null} when it was not recorded. */
+        default String runId() {
+            return null;
+        }
     }
 
     private final Supplier<LiveSearchConfig> limits;
@@ -54,9 +59,18 @@ final class StagedLiveSearch implements RetrievalPreparation {
 
     @Override
     public void prepare(String query, Collection<SourceAddress> sources) {
+        prepare(query, sources, RetrievalProgress.none());
+    }
+
+    @Override
+    public void prepare(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
         LiveSearchConfig current = limits.get();
         Found found = searcher.search(sources, query, current.hitsPerSource());
-        await(found, Math.min(found.hits(), current.maxPages()), RetrievalProgress.none());
+        progress.liveHitsFound(found.hits());
+        if (found.runId() != null) {
+            progress.liveSearchRecorded(found.runId());
+        }
+        await(found, Math.min(found.hits(), current.maxPages()), progress);
     }
 
     @Override
@@ -69,6 +83,9 @@ final class StagedLiveSearch implements RetrievalPreparation {
         final LiveSearchConfig current = limits.get();
         final Found found = searcher.search(sources, query, current.hitsPerSource());
         progress.liveHitsFound(found.hits());
+        if (found.runId() != null) {
+            progress.liveSearchRecorded(found.runId());
+        }
         await(found, Math.min(found.hits(), current.initialPages()), progress);
         if (found.hits() <= current.initialPages() || current.maxPages() <= current.initialPages()) {
             return Stage.done();

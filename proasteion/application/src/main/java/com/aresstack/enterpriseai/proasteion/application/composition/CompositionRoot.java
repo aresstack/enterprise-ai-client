@@ -303,6 +303,11 @@ public final class CompositionRoot {
                             result.series().awaitAvailable(count, SearchDrivenIndexingUseCase.INDEX_WAIT_MILLIS,
                                     listener);
                         }
+
+                        @Override
+                        public String runId() {
+                            return result.runRecorded() ? result.recordedRunId() : null;
+                        }
                     };
                 });
         // Der Chat sucht zusätzlich im Rohindex: eine gerade geladene Seite ist mit ihren passendsten Textfenstern
@@ -314,6 +319,8 @@ public final class CompositionRoot {
                 settings.get(c -> c.knowledge().evidence()), RetrievalTriage.off(),
                 new ModelLinguisticAnalyzer(NlpModels.textAnalysis(), passageLanguage), turnDiagnostics,
                 () -> settings.current().chat().answerPlanning());
+        // Research funnel of every RAG turn (#155), next to the live search runs it reads.
+        this.ragChat.recordFunnelsIn(ports.searchRuns());
         // Cross-encoder (model.rerank) between fusion and the evidence check; without a selected model, or when it
         // fails, the candidates reach the evaluator unchanged. Model and top-K apply without restart.
         this.ragChat.rankCandidatesWith(new com.aresstack.enterpriseai.astu.acropolis.rag.CrossEncoderRanking(
@@ -360,7 +367,7 @@ public final class CompositionRoot {
             final ToolCatalog catalog = toolCatalog;
             final ResearchDelegationTool research = new ResearchDelegationTool(
                     name -> catalog.find(name, ToolChannel.AGENT),
-                    new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()));
+                    new ChatPortMainModelChat(ports.chat(), config.chat().defaultOptions()), ports.searchRuns());
             toolCatalog.register(ORIGIN_RESEARCH_DELEGATION, EnumSet.of(ToolChannel.CHAT),
                     () -> researchTools.getAsBoolean()
                             ? Collections.singletonList(research.contribution())

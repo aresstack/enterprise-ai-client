@@ -37,12 +37,13 @@ public class RagBoundaryTest {
     public void ragUseCasesSeeOnlyChatUseCaseAndKnowledgePorts() {
         assertRule(classes().that().resideInAPackage(APPLICATION_RAG)
                 .should().onlyDependOnClassesThat().resideInAnyPackage(
-                        "java.lang..", "java.util..", "java.net..",
+                        "java.lang..", "java.util..", "java.net..", "java.time..",
                         ROOT + ".astu.chat..", ROOT + ".astu.embedding..", ROOT + ".astu.knowledge..",
                         ROOT + ".chat.api..", ROOT + ".embedding.api..", ROOT + ".astu.acropolis.chalcotheca..",
-                        ROOT + ".astu.acropolis.chat..", APPLICATION_RAG)
+                        ROOT + ".astu.acropolis.chat..", ROOT + ".searchrun.api..", APPLICATION_RAG)
                 .because("RAG orchestriert nur Ports und den Chat-Use-Case; kein Adapter, keine Quelle, "
-                        + "kein Security-, ACP- oder MCP-Typ"));
+                        + "kein Security-, ACP- oder MCP-Typ; the research funnel (#155) only through the run log "
+                        + "port"));
     }
 
     @Test

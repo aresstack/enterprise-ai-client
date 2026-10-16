@@ -28,6 +28,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatOptions;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -107,6 +108,7 @@ public final class RagChatUseCase {
     private final Map<ChatConversationId, String> turnScopes = new ConcurrentHashMap<ChatConversationId, String>();
     /** Resolves the project context of every new turn (#143); {@link ProjectContextResolver#none()} without projects. */
     private volatile ProjectContextResolver projects = ProjectContextResolver.none();
+    private volatile KnowledgeSearchRunPort funnelLog;
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
         this(chat, retrieval, assembler, RetrievalPreparation.none());
@@ -204,6 +206,16 @@ public final class RagChatUseCase {
      */
     public RagChatUseCase rankCandidatesWith(CrossEncoderRanking ranking) {
         this.crossEncoder = ranking == null ? CrossEncoderRanking.off() : ranking;
+        return this;
+    }
+
+    /**
+     * Record the funnel of every RAG turn (#155) in the run log, which also holds the live search runs it reads.
+     *
+     * @param runs {@code null} = count without live search runs and store nothing
+     */
+    public RagChatUseCase recordFunnelsIn(KnowledgeSearchRunPort runs) {
+        this.funnelLog = runs;
         return this;
     }
 
@@ -343,25 +355,39 @@ public final class RagChatUseCase {
             }
         }
         try {
-            RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
-            TurnReading reading = read(id, userText, from, options, policy, true, steps);
-            extraContext = reading.contextFor(extraContext, from);
-            if (reading.clarifies()) {
-                return clarify(id, userText, options, listener, extraContext, reading);
+            // One funnel per turn (#155); cancelled or failed turns keep the counts reached until then.
+            FunnelRecorder funnel = new FunnelRecorder(funnelLog);
+            FunnelProgress steps = new FunnelProgress(progress, funnel);
+            RagChatTurn sent = null;
+            try {
+                sent = sendWithKnowledge(id, userText, rag, options, listener, extraContext, via, steps, from, policy);
+            } finally {
+                steps.funnelChanged(funnel.finish(sent != null && !sent.retrievalFailed() && !steps.isCancelled()));
             }
-            EvidencePolicy limits = evidence == null ? null : evidence.get();
-            if (limits != null && limits.reranking()) {
-                return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, limits, from,
-                        reading, policy);
-            }
-            return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via, steps,
-                    limits == null ? followUps : FollowUpResearch.upTo(limits.maxFollowUps()), from, reading,
-                    policy);
+            return sent.withFunnel(funnel.snapshot());
         } finally {
             synchronized (retrieving) {
                 retrieving.remove(id);
             }
         }
+    }
+
+    private RagChatTurn sendWithKnowledge(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                                          ChatTurnListener listener, TurnContext extraContext, ChatCompletionPort via,
+                                          RetrievalProgress steps, MessageOrigin from, AnswerPlanningPolicy policy) {
+        TurnReading reading = read(id, userText, from, options, policy, true, steps);
+        extraContext = reading.contextFor(extraContext, from);
+        if (reading.clarifies()) {
+            return clarify(id, userText, options, listener, extraContext, reading);
+        }
+        EvidencePolicy limits = evidence == null ? null : evidence.get();
+        if (limits != null && limits.reranking()) {
+            return sendAdaptive(id, userText, rag, options, listener, extraContext, via, steps, limits, from,
+                    reading, policy);
+        }
+        return sendWithRetrieval(id, userText, rag, options, listener, extraContext, via, steps,
+                limits == null ? followUps : FollowUpResearch.upTo(limits.maxFollowUps()), from, reading,
+                policy);
     }
 
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
@@ -429,7 +455,7 @@ public final class RagChatUseCase {
             progress.searchStarted(query, queries.size(), maxSearches);
             progress.liveSearchStarted(query);
             try {
-                preparation.prepare(query, rag.sources());
+                preparation.prepare(query, rag.sources(), progress);
             } catch (RuntimeException e) {
                 // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
             }
@@ -439,6 +465,7 @@ public final class RagChatUseCase {
             }
             try {
                 RetrievalResult result = retrieval.retrieve(query, rag.sources(), progress);
+                progress.contentExamined(result.hits());
                 hitCounts.add(result.hits().size());
                 hits = newestFirst(result.hits(), hits);
                 warnings.addAll(result.warnings());
@@ -464,6 +491,9 @@ public final class RagChatUseCase {
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(hits);
         progress.contextReady(context.sources().size());
+        // without an evaluator the relevance stage is the retrieval cut into the context
+        progress.contentRelevant(hitsOf(context.sources()));
+        progress.sourcesUsed(context.sources());
         List<String> allQueries = all(priorQueries, queries);
         if (followUps.isEnabled() && !context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
@@ -690,6 +720,14 @@ public final class RagChatUseCase {
         }
     }
 
+    private static List<RetrievedChunk> hitsOf(List<RagSource> sources) {
+        List<RetrievedChunk> hits = new ArrayList<RetrievedChunk>(sources.size());
+        for (RagSource source : sources) {
+            hits.add(source.hit());
+        }
+        return hits;
+    }
+
     private RagChatTurn sendAdaptive(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                                      ChatTurnListener listener, TurnContext extraContext, ChatCompletionPort via,
                                      RetrievalProgress progress, EvidencePolicy policy, MessageOrigin origin,
@@ -769,6 +807,7 @@ public final class RagChatUseCase {
                 RetrievalResult result;
                 try {
                     result = retrieval.retrieve(query, rag.sources(), progress);
+                    progress.contentExamined(result.hits());
                 } catch (KnowledgeRetrievalException e) {
                     if (round == 0) {
                         hitCounts.add(-1);
@@ -811,6 +850,14 @@ public final class RagChatUseCase {
                     evidence.missing = evaluation.missing();
                     evidence.suggestion = evaluation.nextQuery();
                     progress.candidatesRanked(offered.size(), evaluation.relevant().size());
+                    List<RetrievedChunk> judged = new ArrayList<RetrievedChunk>();
+                    for (String relevantId : evaluation.relevant()) {
+                        RetrievedChunk hit = offered.get(relevantId);
+                        if (hit != null) {
+                            judged.add(hit);
+                        }
+                    }
+                    progress.contentRelevant(judged);
                     boolean enough = evaluation.isSufficient()
                             && evidence.independentChunks(evidence.selection) >= evidence.minSources();
                     progress.evidenceChecked(evidence.selection.size(),
@@ -855,6 +902,7 @@ public final class RagChatUseCase {
         }
         PromptContext context = failed ? PromptContext.empty(0) : assembler.assemble(chosen);
         progress.contextReady(context.sources().size());
+        progress.sourcesUsed(context.sources());
         List<String> allQueries = all(evidence.priorQueries, queries);
         if (!context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.

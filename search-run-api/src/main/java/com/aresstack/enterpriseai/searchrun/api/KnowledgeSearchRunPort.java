@@ -24,4 +24,13 @@ public interface KnowledgeSearchRunPort {
 
     /** All events of a run in the order they were appended. */
     List<CandidateEvent> events(SearchRunId id);
+
+    /**
+     * Stores the funnel of a research run (#155). Writing a funnel with an id that already exists replaces it, so a
+     * run can be saved while it progresses and once more when it ends.
+     */
+    void recordFunnel(KnowledgeFunnel funnel);
+
+    /** The funnel with this id, as last recorded. */
+    Optional<KnowledgeFunnel> funnel(SearchRunId id);
 }
