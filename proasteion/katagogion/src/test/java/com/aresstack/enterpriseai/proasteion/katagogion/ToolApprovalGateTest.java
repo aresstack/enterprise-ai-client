@@ -199,4 +199,63 @@ public class ToolApprovalGateTest {
         assertEquals(2, ids.size());
         assertFalse(ids.get(0).equals(ids.get(1)));
     }
+
+    @Test
+    public void targetChangedWhileWaitingForApprovalNeverRuns() {
+        final Map<String, String> versions = new HashMap<String, String>();
+        versions.put("m2", "1");
+        ApprovalTargetResolver resolver = (toolName, arguments) -> {
+            String id = (String) arguments.get("id");
+            String version = versions.get(id);
+            if (version == null) {
+                throw new IllegalArgumentException("unknown memory");
+            }
+            return new ApprovalTarget("delete", "project", id, version, "");
+        };
+        ApprovalPromptPort editWhileAsking = (request, timeout) -> {
+            versions.put("m2", "2"); // somebody edits the memory while the bubble waits
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.APPROVED);
+        };
+        ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"), editWhileAsking,
+                1000);
+        gate.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        McpToolHandler handler = new ApprovingMcpToolHandler(gate, counting);
+        McpToolResult changed = handler.invoke(call("memory_delete", "m2", null));
+        assertTrue(changed.isError());
+        assertTrue(changed.getText(), changed.getText().contains("geändert"));
+        assertEquals(0, runs.get());
+
+        ApprovalPromptPort deleteWhileAsking = (request, timeout) -> {
+            versions.remove("m2");
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.APPROVED);
+        };
+        versions.put("m2", "2");
+        ToolApprovalGate deleting = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"),
+                deleteWhileAsking, 1000);
+        deleting.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        assertTrue(new ApprovingMcpToolHandler(deleting, counting).invoke(call("memory_delete", "m2", null))
+                .isError());
+        assertEquals(0, runs.get());
+
+        ApprovalPromptPort plain = (request, timeout) -> ApprovalDecision.of(request,
+                ApprovalDecision.Outcome.APPROVED);
+        versions.put("m2", "3");
+        ToolApprovalGate unchanged = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"), plain, 1000);
+        unchanged.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        assertFalse(new ApprovingMcpToolHandler(unchanged, counting).invoke(call("memory_delete", "m2", null))
+                .isError());
+        assertEquals(1, runs.get());
+    }
+
+    @Test
+    public void ruleTightenedToDenyWhileWaitingNeverRuns() {
+        final AtomicReference<String> rules = new AtomicReference<String>("web_fetch=ASK");
+        ApprovalPromptPort tighten = (request, timeout) -> {
+            rules.set("web_fetch=DENY");
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.APPROVED);
+        };
+        ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse(rules.get()), tighten, 1000);
+        assertTrue(new ApprovingMcpToolHandler(gate, counting).invoke(call("web_fetch", null, null)).isError());
+        assertEquals(0, runs.get());
+    }
 }

@@ -11,7 +11,10 @@ import java.util.function.Supplier;
 /**
  * The single check point before a tool runs: resolve the real target, pick the policy, ask the user on
  * {@link ApprovalPolicy#ASK}. Fails closed: DENY, rejection, timeout, cancel, no channel, a stale decision or a
- * resolver error all mean the tool does not run. Thread-safe; parallel calls get their own requests.
+ * resolver error all mean the tool does not run. After an approval the target is resolved again; it must still be the
+ * same object (id, version, action, scope), otherwise the call does not run either. Tools with a version still check it
+ * themselves when they write (optimistic locking), which closes the remaining gap up to the actual write.
+ * Thread-safe; parallel calls get their own requests.
  */
 public final class ToolApprovalGate {
 
@@ -109,10 +112,24 @@ public final class ToolApprovalGate {
         } catch (RuntimeException e) {
             decision = ApprovalDecision.of(request, ApprovalDecision.Outcome.UNAVAILABLE);
         }
-        if (decision != null && decision.approves(request)) {
-            return Verdict.allowed();
+        if (decision == null || !decision.approves(request)) {
+            return Verdict.refused(reason(decision, request));
         }
-        return Verdict.refused(reason(decision, request));
+        // The user may have taken a while: resolve the target again right before execution. The approval holds only
+        // for the same object in the same version and scope; a changed, moved or deleted target needs a new question.
+        ApprovalTarget current;
+        try {
+            current = resolve(toolName, arguments);
+        } catch (RuntimeException e) {
+            return Verdict.refused("Ziel des Aufrufs ist nicht mehr vorhanden");
+        }
+        if (!target.equals(current)) {
+            return Verdict.refused("Ziel hat sich seit der Bestätigung geändert");
+        }
+        if (currentRules().policy(toolName, current) == ApprovalPolicy.DENY) {
+            return Verdict.refused("in den Einstellungen verboten");
+        }
+        return Verdict.allowed();
     }
 
     private ApprovalRules currentRules() {
