@@ -1,9 +1,12 @@
 package com.aresstack.enterpriseai.integration;
 
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.FoundResource;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingListener;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingReport;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.IndexingStatus;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchKnowledgeSourcesUseCase;
+import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceSearchOutcome;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalResult;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunker;
@@ -18,6 +21,7 @@ import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.InMemo
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcConfig;
 import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePassRpcSecretProvider;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceConfig;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceKnowledgeSource;
@@ -33,6 +37,8 @@ import org.junit.rules.TemporaryFolder;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -186,5 +192,25 @@ public class SliceDConfluenceKeePassTest {
             assertEquals(KnowledgeSourceException.Kind.UNAVAILABLE, expected.kind());
         }
         assertEquals(0, pairings.get());
+    }
+
+    @Test
+    public void confluenceSearchExcerptArrivesAsSnippetOfTheFoundResource() throws Exception {
+        confluence.wrappedSearchResult("200", "Die @@@hl@@@K&uuml;ndigungsfrist@@@endhl@@@ betr&auml;gt <b>drei Monate</b>.");
+        ConfluenceKnowledgeSource source = source(keePassProvider(keePass.boundPort()), "keepass:" + ENTRY_TITLE);
+
+        List<SourceSearchOutcome> outcomes = new SearchKnowledgeSourcesUseCase(null, null, Runnable::run)
+                .search(Collections.<KnowledgeSourcePort>singletonList(source), "Kündigungsfrist", 5).get();
+
+        assertEquals(1, outcomes.size());
+        assertFalse(outcomes.get(0).problem(), outcomes.get(0).failed());
+        FoundResource found = outcomes.get(0).hits().get(0);
+        assertEquals("Betriebsvereinbarung", found.title());
+        assertEquals("Die Kündigungsfrist beträgt drei Monate.", found.snippet());
+        assertEquals(FoundResource.Origin.SOURCE, found.origin());
+        assertEquals("3", found.revision().version());
+        assertTrue(found.url(), found.url().endsWith("/pages/viewpage.action?pageId=200"));
+        // The snippet comes from the search alone: no page was loaded for it.
+        assertEquals(0, confluence.requestCount("/rest/api/content/200"));
     }
 }

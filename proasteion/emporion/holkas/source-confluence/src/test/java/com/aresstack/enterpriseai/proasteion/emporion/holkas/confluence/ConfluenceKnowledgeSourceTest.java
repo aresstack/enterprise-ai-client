@@ -329,13 +329,20 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
-    public void searchSendsEscapedCqlRestrictedToConfiguredSpaces() throws Exception {
+    public void searchUsesTheSearchEndpointWithEscapedCqlRestrictedToConfiguredSpaces() throws Exception {
         confluence.searchResults.addAll(Arrays.asList("101", "102", "103"));
-        config.searchSpaceKey("DEV").searchSpaceKey("OPS");
+        config.searchSpaceKey("DEV").searchSpaceKey("OPS").pageSize(25);
 
         List<SourceSearchHit> hits = source().search(new SourceQuery("say \"hi\" \\ ok", 2));
 
-        assertEquals("type=page AND text ~ \"say \\\"hi\\\" \\\\ ok\" AND space in (\"DEV\",\"OPS\")", confluence.lastCql);
+        assertEquals("siteSearch ~ \"say \\\"hi\\\" \\\\ ok\" AND type=page AND space in (\"DEV\",\"OPS\")",
+                confluence.lastCql);
+        assertEquals(1, confluence.requestCount("/rest/api/search"));
+        assertEquals(0, confluence.requestCount("/rest/api/content/search"));
+        assertEquals("highlight", confluence.lastSearchQuery.get("excerpt"));
+        assertEquals("0", confluence.lastSearchQuery.get("start"));
+        assertEquals("2", confluence.lastSearchQuery.get("limit"));
+        assertTrue(confluence.lastSearchQuery.get("expand").contains("content.version"));
         assertEquals(2, hits.size());
         assertEquals(page("101"), hits.get(0).resourceId());
         assertEquals("Kapitel 1", hits.get(0).title());
@@ -346,12 +353,74 @@ public class ConfluenceKnowledgeSourceTest {
         confluence.searchResults.addAll(Arrays.asList("100", "101", "102", "103"));
 
         assertEquals(3, source().search(new SourceQuery("x", 3)).size());
-        assertEquals(3, confluence.requestCount("/content/search"));
+        assertEquals(3, confluence.requestCount("/rest/api/search"));
         assertEquals(4, source().search(new SourceQuery("x", 10)).size());
     }
 
     @Test
-    public void searchRecognisesADirectPage() throws Exception {
+    public void searchPagesByStartAndTotalSizeWithoutNextLinks() throws Exception {
+        confluence.searchResults.addAll(Arrays.asList("100", "101", "102", "103"));
+        confluence.searchWithoutNextLinks = true;
+        config.pageSize(3);
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("x", 10));
+
+        assertEquals(Arrays.asList(page("100"), page("101"), page("102"), page("103")), ids(hits));
+        assertEquals(2, confluence.requestCount("/rest/api/search"));
+        assertEquals("3", confluence.lastSearchQuery.get("start"));
+    }
+
+    @Test
+    public void searchMapsTheWrapperWithExcerptTitleIdUrlAndRevision() throws Exception {
+        confluence.wrappedSearchResult("102", "Text mit <b>@@@hl@@@wapok@@@endhl@@@</b> drin");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("wapok", 5));
+
+        assertEquals(1, hits.size());
+        SourceSearchHit hit = hits.get(0);
+        assertEquals(page("102"), hit.resourceId());
+        assertEquals("Kapitel 2", hit.title());
+        assertEquals("Text mit wapok drin", hit.snippet());
+        assertEquals("3", hit.revision().version());
+        assertEquals(Instant.parse("2026-10-01T06:15:00Z"), hit.revision().modifiedAt().get());
+        assertTrue(hit.urlText(), hit.urlText().endsWith("/pages/viewpage.action?pageId=102"));
+    }
+
+    @Test
+    public void searchFallsBackToTheWrapperUrlAndLastModified() throws Exception {
+        confluence.searchContentWithoutVersionAndLinks = true;
+        confluence.wrappedSearchResult("101", "Eins");
+
+        SourceSearchHit hit = source().search(new SourceQuery("x", 5)).get(0);
+
+        assertEquals(Instant.parse("2026-03-04T04:06:07Z"), hit.revision().modifiedAt().get());
+        assertTrue(hit.urlText(), hit.urlText().endsWith("/pages/viewpage.action?pageId=101"));
+    }
+
+    @Test
+    public void searchExcerptBecomesReadablePlainText() throws Exception {
+        confluence.wrappedSearchResult("101", "<p>R&amp;D&nbsp;&#8211; @@@hl@@@K&uuml;ndigung@@@endhl@@@</p>\n\n"
+                + "<span>&lt;wichtig&gt; &#x2192; &quot;sofort&quot;&hellip;</span>");
+
+        SourceSearchHit hit = source().search(new SourceQuery("kündigung", 5)).get(0);
+
+        assertEquals("R&D – Kündigung <wichtig> → \"sofort\"…", hit.snippet());
+    }
+
+    @Test
+    public void searchExcerptIsCut() {
+        StringBuilder raw = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            raw.append("wort ");
+        }
+        String excerpt = ConfluenceRestClient.excerpt(raw.toString());
+        assertEquals(ConfluenceRestClient.EXCERPT_MAX_LENGTH + 1, excerpt.length());
+        assertTrue(excerpt.endsWith("…"));
+        assertEquals("", ConfluenceRestClient.excerpt(null));
+    }
+
+    @Test
+    public void searchHitWithoutExcerptIsAValidHitWithEmptySnippet() throws Exception {
         confluence.searchResults("101");
 
         List<SourceSearchHit> hits = source().search(new SourceQuery("x", 5));
@@ -359,18 +428,18 @@ public class ConfluenceKnowledgeSourceTest {
         assertEquals(1, hits.size());
         assertEquals(page("101"), hits.get(0).resourceId());
         assertEquals("Kapitel 1", hits.get(0).title());
+        assertEquals("", hits.get(0).snippet());
     }
 
     @Test
-    public void searchRecognisesThePageInsideASearchResultWrapper() throws Exception {
-        confluence.wrappedSearchResult("102", "Text mit <b>@@@hl@@@wapok@@@endhl@@@</b> drin");
+    public void searchNeverLoadsThePageForTheSnippet() throws Exception {
+        confluence.wrappedSearchResult("101", "Eins");
 
-        List<SourceSearchHit> hits = source().search(new SourceQuery("wapok", 5));
+        source().search(new SourceQuery("x", 5));
 
-        assertEquals(1, hits.size());
-        assertEquals(page("102"), hits.get(0).resourceId());
-        assertEquals("Kapitel 2", hits.get(0).title());
-        assertEquals("Text mit wapok drin", hits.get(0).snippet());
+        for (URI request : confluence.requests()) {
+            assertTrue(request.toString(), request.getPath().endsWith("/rest/api/search"));
+        }
     }
 
     @Test
@@ -382,18 +451,34 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
-    public void searchKeepsPagesFromAMixedResultList() throws Exception {
-        confluence.searchResults("att900", "100");
+    public void searchKeepsPagesInConfluenceOrderFromAMixedResultList() throws Exception {
+        confluence.searchResults("att900", "103");
         confluence.wrappedSearchResult("att901", "Bild");
         confluence.wrappedSearchResult("101", "Eins");
-        confluence.searchResults("102");
+        confluence.searchResults("100");
 
         List<SourceSearchHit> hits = source().search(new SourceQuery("x", 10));
 
-        assertEquals(Arrays.asList(page("100"), page("101"), page("102")),
-                Arrays.asList(hits.get(0).resourceId(), hits.get(1).resourceId(), hits.get(2).resourceId()));
-        assertEquals(3, hits.size());
+        assertEquals(Arrays.asList(page("103"), page("101"), page("100")), ids(hits));
         assertEquals("Eins", hits.get(1).snippet());
+    }
+
+    @Test
+    public void searchFailuresKeepTheirKind() {
+        confluence.forcedResponse = new ConfluenceHttpResponse(403, "application/json", new byte[0]);
+        assertKind(Kind.ACCESS_DENIED, () -> source().search(new SourceQuery("x", 5)));
+        confluence.forcedResponse = new ConfluenceHttpResponse(503, "application/json", new byte[0]);
+        assertKind(Kind.UNAVAILABLE, () -> source().search(new SourceQuery("x", 5)));
+        confluence.forcedResponse = new ConfluenceHttpResponse(200, "text/html", new byte[0]);
+        assertKind(Kind.INVALID_RESPONSE, () -> source().search(new SourceQuery("x", 5)));
+    }
+
+    private static List<KnowledgeResourceId> ids(List<SourceSearchHit> hits) {
+        List<KnowledgeResourceId> ids = new ArrayList<KnowledgeResourceId>();
+        for (SourceSearchHit hit : hits) {
+            ids.add(hit.resourceId());
+        }
+        return ids;
     }
 
     // --- Anmeldung ----------------------------------------------------------------------------------------
@@ -513,7 +598,7 @@ public class ConfluenceKnowledgeSourceTest {
 
     @Test
     public void cqlWithoutSpaces() {
-        assertEquals("type=page AND text ~ \"java\"", ConfluenceKnowledgeSource.cql(" java ", new ArrayList<String>()));
+        assertEquals("siteSearch ~ \"java\" AND type=page", ConfluenceKnowledgeSource.cql(" java ", new ArrayList<String>()));
     }
 
     @Test

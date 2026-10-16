@@ -146,4 +146,4 @@ source.1.allowInsecureHttp=false
   PKCS12-Pfad nur mit einem Testzertifikat ohne echte Gegenstelle.
 - Nur Data Center: Folgelinks werden nur relativ zum Kontextpfad unter `/rest/api/` akzeptiert; Confluence
   Cloud ist nicht Ziel.
-- Blogposts werden nicht erfasst; die Suche liefert keine Textausschnitte (`content/search` hat keine).
+- Blogposts werden nicht erfasst. Die Suche läuft über `/rest/api/search` mit `excerpt=highlight` (wie die Confluence-Websuche) und liefert je Treffer einen Textausschnitt, ohne die Seite zu laden.
