@@ -66,7 +66,7 @@ public class TurnContextTest {
         FakeChatCompletionPort port = new FakeChatCompletionPort();
         ChatService chat = new ChatService(port);
         ChatConversationId id = chat.openConversation("Sei knapp.");
-        chat.sendWithContext(id, "Was ist IAR?", TurnContext.empty()
+        chat.sendInContext(id, "Was ist IAR?", TurnContext.empty()
                 .with(TurnContext.Section.TURN_READING, "PLAN").withRule("RULE"), null, new RecordingTurnListener(), null);
 
         List<ChatMessage> sent = port.lastRequest().messages();

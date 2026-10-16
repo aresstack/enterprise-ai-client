@@ -297,7 +297,7 @@ public final class RagChatUseCase {
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                             ChatTurnListener listener, String extraContext, ChatCompletionPort via,
                             RetrievalProgress progress, MessageOrigin origin) {
-        return send(id, userText, rag, options, listener, TurnContext.of(extraContext), via, progress, origin);
+        return sendInContext(id, userText, rag, options, listener, TurnContext.of(extraContext), via, progress, origin);
     }
 
     /**
@@ -309,9 +309,9 @@ public final class RagChatUseCase {
      * @param context the caller's part of the turn context (client rules, attachments, quotes ...); {@code null} for
      *                none
      */
-    public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
-                            ChatTurnListener listener, TurnContext context, ChatCompletionPort via,
-                            RetrievalProgress progress, MessageOrigin origin) {
+    public RagChatTurn sendInContext(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                                     ChatTurnListener listener, TurnContext context, ChatCompletionPort via,
+                                     RetrievalProgress progress, MessageOrigin origin) {
         TurnContext extraContext = context == null ? TurnContext.empty() : context;
         MessageOrigin from = origin == null ? MessageOrigin.TYPED : origin;
         if (userText == null || userText.trim().isEmpty()) {
@@ -333,7 +333,7 @@ public final class RagChatUseCase {
             }
             ChatTurn turn = extraContext.isEmpty() && via == null
                     ? chat.send(id, userText, options, listener)
-                    : chat.sendWithContext(id, userText, extraContext, options, listener, via);
+                    : chat.sendInContext(id, userText, extraContext, options, listener, via);
             return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                     false);
         }
@@ -476,7 +476,7 @@ public final class RagChatUseCase {
         TurnContext combined = extraContext.with(TurnContext.Section.KNOWLEDGE, context.text())
                 .with(TurnContext.Section.RETRIEVAL_NOTES, followUps.isEnabled()
                         ? searchNote(allQueries, !context.sources().isEmpty()) : null);
-        ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
+        ChatTurn turn = chat.sendInContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
 
@@ -867,7 +867,7 @@ public final class RagChatUseCase {
         TurnContext combined = extraContext.with(TurnContext.Section.KNOWLEDGE, context.text())
                 .with(TurnContext.Section.RETRIEVAL_NOTES, gap)
                 .with(TurnContext.Section.RETRIEVAL_NOTES, searchNote(allQueries, !context.sources().isEmpty()));
-        ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
+        ChatTurn turn = chat.sendInContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
 
@@ -879,7 +879,7 @@ public final class RagChatUseCase {
                                       ChatTurnListener listener, TurnContext extraContext, ChatCompletionPort via,
                                       RetrievalProgress progress) {
         progress.searchSkipped();
-        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener, via);
+        ChatTurn turn = chat.sendInContext(id, userText, extraContext, options, listener, via);
         return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                 false);
     }
@@ -977,7 +977,7 @@ public final class RagChatUseCase {
      */
     private RagChatTurn clarify(ChatConversationId id, String userText, ChatOptions options,
                                 ChatTurnListener listener, TurnContext extraContext, TurnReading reading) {
-        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
+        ChatTurn turn = chat.sendInContext(id, userText, extraContext, options, listener,
                 new ClarificationPort(reading.answerPlan.clarificationQuestion()));
         return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
                 false);
@@ -991,7 +991,7 @@ public final class RagChatUseCase {
                                    ChatTurnListener listener, TurnContext extraContext, TurnReading reading,
                                    PromptContext context, List<RetrievalWarning> warnings, List<String> queries,
                                    List<Integer> hitCounts, int reused) {
-        ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
+        ChatTurn turn = chat.sendInContext(id, userText, extraContext, options, listener,
                 new ClarificationPort(UnresolvedTermQuestion.of(reading.answerPlan)));
         return new RagChatTurn(turn, true, context, warnings, false, queries, hitCounts, reused);
     }

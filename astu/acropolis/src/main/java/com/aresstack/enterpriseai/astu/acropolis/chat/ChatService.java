@@ -181,7 +181,7 @@ public final class ChatService {
      */
     public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
                                     ChatTurnListener listener) {
-        return sendWithContext(id, userText, TurnContext.of(context), options, listener, chatPort);
+        return sendInContext(id, userText, TurnContext.of(context), options, listener, chatPort);
     }
 
     /**
@@ -193,7 +193,7 @@ public final class ChatService {
      */
     public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
                                     ChatTurnListener listener, ChatCompletionPort via) {
-        return sendWithContext(id, userText, TurnContext.of(context), options, listener, via);
+        return sendInContext(id, userText, TurnContext.of(context), options, listener, via);
     }
 
     /**
@@ -205,8 +205,8 @@ public final class ChatService {
      * @param context the turn context; {@code null} or empty behaves like {@code send}
      * @param via     port for this turn only; {@code null} means the default port
      */
-    public ChatTurn sendWithContext(ChatConversationId id, String userText, TurnContext context, ChatOptions options,
-                                    ChatTurnListener listener, ChatCompletionPort via) {
+    public ChatTurn sendInContext(ChatConversationId id, String userText, TurnContext context, ChatOptions options,
+                                  ChatTurnListener listener, ChatCompletionPort via) {
         return start(id, userText, context == null || context.isEmpty() ? null : context, options, listener,
                 via == null ? chatPort : via);
     }

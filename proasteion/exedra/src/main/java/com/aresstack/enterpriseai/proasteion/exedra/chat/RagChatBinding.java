@@ -526,7 +526,7 @@ public final class RagChatBinding implements ChatShellActions {
                                         chatOptions == null ? null : chatOptions.model()));
                             }
                         }
-                        turn = rag.send(conversation, text, options, chatOptions, listener, extraContext, via,
+                        turn = rag.sendInContext(conversation, text, options, chatOptions, listener, extraContext, via,
                                 progress(request), origin);
                     } catch (final RuntimeException rejected) {
                         // Use Case hat den Turn abgelehnt (z. B. Konversation beschäftigt): sichtbar machen.
@@ -635,7 +635,7 @@ public final class RagChatBinding implements ChatShellActions {
     private void startWithoutRetrieval(String text, TurnListener listener, String quoteContext,
                                        ChatCompletionPort via, MessageOrigin origin) {
         try {
-            ChatTurn turn = rag.send(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
+            ChatTurn turn = rag.sendInContext(conversationId, text, RagOptions.disabled(), turnOptions(), listener,
                     TurnContext.empty().with(TurnContext.Section.QUOTES, quoteContext), via, RetrievalProgress.none(),
                     origin).turn();
             if (!turn.isDone()) {
