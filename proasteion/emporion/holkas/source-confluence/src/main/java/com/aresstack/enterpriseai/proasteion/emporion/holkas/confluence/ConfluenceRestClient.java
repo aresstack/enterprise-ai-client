@@ -1118,63 +1118,9 @@ final class ConfluenceRestClient {
         return text.length() > EXCERPT_MAX_LENGTH ? text.substring(0, EXCERPT_MAX_LENGTH).trim() + "…" : text;
     }
 
-    private static final Map<String, String> NAMED_ENTITIES = new LinkedHashMap<String, String>();
-
-    static {
-        NAMED_ENTITIES.put("amp", "&");
-        NAMED_ENTITIES.put("lt", "<");
-        NAMED_ENTITIES.put("gt", ">");
-        NAMED_ENTITIES.put("quot", "\"");
-        NAMED_ENTITIES.put("apos", "'");
-        NAMED_ENTITIES.put("nbsp", " ");
-        NAMED_ENTITIES.put("hellip", "…");
-        NAMED_ENTITIES.put("ndash", "–");
-        NAMED_ENTITIES.put("mdash", "—");
-        NAMED_ENTITIES.put("auml", "ä");
-        NAMED_ENTITIES.put("ouml", "ö");
-        NAMED_ENTITIES.put("uuml", "ü");
-        NAMED_ENTITIES.put("Auml", "Ä");
-        NAMED_ENTITIES.put("Ouml", "Ö");
-        NAMED_ENTITIES.put("Uuml", "Ü");
-        NAMED_ENTITIES.put("szlig", "ß");
-        NAMED_ENTITIES.put("euro", "€");
-        NAMED_ENTITIES.put("laquo", "«");
-        NAMED_ENTITIES.put("raquo", "»");
-        NAMED_ENTITIES.put("bdquo", "„");
-        NAMED_ENTITIES.put("ldquo", "“");
-        NAMED_ENTITIES.put("rdquo", "”");
-        NAMED_ENTITIES.put("lsquo", "‘");
-        NAMED_ENTITIES.put("rsquo", "’");
-    }
-
-    private static final java.util.regex.Pattern ENTITY =
-            java.util.regex.Pattern.compile("&(#[xX][0-9a-fA-F]{1,6}|#[0-9]{1,7}|[a-zA-Z][a-zA-Z0-9]{1,10});");
-
-    /** Decodes numeric and the common named HTML entities in one pass; unknown entities stay as they are. */
+    /** Decodes all HTML entities (named and numeric) with Jsoup's entity table. */
     static String decodeEntities(String text) {
-        java.util.regex.Matcher matcher = ENTITY.matcher(text);
-        StringBuffer out = new StringBuffer();
-        while (matcher.find()) {
-            String name = matcher.group(1);
-            String replacement = null;
-            if (name.charAt(0) == '#') {
-                try {
-                    int code = name.length() > 1 && (name.charAt(1) == 'x' || name.charAt(1) == 'X')
-                            ? Integer.parseInt(name.substring(2), 16) : Integer.parseInt(name.substring(1));
-                    if (Character.isValidCodePoint(code) && code != 0) {
-                        replacement = new String(Character.toChars(code));
-                    }
-                } catch (NumberFormatException e) {
-                    replacement = null;
-                }
-            } else {
-                replacement = NAMED_ENTITIES.get(name);
-            }
-            matcher.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(
-                    replacement == null ? matcher.group() : replacement));
-        }
-        matcher.appendTail(out);
-        return out.toString();
+        return org.jsoup.parser.Parser.unescapeEntities(text, false);
     }
 
     private static long number(JsonObject json, String key) {

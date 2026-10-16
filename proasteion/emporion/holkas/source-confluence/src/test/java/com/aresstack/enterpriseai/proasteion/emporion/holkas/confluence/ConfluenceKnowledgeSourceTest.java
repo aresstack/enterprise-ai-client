@@ -408,6 +408,11 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
+    public void searchExcerptDecodesEveryHtmlEntity() {
+        assertEquals("© ® ™ é Æ ∑ ä", ConfluenceRestClient.excerpt("&copy; &reg; &trade; &eacute; &AElig; &sum; &#xE4;"));
+    }
+
+    @Test
     public void searchExcerptIsCut() {
         StringBuilder raw = new StringBuilder();
         for (int i = 0; i < 100; i++) {
