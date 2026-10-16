@@ -140,7 +140,8 @@ public class RagChatBindingTest {
 
         List<ChatMessage> sent = port.lastRequest().messages();
         assertEquals(ChatRole.SYSTEM, sent.get(0).role());
-        assertTrue(sent.get(0).content().startsWith("Antworte knapp.\n\n"));
+        // The editable system prompt follows the turn context (#126).
+        assertTrue(sent.get(0).content().indexOf("\n\nAntworte knapp.") > sent.get(0).content().indexOf("--- KONTEXT ---"));
         assertTrue(sent.get(0).content().contains("--- KONTEXT ---"));
         assertTrue(sent.get(0).content().contains("[1] Kündigungsfrist"));
         assertEquals("Wie lange ist die Kündigungsfrist?", sent.get(sent.size() - 1).content());
