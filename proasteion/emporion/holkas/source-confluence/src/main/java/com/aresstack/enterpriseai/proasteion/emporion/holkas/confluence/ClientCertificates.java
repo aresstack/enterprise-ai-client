@@ -3,8 +3,10 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509KeyManager;
 import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
@@ -128,8 +130,12 @@ public final class ClientCertificates {
         throw new GeneralSecurityException("kein X509KeyManager verfügbar");
     }
 
-    /** Bietet für Client-Authentifizierung ausschließlich den konfigurierten Alias an. */
-    static final class AliasForcingKeyManager implements X509KeyManager {
+    /**
+     * Bietet für Client-Authentifizierung ausschließlich den konfigurierten Alias an, auch über eine
+     * {@link javax.net.ssl.SSLEngine}: Ein reiner {@link X509KeyManager} wählt dort keinen Alias (JSSE fragt
+     * {@code chooseEngineClientAlias}), der Server sähe dann kein Zertifikat.
+     */
+    static final class AliasForcingKeyManager extends X509ExtendedKeyManager {
 
         private final X509KeyManager delegate;
         private final String alias;
@@ -146,6 +152,11 @@ public final class ClientCertificates {
 
         @Override
         public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) {
+            return alias;
+        }
+
+        @Override
+        public String chooseEngineClientAlias(String[] keyType, Principal[] issuers, SSLEngine engine) {
             return alias;
         }
 

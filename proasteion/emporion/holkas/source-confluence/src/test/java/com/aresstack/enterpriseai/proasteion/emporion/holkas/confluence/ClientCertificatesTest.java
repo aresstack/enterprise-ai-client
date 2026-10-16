@@ -79,6 +79,9 @@ public class ClientCertificatesTest {
         X509KeyManager forced = ClientCertificates.forceAlias(delegate(), "test-client");
 
         assertEquals("test-client", forced.chooseClientAlias(new String[] {"RSA", "EC"}, null, null));
+        // SSLEngine-Weg (Netty, JDK HttpClient): ohne diese Methode sähe der Server kein Zertifikat
+        assertEquals("test-client", ((javax.net.ssl.X509ExtendedKeyManager) forced)
+                .chooseEngineClientAlias(new String[] {"RSA", "EC"}, null, null));
         assertArrayEquals(new String[] {"test-client"}, forced.getClientAliases("RSA", null));
         assertNotNull(forced.getPrivateKey("test-client"));
         assertEquals(1, forced.getCertificateChain("test-client").length);
