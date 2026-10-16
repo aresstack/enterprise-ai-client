@@ -49,6 +49,7 @@ final class ChatResearchCard {
     private int sources = -1;
     private boolean failed;
     private boolean cancelled;
+    private boolean contextDone;
     private KnowledgeFunnel funnel;
     /** Work steps done so far, in units of {@link #PHASES} per search; never moves backwards. */
     private int worked;
@@ -193,6 +194,7 @@ final class ChatResearchCard {
     void contextReady(int contextSources) {
         sources = contextSources;
         completed = max;
+        contextDone = true;
         current = PREPARING;
         update();
     }
@@ -219,7 +221,11 @@ final class ChatResearchCard {
      * Kontext“.
      */
     String summary() {
-        if (failed && hits == 0 && (funnel == null || funnel.examined().isEmpty())) {
+        boolean counted = funnel != null && !funnel.examined().isEmpty();
+        if (cancelled && !counted) {
+            return "Recherche abgebrochen";
+        }
+        if (failed && hits == 0 && !counted) {
             return "Wissenssuche ausgefallen";
         }
         if (funnel != null && !funnel.examined().isEmpty()) {
@@ -253,7 +259,7 @@ final class ChatResearchCard {
             text.append(" [[bar:").append(Math.min(completed, max)).append('/').append(max).append("]]");
         } else {
             int total = max * PHASES;
-            int done = completed >= max ? total : Math.min(worked, total);
+            int done = contextDone ? total : Math.min(worked, total);
             text.append(" [[bar:").append(done).append('/').append(total).append("]]");
         }
         return text.toString();

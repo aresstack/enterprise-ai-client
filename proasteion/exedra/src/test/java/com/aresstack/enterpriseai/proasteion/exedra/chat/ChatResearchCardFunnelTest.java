@@ -95,6 +95,26 @@ public class ChatResearchCardFunnelTest {
     }
 
     @Test
+    public void hitsOfTheOnlySearchDoNotFillTheBarBeforeTheContextIsReady() {
+        card.open();
+        card.searchStarted("Vault", 1, 1);
+        card.funnel(funnel(10, 10, 0, 0, FunnelPhase.RETRIEVAL, false));
+        card.hitsFound(10);
+        card.funnel(funnel(10, 10, 2, 0, FunnelPhase.EVIDENCE, false));
+
+        assertEquals("[[bar:3/5]]", bar(card.body()));
+    }
+
+    @Test
+    public void cancelledBeforeAnythingWasExaminedSaysSo() {
+        card.open();
+        card.searchStarted("Vault", 1, 1);
+        card.cancelling();
+
+        assertEquals("Recherche abgebrochen", card.summary());
+    }
+
+    @Test
     public void relevanceIsShownOnceNotAsASecondCounter() {
         card.open();
         card.searchStarted("Vault", 1, 1);
