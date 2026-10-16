@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.config;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ public final class AppConfig {
     private final AgentConfig agent;
     private final ModelsConfig models;
     private final Set<String> disabledTools;
+    private final ApprovalRules toolApprovals;
     private final BubbleColorsConfig bubbleColors;
     private final FactStoreConfig facts;
     private final TextMiningConfig textMining;
@@ -58,6 +60,16 @@ public final class AppConfig {
               List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               TextMiningConfig textMining, FileAccessConfig fileAccess, List<String> warnings) {
+        this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
+                bubbleColors, facts, textMining, fileAccess, ApprovalRules.none(), warnings);
+    }
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
+              TextMiningConfig textMining, FileAccessConfig fileAccess, ApprovalRules toolApprovals,
+              List<String> warnings) {
+        this.toolApprovals = toolApprovals == null ? ApprovalRules.none() : toolApprovals;
         this.windowTitle = windowTitle;
         this.chat = chat;
         this.embedding = embedding;
@@ -122,6 +134,11 @@ public final class AppConfig {
     /** Ist das Werkzeug aktiv? Ohne Eintrag in {@code tools.disabled} ja. */
     public boolean isToolEnabled(String name) {
         return name != null && !disabledTools.contains(name);
+    }
+
+    /** {@code tools.approval}: approval rules per tool, action and scope; without a rule a tool is allowed. */
+    public ApprovalRules toolApprovals() {
+        return toolApprovals;
     }
 
     /** Farben der Sprechblasen von Nutzer und Assistent ({@code chat.bubble.*}); ohne Schlüssel die Vorgaben. */

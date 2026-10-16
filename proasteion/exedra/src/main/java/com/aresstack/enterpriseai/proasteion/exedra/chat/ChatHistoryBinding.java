@@ -179,7 +179,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
                     // unlesbare Kennung: dieser Auszug fällt weg
                 }
             }
-            chat.restoreKnowledgeContext(target, openedKnowledge.getQueries(), ids);
+            // Only under the project scope it was saved with: a chat moved since then gets nothing back (#143).
+            chat.restoreKnowledgeContext(target, openedKnowledge.getQueries(), ids, openedKnowledge.getScope());
         }
         recordedConversation = target;
         createdAt = record.getCreatedAt();
@@ -474,14 +475,16 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     private KnowledgeContextRecord knowledgeOf(ChatConversationId conversation) {
         ConversationKnowledgeContext context = chat.knowledgeContext(conversation);
         if (context.isEmpty()) {
-            return conversation.equals(recordedConversation) ? openedKnowledge : null;
+            // The saved context only survives while the chat keeps the project scope it was saved under (#143).
+            return conversation.equals(recordedConversation) && openedKnowledge != null
+                    && chat.projectContext(conversation).sameScope(openedKnowledge.getScope()) ? openedKnowledge : null;
         }
         List<KnowledgeContextRecord.Chunk> chunks = new ArrayList<KnowledgeContextRecord.Chunk>();
         for (RetrievedChunk hit : context.hits()) {
             chunks.add(new KnowledgeContextRecord.Chunk(hit.chunk().id().value(), hit.chunk().resourceId().value(),
                     hit.chunk().sourceId().value()));
         }
-        return new KnowledgeContextRecord(context.queries(), chunks);
+        return new KnowledgeContextRecord(context.queries(), chunks, chat.knowledgeScope(conversation));
     }
 
     /** Die abgelegten Anhänge einer Nutzernachricht; solange die Ablage läuft, nur ihre Namen. */

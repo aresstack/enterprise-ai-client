@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurnListener;
 import com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin;
@@ -94,9 +96,16 @@ public final class RagChatUseCase {
     private final LiteralEntityPreservationPolicy literalTerms = new LiteralEntityPreservationPolicy();
     /** Konversationen, für die gerade ein Retrieval läuft; verhindert doppelte Retrievals bei Doppelklick. */
     private final Set<ChatConversationId> retrieving = new HashSet<ChatConversationId>();
-    /** Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche). */
-    private final Map<ChatConversationId, ConversationKnowledgeContext> contexts =
-            new ConcurrentHashMap<ChatConversationId, ConversationKnowledgeContext>();
+    /**
+     * Der zuletzt verwendete Wissenskontext je Konversation (nur mit Nachrecherche), mit dem Projekt-Scope, unter dem
+     * er entstand; passt der Scope nicht mehr zur aktuellen Projektzuordnung, gilt er als verworfen (#143).
+     */
+    private final Map<ChatConversationId, ScopedContext> contexts =
+            new ConcurrentHashMap<ChatConversationId, ScopedContext>();
+    /** The project scope resolved at the start of the running turn of each conversation. */
+    private final Map<ChatConversationId, String> turnScopes = new ConcurrentHashMap<ChatConversationId, String>();
+    /** Resolves the project context of every new turn (#143); {@link ProjectContextResolver#none()} without projects. */
+    private volatile ProjectContextResolver projects = ProjectContextResolver.none();
 
     public RagChatUseCase(ChatService chat, RetrieveKnowledgeUseCase retrieval, PromptContextAssembler assembler) {
         this(chat, retrieval, assembler, RetrievalPreparation.none());
@@ -198,6 +207,30 @@ public final class RagChatUseCase {
     }
 
     /**
+     * Resolve the chat project context for every new turn (#143): its instructions go into this turn's
+     * system part, and knowledge context is only reused under the scope it was created in.
+     *
+     * @param resolver {@code null} = {@link ProjectContextResolver#none()}
+     */
+    public RagChatUseCase withProjectContext(ProjectContextResolver resolver) {
+        this.projects = resolver == null ? ProjectContextResolver.none() : resolver;
+        return this;
+    }
+
+    /** The project context of the conversation's next turn; fails closed if it cannot be resolved. */
+    public EffectiveProjectContext projectContext(ChatConversationId id) {
+        if (id == null) {
+            return EffectiveProjectContext.unresolved();
+        }
+        try {
+            EffectiveProjectContext context = projects.resolve(id);
+            return context == null ? EffectiveProjectContext.unresolved() : context;
+        } catch (RuntimeException failed) {
+            return EffectiveProjectContext.unresolved();
+        }
+    }
+
+    /**
      * Whether every turn runs the answer planning step, an extra model request before the answer. Such a turn must not
      * start on the UI thread.
      */
@@ -270,6 +303,10 @@ public final class RagChatUseCase {
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
         }
+        // Resolved for every turn from the current assignment, never bound when the chat started (#143).
+        EffectiveProjectContext project = projectContext(id);
+        turnScopes.put(id, project.scope());
+        extraContext = join(project.systemContext(), extraContext);
         AnswerPlanningPolicy policy = policy();
         if (rag == null || !rag.isEnabled()) {
             TurnReading reading = read(id, userText, from, options, policy, policy.isEnabled(), progress);
@@ -327,7 +364,7 @@ public final class RagChatUseCase {
         int maxSearches = 1 + followUps.maxFollowUps();
         String query = userText;
         // Erst der Wissenskontext früherer Nachrichten: beantwortet er die neue, wird nicht gesucht.
-        ConversationKnowledgeContext prior = followUps.isEnabled() ? contexts.get(id) : null;
+        ConversationKnowledgeContext prior = followUps.isEnabled() ? cachedContext(id) : null;
         List<String> priorQueries = Collections.emptyList();
         int reused = 0;
         // The plan is the only decision before the answer: without a usable plan the answer decides with its tools.
@@ -413,7 +450,7 @@ public final class RagChatUseCase {
         List<String> allQueries = all(priorQueries, queries);
         if (followUps.isEnabled() && !context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
-            contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(hits, context)));
+            cacheContext(id, new ConversationKnowledgeContext(allQueries, accepted(hits, context)));
         }
         if (resolving && !failed && context.sources().isEmpty() && !progress.isCancelled()) {
             return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,
@@ -429,23 +466,73 @@ public final class RagChatUseCase {
      * Der zuletzt verwendete Wissenskontext der Konversation (leer, wenn keiner), etwa zum Speichern mit dem Chat.
      */
     public ConversationKnowledgeContext knowledgeContext(ChatConversationId id) {
-        ConversationKnowledgeContext context = id == null ? null : contexts.get(id);
+        ConversationKnowledgeContext context = id == null ? null : cachedContext(id);
         return context == null ? ConversationKnowledgeContext.empty() : context;
+    }
+
+    /** The project scope the knowledge context of the conversation is valid under now (saved with the chat). */
+    public String knowledgeScope(ChatConversationId id) {
+        return projectContext(id).scope();
     }
 
     /**
      * Setzt den Wissenskontext einer (geöffneten) Konversation aus gespeicherten Chunk-IDs: die Auszüge kommen aus dem
      * Index, nicht aus der Chat-Datei. Fehlt dort alles, bleibt die Konversation ohne früheren Kontext.
+     *
+     * <p>Only if {@code savedScope} (the scope saved with the context) is still the conversation's current project
+     * scope, checked before the index is read and again before the context is kept: a chat moved to another project
+     * (also while the restore runs) gets no chunks of its earlier assignment back (#143).
      */
-    public void restoreKnowledgeContext(ChatConversationId id, List<String> queries, List<KnowledgeChunkId> chunkIds) {
+    public void restoreKnowledgeContext(ChatConversationId id, List<String> queries, List<KnowledgeChunkId> chunkIds,
+                                        String savedScope) {
         if (id == null) {
             return;
         }
+        if (!projectContext(id).sameScope(savedScope)) {
+            contexts.remove(id);
+            return;
+        }
         List<RetrievedChunk> restored = retrieval.restore(chunkIds);
-        if (restored.isEmpty()) {
+        EffectiveProjectContext now = projectContext(id);
+        if (restored.isEmpty() || !now.sameScope(savedScope)) {
             contexts.remove(id);
         } else {
-            contexts.put(id, new ConversationKnowledgeContext(queries, restored));
+            contexts.put(id, new ScopedContext(now.scope(), new ConversationKnowledgeContext(queries, restored)));
+        }
+    }
+
+    /** The cached knowledge context if it is still valid under the current project scope; drops it otherwise. */
+    private ConversationKnowledgeContext cachedContext(ChatConversationId id) {
+        ScopedContext cached = contexts.get(id);
+        if (cached == null) {
+            return null;
+        }
+        if (!projectContext(id).sameScope(cached.scope)) {
+            contexts.remove(id);
+            return null;
+        }
+        return cached.context;
+    }
+
+    /** Keeps the context under the scope of the running turn, unless the assignment changed meanwhile. */
+    private void cacheContext(ChatConversationId id, ConversationKnowledgeContext context) {
+        String scope = turnScopes.get(id);
+        if (scope != null && projectContext(id).sameScope(scope)) {
+            contexts.put(id, new ScopedContext(scope, context));
+        } else {
+            contexts.remove(id);
+        }
+    }
+
+    /** A cached knowledge context and the project scope it was created under. */
+    private static final class ScopedContext {
+
+        final String scope;
+        final ConversationKnowledgeContext context;
+
+        ScopedContext(String scope, ConversationKnowledgeContext context) {
+            this.scope = scope;
+            this.context = context;
         }
     }
 
@@ -603,7 +690,7 @@ public final class RagChatUseCase {
         // Thema, wird er zusammen mit den neuen Treffern bewertet (hinter ihnen).
         List<RetrievedChunk> carried = Collections.emptyList();
         int reused = 0;
-        ConversationKnowledgeContext prior = contexts.get(id);
+        ConversationKnowledgeContext prior = cachedContext(id);
         // The plan is the only decision before the answer: without a usable plan the answer decides with its tools.
         if (reading.planRan() && !needsKnowledge(reading.answerPlan, planning)) {
             return withoutSearch(id, userText, options, listener, extraContext, via, progress);
@@ -753,7 +840,7 @@ public final class RagChatUseCase {
         List<String> allQueries = all(evidence.priorQueries, queries);
         if (!context.sources().isEmpty()) {
             // Vor dem Antwortturn gemerkt: scheitert die Antwort, bleibt der Kontext für die nächste Nachricht.
-            contexts.put(id, new ConversationKnowledgeContext(allQueries, accepted(chosen, context)));
+            cacheContext(id, new ConversationKnowledgeContext(allQueries, accepted(chosen, context)));
         }
         if (resolving && !failed && context.sources().isEmpty() && !progress.isCancelled()) {
             return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,

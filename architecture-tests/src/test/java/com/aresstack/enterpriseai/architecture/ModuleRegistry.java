@@ -95,6 +95,10 @@ final class ModuleRegistry {
                 // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port deigma.
                 .module("source-localfiles", "proasteion.emporion.holkas.localfiles", ModuleKind.ADAPTER, "E",
                         "astu", "source-api", "deigma")
+                // Git repositories (#137): JGit internal to the adapter, read only; token through a callback of the
+                // composition root (like SharePoint), proxy and TLS through network.
+                .module("source-git", "proasteion.emporion.holkas.git", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "deigma", "network")
                 // FTP (MVS/z/OS): Datasets und PDS-Member; Commons Net adapterintern, Anmeldung über adyton.
                 .module("source-ftp", "proasteion.emporion.holkas.ftp", ModuleKind.ADAPTER, "Quellen",
                         "astu", "source-api", "adyton")
@@ -201,7 +205,7 @@ final class ModuleRegistry {
                         "acp-client-api", "katagogion", "network",
                         "chat-openai", "embedding-openai", "anagraphai", "pinakes", "source-mediawiki",
                         "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
-                        "deigma", "document-tika", "source-localfiles", "tamias",
+                        "deigma", "document-tika", "source-localfiles", "source-git", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",

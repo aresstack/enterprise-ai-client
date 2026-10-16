@@ -22,7 +22,7 @@ public class SourcePanelTest {
 
     private final ComicPalette palette = ComicPalette.defaultPalette();
 
-    private static final class Recording implements SourceActions {
+    private static class Recording implements SourceActions {
         final List<String> calls = new ArrayList<String>();
         List<String> problems = Collections.emptyList();
 
@@ -64,6 +64,42 @@ public class SourcePanelTest {
             assertEquals(Collections.singletonList("SAVED wiki"), outcomes);
             assertTrue(actions.calls.toString(), actions.calls.contains("save wiki http://127.0.0.1:9/w/api.php/null"));
         });
+    }
+
+    @Test
+    public void connectionTestShowsTheResultWithoutSaving() throws Exception {
+        final Recording actions = new Recording() {
+            @Override
+            public boolean canCheckConnection() {
+                return true;
+            }
+
+            @Override
+            public void checkConnection(SourceDefinition draft, java.util.function.BiConsumer<Boolean, String> onResult) {
+                calls.add("check " + draft.address());
+                onResult.accept(Boolean.FALSE, "Quelle nicht erreichbar: Timeout");
+            }
+        };
+        final List<String> outcomes = new ArrayList<String>();
+        onEdt(() -> {
+            SourcePanel panel = new SourcePanel(new SourceDefinition("wiki", MediaWikiSourceProvider.TYPE_ID, true,
+                    SourceSettings.empty()), null, Collections.singletonList(MediaWikiSourceProvider.sourceType()),
+                    actions, palette);
+            panel.setListener((outcome, source) -> outcomes.add(outcome.toString()));
+            assertTrue(panel.checkButton().isVisible());
+            panel.checkButton().doClick();
+            assertTrue(actions.calls.toString(), actions.calls.contains("check wiki"));
+            assertEquals("✗ Quelle nicht erreichbar: Timeout", panel.checkResult());
+            assertTrue(panel.checkButton().isEnabled());
+            assertTrue(outcomes.isEmpty());
+        });
+    }
+
+    @Test
+    public void connectionTestIsHiddenWithoutSupport() throws Exception {
+        onEdt(() -> assertFalse(new SourcePanel(new SourceDefinition("wiki", MediaWikiSourceProvider.TYPE_ID, true,
+                SourceSettings.empty()), null, Collections.singletonList(MediaWikiSourceProvider.sourceType()),
+                new Recording(), palette).checkButton().isVisible()));
     }
 
     private static void onEdt(Runnable runnable) throws Exception {

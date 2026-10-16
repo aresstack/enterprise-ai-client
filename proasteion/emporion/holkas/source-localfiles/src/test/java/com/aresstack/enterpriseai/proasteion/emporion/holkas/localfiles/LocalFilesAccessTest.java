@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles;
 
+import com.aresstack.enterpriseai.source.api.files.FilePatterns;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;

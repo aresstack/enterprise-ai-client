@@ -57,6 +57,7 @@ public final class SettingsForm {
     private final String embeddingApiKeyRef;
     private final String indexDirectory;
     private final String disabledTools;
+    private final String toolApprovals;
     private final boolean keePassEnabled;
     private final String keePassHost;
     private final String keePassPort;
@@ -160,6 +161,7 @@ public final class SettingsForm {
         this.embeddingApiKeyRef = b.embeddingApiKeyRef;
         this.indexDirectory = b.indexDirectory;
         this.disabledTools = b.disabledTools;
+        this.toolApprovals = b.toolApprovals;
         this.keePassEnabled = b.keePassEnabled;
         this.keePassHost = b.keePassHost;
         this.keePassPort = b.keePassPort;
@@ -267,6 +269,7 @@ public final class SettingsForm {
                 .embeddingDimension(embeddingDimension).embeddingApiKeyRef(embeddingApiKeyRef)
                 .indexDirectory(indexDirectory)
                 .disabledTools(disabledTools)
+                .toolApprovals(toolApprovals)
                 .keePassEnabled(keePassEnabled).keePassHost(keePassHost).keePassPort(keePassPort)
                 .keePassClientDisplayName(keePassClientDisplayName).keePassPairingKeyStore(keePassPairingKeyStore)
                 .proxyMode(proxyMode).pacUrl(pacUrl).pacDiscoveryScript(pacDiscoveryScript)
@@ -406,6 +409,11 @@ public final class SettingsForm {
     /** {@code tools.disabled}: abgeschaltete Werkzeuge, kommagetrennt; leer = alle aktiv. */
     public String disabledTools() {
         return disabledTools;
+    }
+
+    /** {@code tools.approval}: approval rules ({@code tool[:action[/scope]]=ALLOW|ASK|DENY}, separated by ';'). */
+    public String toolApprovals() {
+        return toolApprovals;
     }
 
     public boolean keePassEnabled() {
@@ -868,6 +876,7 @@ public final class SettingsForm {
         private String embeddingApiKeyRef = "";
         private String indexDirectory = "";
         private String disabledTools = "";
+        private String toolApprovals = "";
         private boolean keePassEnabled = true;
         private String keePassHost = "127.0.0.1";
         private String keePassPort = "12546";
@@ -1025,6 +1034,11 @@ public final class SettingsForm {
 
         public Builder disabledTools(String value) {
             this.disabledTools = text(value);
+            return this;
+        }
+
+        public Builder toolApprovals(String value) {
+            this.toolApprovals = text(value);
             return this;
         }
 

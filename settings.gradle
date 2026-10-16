@@ -52,6 +52,8 @@ include 'source-api'
 include 'proasteion:emporion:holkas:source-mediawiki'
 include 'proasteion:emporion:holkas:source-confluence'
 include 'proasteion:emporion:holkas:source-localfiles'
+// Git repositories (#137): JGit 5.13.5 inside the Java 8 process, read only
+include 'proasteion:emporion:holkas:source-git'
 // Mainframe über FTP (MVS-Datasets, COBOL)
 include 'proasteion:emporion:holkas:source-ftp'
 // Mainframe: Natural über NDV
