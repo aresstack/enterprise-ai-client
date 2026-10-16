@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.astu.approval;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,6 +32,8 @@ public final class ToolApprovalGate {
     private final long timeoutMillis;
     private final Map<String, ApprovalTargetResolver> resolvers = new ConcurrentHashMap<String, ApprovalTargetResolver>();
     private final Map<String, List<String>> subRules = new ConcurrentHashMap<String, List<String>>();
+    private final Map<String, Map<String, ApprovalPolicy>> defaults =
+            new ConcurrentHashMap<String, Map<String, ApprovalPolicy>>();
 
     /**
      * @param rules  current rules, asked on every call so saved settings apply without restart
@@ -48,23 +51,35 @@ public final class ToolApprovalGate {
     /**
      * Registers the side-effect-free target resolver of {@code toolName}; without one the target is "invoke".
      *
-     * @param subRules the {@code action} or {@code action/scope} combinations the settings offer their own rule for,
-     *                 e.g. {@code delete/chat}, {@code delete/project}; may be empty
+     * @param subRules the {@code action} or {@code action/scope} combinations the settings offer their own rule for
+     *                 (e.g. {@code delete/chat}, {@code delete/project}), each with the tool's built-in default policy,
+     *                 or {@code null} to follow the tool-level rule. A rule in the settings ({@code tools.approval})
+     *                 for the same key replaces the default. May be empty.
      */
-    public void registerResolver(String toolName, ApprovalTargetResolver resolver, List<String> subRules) {
+    public void registerResolver(String toolName, ApprovalTargetResolver resolver,
+                                 Map<String, ApprovalPolicy> subRules) {
         if (toolName == null || resolver == null) {
             throw new IllegalArgumentException("toolName and resolver must not be null");
         }
         resolvers.put(toolName, resolver);
-        List<String> copy = new ArrayList<String>();
+        List<String> keys = new ArrayList<String>();
+        Map<String, ApprovalPolicy> defaults = new LinkedHashMap<String, ApprovalPolicy>();
         if (subRules != null) {
-            for (String rule : subRules) {
-                if (rule != null && !rule.trim().isEmpty()) {
-                    copy.add(rule.trim().toLowerCase(Locale.ROOT));
+            for (Map.Entry<String, ApprovalPolicy> rule : subRules.entrySet()) {
+                if (rule.getKey() == null || rule.getKey().trim().isEmpty()) {
+                    continue;
+                }
+                String key = rule.getKey().trim().toLowerCase(Locale.ROOT);
+                keys.add(key);
+                if (rule.getValue() != null) {
+                    int slash = key.indexOf('/');
+                    defaults.put(ApprovalRules.key(toolName, slash < 0 ? key : key.substring(0, slash),
+                            slash < 0 ? null : key.substring(slash + 1)), rule.getValue());
                 }
             }
         }
-        this.subRules.put(toolName, Collections.unmodifiableList(copy));
+        this.subRules.put(toolName, Collections.unmodifiableList(keys));
+        this.defaults.put(toolName, Collections.unmodifiableMap(defaults));
     }
 
     /** The sub-rules ({@code action} or {@code action/scope}) the settings offer for {@code toolName}; may be empty. */
@@ -73,7 +88,7 @@ public final class ToolApprovalGate {
         return rules == null ? Collections.<String>emptyList() : rules;
     }
 
-    /** The rules in force now. */
+    /** The rules in force now: built-in defaults of the tools plus the configured rules. */
     public ApprovalRules rules() {
         return currentRules();
     }
@@ -132,9 +147,17 @@ public final class ToolApprovalGate {
         return Verdict.allowed();
     }
 
+    /** The tools' built-in defaults, overridden key by key by the configured rules. */
     private ApprovalRules currentRules() {
         ApprovalRules current = rules.get();
-        return current == null ? ApprovalRules.none() : current;
+        Map<String, ApprovalPolicy> merged = new LinkedHashMap<String, ApprovalPolicy>();
+        for (Map<String, ApprovalPolicy> builtIn : defaults.values()) {
+            merged.putAll(builtIn);
+        }
+        if (current != null) {
+            merged.putAll(current.rules());
+        }
+        return new ApprovalRules(merged);
     }
 
     private ApprovalTarget resolve(String toolName, Map<String, Object> arguments) {

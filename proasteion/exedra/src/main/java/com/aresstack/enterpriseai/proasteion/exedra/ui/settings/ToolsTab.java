@@ -67,7 +67,8 @@ final class ToolsTab {
     static final String APPROVAL_TOOLTIP = "Genehmigung: Erlauben führt aus, Nachfragen wartet auf deine Bestätigung "
             + "in der gelben Werkzeug-Blase, Verbieten führt nie aus (tools.approval)";
     static final String SUB_RULE_PREFIX = "Genehmigung für ";
-    static final String INHERIT = "wie Werkzeug";
+    /** No own rule: the built-in default of the tool for this action/scope, else the tool-level rule. */
+    static final String INHERIT = "Standard";
     /** Policy names as stored in {@code tools.approval}, with their German labels, in dropdown order. */
     private static String[][] policies() {
         return new String[][]{{"ALLOW", "Erlauben"}, {"ASK", "Nachfragen"}, {"DENY", "Verbieten"}};

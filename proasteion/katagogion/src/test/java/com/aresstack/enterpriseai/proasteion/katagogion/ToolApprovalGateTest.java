@@ -43,7 +43,7 @@ public class ToolApprovalGateTest {
 
     private McpToolResult run(String rules, ApprovalPromptPort prompt, McpToolCall call) {
         ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse(rules), prompt, 1000);
-        gate.registerResolver("memory_delete", memoryResolver(), Arrays.asList("delete/chat", "delete/project"));
+        gate.registerResolver("memory_delete", memoryResolver(), subRules(null));
         return new ApprovingMcpToolHandler(gate, counting).invoke(call);
     }
 
@@ -60,6 +60,14 @@ public class ToolApprovalGateTest {
             }
             return new ApprovalTarget("delete", scope, id, "1", "Erinnerung löschen");
         };
+    }
+
+    /** delete/chat and delete/project, both with {@code projectDefault} as built-in policy for project. */
+    private static Map<String, ApprovalPolicy> subRules(ApprovalPolicy projectDefault) {
+        Map<String, ApprovalPolicy> rules = new java.util.LinkedHashMap<String, ApprovalPolicy>();
+        rules.put("delete/chat", null);
+        rules.put("delete/project", projectDefault);
+        return rules;
     }
 
     private static McpToolCall call(String tool, String id, String claimedScope) {
@@ -218,7 +226,7 @@ public class ToolApprovalGateTest {
         };
         ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"), editWhileAsking,
                 1000);
-        gate.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        gate.registerResolver("memory_delete", resolver, subRules(null));
         McpToolHandler handler = new ApprovingMcpToolHandler(gate, counting);
         McpToolResult changed = handler.invoke(call("memory_delete", "m2", null));
         assertTrue(changed.isError());
@@ -232,7 +240,7 @@ public class ToolApprovalGateTest {
         versions.put("m2", "2");
         ToolApprovalGate deleting = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"),
                 deleteWhileAsking, 1000);
-        deleting.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        deleting.registerResolver("memory_delete", resolver, subRules(null));
         assertTrue(new ApprovingMcpToolHandler(deleting, counting).invoke(call("memory_delete", "m2", null))
                 .isError());
         assertEquals(0, runs.get());
@@ -241,7 +249,7 @@ public class ToolApprovalGateTest {
                 ApprovalDecision.Outcome.APPROVED);
         versions.put("m2", "3");
         ToolApprovalGate unchanged = new ToolApprovalGate(() -> ApprovalRules.parse("memory_delete=ASK"), plain, 1000);
-        unchanged.registerResolver("memory_delete", resolver, Arrays.asList("delete/project"));
+        unchanged.registerResolver("memory_delete", resolver, subRules(null));
         assertFalse(new ApprovingMcpToolHandler(unchanged, counting).invoke(call("memory_delete", "m2", null))
                 .isError());
         assertEquals(1, runs.get());
@@ -257,5 +265,27 @@ public class ToolApprovalGateTest {
         ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse(rules.get()), tighten, 1000);
         assertTrue(new ApprovingMcpToolHandler(gate, counting).invoke(call("web_fetch", null, null)).isError());
         assertEquals(0, runs.get());
+    }
+
+    @Test
+    public void builtInDefaultAsksUntilASettingReplacesIt() {
+        ToolApprovalGate gate = new ToolApprovalGate(() -> ApprovalRules.parse(""),
+                answering(ApprovalDecision.Outcome.REJECTED), 1000);
+        gate.registerResolver("memory_delete", memoryResolver(), subRules(ApprovalPolicy.ASK));
+        McpToolHandler handler = new ApprovingMcpToolHandler(gate, counting);
+        assertFalse(handler.invoke(call("memory_delete", "m1", null)).isError()); // chat: no default, ALLOW
+        assertTrue(handler.invoke(call("memory_delete", "m2", null)).isError()); // project: default ASK
+        assertEquals(1, asked.size());
+        assertFalse(handler.invoke(call("web_fetch", null, null)).isError()); // other tools stay ALLOW
+        assertEquals(java.util.Arrays.asList("delete/chat", "delete/project"), gate.subRules("memory_delete"));
+
+        ToolApprovalGate configured = new ToolApprovalGate(
+                () -> ApprovalRules.parse("memory_delete:delete/project=ALLOW"),
+                answering(ApprovalDecision.Outcome.REJECTED), 1000);
+        configured.registerResolver("memory_delete", memoryResolver(), subRules(ApprovalPolicy.ASK));
+        assertFalse(new ApprovingMcpToolHandler(configured, counting).invoke(call("memory_delete", "m2", null))
+                .isError());
+        assertEquals(1, asked.size());
+        assertEquals(3, runs.get());
     }
 }
