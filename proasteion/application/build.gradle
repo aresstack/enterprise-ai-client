@@ -15,6 +15,10 @@ dependencies {
     // Global metadata catalog (#106): port and embedded H2 adapter.
     implementation project(':fact-api')
     implementation project(':fact-h2')
+    // Browser per chat (#141): port and runtime (profile per chat, lazy start, recovery).
+    implementation project(':browser-api')
+    implementation project(':browser-runtime')
+    implementation project(':browser-firefox')
     // Persistent memories (#144): port and embedded H2 adapter.
     implementation project(':memory-api')
     implementation project(':memory-h2')

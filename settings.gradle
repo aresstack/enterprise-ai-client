@@ -28,6 +28,11 @@ include 'chat-openai'
 // Strang N (Netz): neutraler Port für die HTTP-Route je Ziel-URL; Implementierung in exedra (app.net).
 include 'proasteion:platform:network'
 
+// Browser je Chat (#141): Port mit Engine-SPI, Laufzeit (Profil je Chat, Lazy-Start, Recovery)
+include 'browser-api'
+include 'browser-runtime'
+include 'browser-firefox'
+
 // Strang C – Embedding
 include 'embedding-api'
 include 'embedding-openai'

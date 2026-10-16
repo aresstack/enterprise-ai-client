@@ -22,6 +22,15 @@ final class ModuleRegistry {
 
     static final String ROOT_PACKAGE = "com.aresstack.enterpriseai";
 
+    /**
+     * Third-party sources copied unchanged into exactly one adapter module, under their original package (see the
+     * module's VENDORED.md). Only that module may hold classes of the package; it stays an implementation detail of
+     * the adapter. Adding an entry is an architecture decision.
+     */
+    private static final Map<String, String> VENDORED_PACKAGES = Collections.singletonMap(
+            // WD4J, the WebDriver BiDi client from MainframeMate (#141, owner decision 2026-10-16).
+            "browser-firefox", "de.bund.zrb");
+
     private final Map<String, ArchitectureModule> modules;
 
     private ModuleRegistry(Map<String, ArchitectureModule> modules) {
@@ -69,6 +78,12 @@ final class ModuleRegistry {
                         "anagraphai")
 
                 // Metadaten-Katalog (#106): Facts an der stabilen KnowledgeResourceId; H2 nur im Adapter fact-h2.
+                // Browser per chat (#141): port with engine SPI; runtime with profile per chat and recovery.
+                .module("browser-api", "browser.api", ModuleKind.PORT, "Browser", "astu")
+                .module("browser-runtime", "browser.runtime", ModuleKind.APPLICATION, "Browser", "astu",
+                        "browser-api")
+                // Firefox over WebDriver BiDi; the protocol layer is WD4J, vendored under de.bund.zrb (VENDORED.md).
+                .module("browser-firefox", "browser.firefox", ModuleKind.ADAPTER, "Browser", "astu", "browser-api")
                 .module("fact-api", "fact.api", ModuleKind.PORT, "Fakten", "astu")
                 .module("fact-h2", "fact.h2", ModuleKind.ADAPTER, "Fakten", "astu", "fact-api")
 
@@ -199,7 +214,8 @@ final class ModuleRegistry {
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
-                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "memory-api", "memory-h2")
+                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "memory-api", "memory-h2",
+                        "browser-api", "browser-runtime", "browser-firefox")
                 // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
                 // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",
@@ -210,6 +226,12 @@ final class ModuleRegistry {
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")
                 .build();
+    }
+
+    /** Is {@code packageName} the vendored third-party package of {@code moduleName}? */
+    boolean isVendored(String moduleName, String packageName) {
+        String vendored = VENDORED_PACKAGES.get(moduleName);
+        return vendored != null && (packageName.equals(vendored) || packageName.startsWith(vendored + "."));
     }
 
     Collection<ArchitectureModule> modules() {
