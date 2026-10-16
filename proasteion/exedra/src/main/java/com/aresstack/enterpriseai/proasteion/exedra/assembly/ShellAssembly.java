@@ -63,6 +63,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.SavedChatItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatProjectItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.WorkspaceActions;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser;
+import com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
@@ -139,6 +141,7 @@ public final class ShellAssembly {
         root.onStopIndexing(() -> root.uiExecutor().execute(knowledgeStatus::requestCancel));
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
+        root.bindAgentConversation(chatActions::conversationId); // #141: agent browser = browser of the open chat
         // Chat-Historie neben der Konfigurationsdatei: chats/<chatId>.json, Anhänge im Ordner chats/<chatId>/.
         final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
         if (root.ports().chat() != null) {
@@ -155,8 +158,14 @@ public final class ShellAssembly {
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
                     .withDiagnostics(root.turnDiagnostics())
-                    // Memories (#144): bound to the chat of each turn.
-                    .withChatTools(root::memoryChatTools));
+                    // Tools bound to the turn's chat: memories (#144) and the chat's own browser (#141).
+                    .withChatTools(chatId -> {
+                        List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
+                                new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(
+                                        root.memoryChatTools(chatId));
+                        tools.addAll(root.conversationChatTools(new ChatConversationId(chatId)));
+                        return tools;
+                    }));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.
@@ -387,6 +396,7 @@ public final class ShellAssembly {
             @Override
             public void delete(String chatId) {
                 history.delete(chatId);
+                root.deleteChatBrowserProfile(chatId); // #141: the chat's browser profile goes with the chat
                 // Chat memories (#144) go with their chat; project and global memories stay.
                 root.deleteChatMemories(chatId);
             }
@@ -519,6 +529,29 @@ public final class ShellAssembly {
                 // The new conversation belongs to the project from its first question on.
                 chatProjects.assign(history.currentChatId(), projectId);
                 return true;
+            }
+
+            @Override
+            public List<MemoryBrowser> chatMemories(String chatId) {
+                MemoryManagement management = root.memoryManagement();
+                List<MemoryBrowser> browsers = new ArrayList<MemoryBrowser>();
+                MemoryBrowser chat = StoreMemoryBrowser.of(management, MemoryManagement.Owner.CHAT, chatId);
+                if (chat == null) {
+                    return browsers;
+                }
+                browsers.add(chat);
+                MemoryBrowser project = StoreMemoryBrowser.of(management, MemoryManagement.Owner.PROJECT,
+                        chatProjects.projectOf(chatId));
+                if (project != null) {
+                    browsers.add(project);
+                }
+                browsers.add(StoreMemoryBrowser.of(management, MemoryManagement.Owner.GLOBAL, null));
+                return browsers;
+            }
+
+            @Override
+            public MemoryBrowser projectMemories(String projectId) {
+                return StoreMemoryBrowser.of(root.memoryManagement(), MemoryManagement.Owner.PROJECT, projectId);
             }
 
             @Override

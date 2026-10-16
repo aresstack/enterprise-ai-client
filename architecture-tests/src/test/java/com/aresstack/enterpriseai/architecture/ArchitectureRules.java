@@ -52,7 +52,8 @@ final class ArchitectureRules {
         confinement.put(Technology.SOLON, Arrays.asList("acp-solon-client", "acp-demo-agent", "mcp-solon-runtime"));
         confinement.put(Technology.MCP_SDK, Arrays.asList("mcp-solon-runtime"));
         confinement.put(Technology.JWBF, Arrays.asList("source-mediawiki"));
-        confinement.put(Technology.KEEPASS, Arrays.asList("security-keepassrpc"));
+        // Java-WebSocket: KeePassRPC and the WebDriver BiDi transport of the Firefox adapter (vendored WD4J).
+        confinement.put(Technology.KEEPASS, Arrays.asList("security-keepassrpc", "browser-firefox"));
         return confinement;
     }
 

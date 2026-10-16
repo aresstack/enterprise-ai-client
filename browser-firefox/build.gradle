@@ -1,0 +1,30 @@
+description = 'Firefox adapter of the chat-bound browser (#141): visible Firefox on the chat profile, WebDriver BiDi ' +
+        'over a direct loopback WebSocket (no geckodriver). The BiDi protocol layer is WD4J, copied unchanged from ' +
+        'Miguel0888/MainframeMate (wd4j, MIT) under its original package de.bund.zrb; see VENDORED.md.'
+
+dependencies {
+    implementation project(':browser-api')
+    // WD4J (vendored): WebSocket transport, JSON mapping and wrapper discovery, as in its own build.
+    implementation libs.java.websocket
+    implementation libs.gson
+    implementation libs.reflections
+}
+
+// The vendored WD4J sources stay identical to upstream; their lint warnings are not ours to fix here.
+tasks.named('compileJava') {
+    options.compilerArgs.removeAll { it.startsWith('-Xlint') }
+    options.compilerArgs.add('-Xlint:none')
+}
+
+dependencies {
+    testImplementation project(':browser-runtime')
+}
+
+// Opt-in integration test with two real Firefox instances (TwoFirefoxChatsIT): pass the switches to the test JVM.
+tasks.named('test') {
+    ['enterpriseai.firefox.it', 'enterpriseai.firefox'].each { name ->
+        if (System.getProperty(name) != null) {
+            systemProperty name, System.getProperty(name)
+        }
+    }
+}

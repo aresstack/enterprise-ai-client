@@ -44,6 +44,7 @@ public final class ApplicationPorts implements Closeable {
     private final KnowledgeIndexPort index;
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
+    private final com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
     private final com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
     private final com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
     private final KnowledgeSourceCatalog sources;
@@ -74,6 +75,7 @@ public final class ApplicationPorts implements Closeable {
         this.index = builder.index;
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
+        this.browsers = builder.browsers;
         this.memories = builder.memories;
         this.searchRuns = builder.searchRuns;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
@@ -141,6 +143,11 @@ public final class ApplicationPorts implements Closeable {
      */
     public FactStorePort facts() {
         return facts;
+    }
+
+    /** The browsers of the chats (#141), or {@code null} when no browser engine is available. */
+    public com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers() {
+        return browsers;
     }
 
     /** Persistent memories (#144), or {@code null} without a memory store: then the chat has no memory tools. */
@@ -265,6 +272,7 @@ public final class ApplicationPorts implements Closeable {
         private KnowledgeIndexPort index;
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
+        private com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
         private com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
         private com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
         private KnowledgeSourceCatalog sources;
@@ -329,6 +337,12 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder facts(FactStorePort value) {
             this.facts = value;
+            return this;
+        }
+
+        /** The chat-bound browsers (#141); {@code null}: no browser tools. */
+        public Builder browsers(com.aresstack.enterpriseai.browser.api.ChatBrowserPort value) {
+            this.browsers = value;
             return this;
         }
 

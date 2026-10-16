@@ -123,6 +123,7 @@ public final class CompositionRoot {
     static final String ORIGIN_RESEARCH = "Recherche-Agent, je Phase (ResearchControlTools)";
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
+    static final String ORIGIN_BROWSER = "Browser des Chats (BrowserMcpTools)";
     static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
@@ -150,8 +151,12 @@ public final class CompositionRoot {
     private final LoadKnowledgeDocumentUseCase documents;
     private final RefreshKnowledgeSourceUseCase refresh;
     private final KnowledgeMcpTools knowledgeTools;
+    /** Browser tools of the chats (#141), {@code null} without a browser engine. */
+    private final com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools browserTools;
+    private volatile java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> agentConversation;
     /** Persistent memories (#144), {@code null} without a memory store. */
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
+    private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement;
     /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
     private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
@@ -384,12 +389,30 @@ public final class CompositionRoot {
                             ? com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext.none()
                             : projects.resolve(conversation);
                 }, toolCatalog.approvals());
+        this.memoryManagement = ports.memories() == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement(ports.memories(),
+                System.getProperty("user.name", "local"));
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
                     () -> McpChatTool.definitions(
                             MemoryTools.forChat(null, "")));
         }
         registerHelpTools(toolCatalog, config.agent().toolSettings());
+        // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
+        // (conversationChatTools), so the chat identity comes from the host, never from the model.
+        this.browserTools = ports.browsers() == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers());
+        if (browserTools != null) {
+            toolCatalog.registerDefinitions(ORIGIN_BROWSER, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT), () -> {
+                List<com.aresstack.enterpriseai.chat.api.ToolDefinition> definitions =
+                        new ArrayList<com.aresstack.enterpriseai.chat.api.ToolDefinition>();
+                for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : McpChatTool.all(
+                        com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools.unbound())) {
+                    definitions.add(tool.definition());
+                }
+                return definitions;
+            });
+        }
         this.workExecutor = Executors.newCachedThreadPool(daemonThreads("enterprise-ai-work"));
         // Dokumentnavigation im Lesebereich: Passagen der Index-Pipeline (askai arch PassageSegmentation) + TopicClusterer,
         // ohne Vorrang in der Index-Warteschlange; ohne OpenNLP-Satzmodell nur Originalüberschriften. Analysierte Fassungen
@@ -547,7 +570,42 @@ public final class CompositionRoot {
 
     /** Die Werkzeuge am MCP-Endpoint jedes Agenten: Kanal {@link ToolChannel#AGENT} im {@link #toolCatalog()}. */
     public List<McpToolContribution> agentTools() {
-        return toolCatalog.tools(EnumSet.of(ToolChannel.AGENT));
+        List<McpToolContribution> tools = new ArrayList<McpToolContribution>(
+                toolCatalog.tools(EnumSet.of(ToolChannel.AGENT)));
+        com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation =
+                agentConversation == null ? null : agentConversation.get();
+        if (browserTools != null && conversation != null) {
+            // #141: the agent gets the browser of the chat it works for; the host binds the chat, never the model.
+            for (McpToolContribution tool : browserTools.contributionsFor(conversation)) {
+                if (toolCatalog.isEnabled(tool.getName())) {
+                    tools.add(toolCatalog.gated(tool));
+                }
+            }
+        }
+        return tools;
+    }
+
+    /**
+     * Binds the agent's browser tools to the current chat (#141). The shell passes the supplier of the open
+     * conversation; the agent session ends on a chat switch, so its tools follow the chat it was launched for.
+     */
+    public void bindAgentConversation(
+            java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> current) {
+        this.agentConversation = current;
+    }
+
+    /**
+     * Deletes the browser profile of a deleted chat (#141). Failures are logged, the chat deletion goes on.
+     */
+    public void deleteChatBrowserProfile(String chatId) {
+        if (ports.browsers() == null || chatId == null) {
+            return;
+        }
+        try {
+            ports.browsers().deleteProfile(new com.aresstack.enterpriseai.astu.chat.ChatConversationId(chatId));
+        } catch (com.aresstack.enterpriseai.browser.api.BrowserException | RuntimeException e) {
+            LOG.warning("Browser-Profil des Chats " + chatId + " nicht gelöscht: " + e.getMessage());
+        }
     }
 
     /** Die zentrale Werkzeug-Registry; neue Werkzeuge werden hier registriert, nicht in Chat oder Oberfläche. */
@@ -705,6 +763,11 @@ public final class CompositionRoot {
         this.memoryProjects = projects;
     }
 
+    /** List and delete memories of one chat, project or the user (#144 management view); {@code null} without store. */
+    public com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement() {
+        return memoryManagement;
+    }
+
     /** Removes the memories of a finally deleted chat (project and global memories stay). */
     public void deleteChatMemories(String chatId) {
         if (memories != null) {
@@ -721,6 +784,24 @@ public final class CompositionRoot {
      */
     public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> knowledgeChatTools() {
         return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));
+    }
+
+    /**
+     * The active chat tools bound to {@code conversation} (#141: the chat's own browser), empty without a browser
+     * engine. Switched off in the tab "Tools" means missing from the next request on.
+     */
+    public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> conversationChatTools(
+            com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        if (browserTools == null || conversation == null) {
+            return Collections.emptyList();
+        }
+        List<McpToolContribution> active = new ArrayList<McpToolContribution>();
+        for (McpToolContribution tool : browserTools.contributionsFor(conversation)) {
+            if (toolCatalog.isEnabled(tool.getName())) {
+                active.add(toolCatalog.gated(tool));
+            }
+        }
+        return McpChatTool.all(active);
     }
 
     /** Der Agent-Modus: das konfigurierte Agent-Kommando, sonst der eingebaute Recherche-Agent. */

@@ -132,9 +132,12 @@ public class AdapterAssemblyTest {
             assertTrue(unwrap(ports.sources().find(CONFLUENCE).port())
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
+            // "chat-browsers" (#141) only exists where Firefox is installed, as on the CI runners.
+            java.util.List<String> resources = new java.util.ArrayList<String>(ports.resourceNames());
+            resources.remove("chat-browsers");
             assertEquals(Arrays.asList("local-models", "mcp-server", "knowledge-index", "raw-knowledge-index",
                     "fact-store", "memory-store", "search-run-store"),
-                    ports.resourceNames());
+                    resources);
             assertFalse(ports.toString().toLowerCase().contains("password"));
         } finally {
             ports.close();
