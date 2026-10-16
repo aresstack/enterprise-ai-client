@@ -45,6 +45,7 @@ public final class ApplicationPorts implements Closeable {
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
     private final com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
+    private final com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -74,6 +75,7 @@ public final class ApplicationPorts implements Closeable {
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
         this.memories = builder.memories;
+        this.searchRuns = builder.searchRuns;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -144,6 +146,11 @@ public final class ApplicationPorts implements Closeable {
     /** Persistent memories (#144), or {@code null} without a memory store: then the chat has no memory tools. */
     public com.aresstack.enterpriseai.memory.api.MemoryStorePort memories() {
         return memories;
+    }
+
+    /** Knowledge search run log (#153), or {@code null}: then searches are not persisted. */
+    public com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns() {
+        return searchRuns;
     }
 
     /**
@@ -259,6 +266,7 @@ public final class ApplicationPorts implements Closeable {
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
         private com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
+        private com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -326,6 +334,11 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder memories(com.aresstack.enterpriseai.memory.api.MemoryStorePort value) {
             this.memories = value;
+            return this;
+        }
+
+        public Builder searchRuns(com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort value) {
+            this.searchRuns = value;
             return this;
         }
 

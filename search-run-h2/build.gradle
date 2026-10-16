@@ -1,0 +1,7 @@
+description = 'Search run log adapter (#153): one embedded H2 database (in-process, file in the app data directory) ' +
+        'behind KnowledgeSearchRunPort.'
+
+dependencies {
+    api project(':search-run-api')
+    implementation libs.h2
+}

@@ -12,6 +12,7 @@ dependencies {
     api project(':astu:acropolis:chalcotheca')
     api project(':model-api')
     api project(':speech-api')
+    api project(':search-run-api')
 }
 
 dependencies {

@@ -49,7 +49,7 @@ final class ModuleRegistry {
                 .module("astu", "astu", ModuleKind.DOMAIN, "Kern")
                 .module("acropolis", "astu.acropolis", ModuleKind.APPLICATION, "Kern (AP10, AP20, AP21, AP23)",
                         "astu", "chat-api", "embedding-api", "chalcotheca", "tamias", "source-api", "adyton",
-                        "acp-client-api", "katagogion", "model-api", "speech-api")
+                        "acp-client-api", "katagogion", "model-api", "speech-api", "search-run-api")
 
                 .module("chat-api", "chat.api", ModuleKind.PORT, "A", "astu")
                 .module("chat-openai", "chat.openai", ModuleKind.ADAPTER, "A", "astu", "chat-api", "network")
@@ -75,6 +75,11 @@ final class ModuleRegistry {
                 // Persistente Erinnerungen (#144): eigener Port, H2 nur im Adapter memory-h2; kein Fakt, keine Quelle.
                 .module("memory-api", "memory.api", ModuleKind.PORT, "Erinnerungen", "astu")
                 .module("memory-h2", "memory.h2", ModuleKind.ADAPTER, "Erinnerungen", "astu", "memory-api")
+
+                // Knowledge search run log (#153): candidates as immutable discovery facts plus append-only events;
+                // H2 only in the adapter search-run-h2.
+                .module("search-run-api", "searchrun.api", ModuleKind.PORT, "Recherche", "astu")
+                .module("search-run-h2", "searchrun.h2", ModuleKind.ADAPTER, "Recherche", "astu", "search-run-api")
 
                 .module("source-api", "source.api", ModuleKind.PORT, "E", "astu")
                 .module("source-mediawiki", "proasteion.emporion.holkas.mediawiki", ModuleKind.ADAPTER, "E", "astu", "source-api",
@@ -199,7 +204,8 @@ final class ModuleRegistry {
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
-                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "memory-api", "memory-h2")
+                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "memory-api", "memory-h2",
+                        "search-run-api", "search-run-h2")
                 // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
                 // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",

@@ -309,6 +309,14 @@ public final class AdapterAssembly {
                         config.facts().lockTimeoutMillis());
         ports.memories(memories);
         ports.closing("memory-store", memories);
+        // Knowledge search run log (#153): own H2 database next to the facts directory, opened on first use.
+        final com.aresstack.enterpriseai.searchrun.h2.H2KnowledgeSearchRunStore searchRuns =
+                new com.aresstack.enterpriseai.searchrun.h2.H2KnowledgeSearchRunStore(
+                        config.facts().directory().toAbsolutePath().resolveSibling(
+                                com.aresstack.enterpriseai.proasteion.application.config.AppPaths.SEARCH_RUN_DIRECTORY_NAME),
+                        config.facts().lockTimeoutMillis());
+        ports.searchRuns(searchRuns);
+        ports.closing("search-run-store", searchRuns);
         return ports.build();
     }
 

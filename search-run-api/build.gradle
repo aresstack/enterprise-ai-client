@@ -1,0 +1,6 @@
+description = 'Port for the persistent knowledge search run log (#153): what a live search of the internal knowledge ' +
+        'sources actually received, candidate by candidate, plus append-only candidate events. No storage types.'
+
+dependencies {
+    api project(':astu')
+}

@@ -144,6 +144,11 @@ final class KnowledgeSearchTool implements McpToolHandler {
                           boolean indexFailed) {
         StringBuilder out = new StringBuilder();
         out.append("Query: ").append(ToolText.oneLine(query, 200)).append('\n');
+        if (found != null && found.runRecorded()) {
+            // The run keeps every live candidate (#153); candidates are not sources until read and judged.
+            out.append("Search run: ").append(found.run().id().value()).append(" (")
+                    .append(found.run().candidates().size()).append(" live candidates recorded)\n");
+        }
         if (found != null) {
             for (Map.Entry<SourceAddress, String> failure : found.failures().entrySet()) {
                 out.append("Note: source ").append(failure.getKey().value()).append(" could not be searched (")
