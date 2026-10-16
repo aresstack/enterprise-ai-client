@@ -226,7 +226,7 @@ final class ModuleRegistry {
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",
                         "application", "astu", "acropolis", "comic-controls",
                         "chat-api", "chalcotheca", "source-api", "acp-client-api", "network", "speech-api",
-                        "model-api")
+                        "model-api", "search-run-api")
 
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")

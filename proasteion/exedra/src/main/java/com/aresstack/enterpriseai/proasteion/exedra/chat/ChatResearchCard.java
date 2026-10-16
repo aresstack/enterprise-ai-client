@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatShellModel;
+import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +14,10 @@ import java.util.List;
  * Suchschritte), darunter den laufenden Schritt und einen Balken über die Suchen des Turns. Bei der Live-Suche zeigt
  * sie die Treffer in den Quellen und wie viele davon geladen und lokal durchsuchbar sind; Passagen und Embeddings
  * zeigt sie nicht, denn auf die wartet der Chat nicht.
+ *
+ * <p>Oben steht der Trichter des Turns (#155/#156): „57 Seiten geprüft · 8 relevant · 3 verwendet“, live aus dem
+ * {@link KnowledgeFunnel} des Use Case, nie hier neu berechnet und nie aus der Gesamttrefferzahl einer Quelle. Der
+ * Balken zeigt Arbeitsfortschritt (Suchen des Turns mal ihre Arbeitsphasen), nie das Verhältnis relevant / geprüft.
  *
  * <p>Nur auf dem UI-Thread; jede Methode schreibt sofort ins Model, solange die Karte offen ist.
  */
@@ -42,6 +48,11 @@ final class ChatResearchCard {
     private int hits;
     private int sources = -1;
     private boolean failed;
+    private boolean cancelled;
+    private KnowledgeFunnel funnel;
+    /** Work steps done so far, in units of {@link #PHASES} per search; never moves backwards. */
+    private int worked;
+    private static final int PHASES = FunnelPhase.DONE.ordinal();
     private boolean open;
     private boolean opened;
 
@@ -111,12 +122,47 @@ final class ChatResearchCard {
         update();
     }
 
-    /** „2 geeignete Quellen (von 14 Treffern)“. */
+    /**
+     * Die Bewertung einer Kandidatenrunde ist fertig. Keine eigene Zeile: wie viele Quellen relevant sind, zeigt der
+     * Trichter oben, sonst stünden zwei verschiedene Relevanzzahlen in der Karte.
+     */
     void ranked(int candidates, int relevant) {
-        lines.add(relevant + (relevant == 1 ? " geeignete Quelle" : " geeignete Quellen") + " (von " + candidates
-                + (candidates == 1 ? " Treffer)" : " Treffern)"));
         current = "";
         update();
+    }
+
+    /**
+     * Der Trichter des Turns hat sich geändert: Zählerzeile und Balken folgen ihm. Gleiche Zahlen und Phase schreiben
+     * nichts neu, damit die Karte nicht flackert.
+     */
+    void funnel(KnowledgeFunnel changed) {
+        if (changed == null) {
+            return;
+        }
+        boolean same = funnel != null && funnel.examined().size() == changed.examined().size()
+                && funnel.relevant().size() == changed.relevant().size()
+                && funnel.used().size() == changed.used().size() && funnel.phase() == changed.phase();
+        funnel = changed;
+        if (changed.phase() != FunnelPhase.DONE) {
+            worked = Math.max(worked, Math.max(0, searches - 1) * PHASES + changed.phase().ordinal());
+        }
+        if (!same) {
+            update();
+        }
+    }
+
+    /** „57 Seiten geprüft · 8 relevant · 3 verwendet“; leer, solange noch nichts geprüft wurde. */
+    String funnelLine() {
+        if (funnel == null || funnel.examined().isEmpty()) {
+            return "";
+        }
+        int examined = funnel.examined().size();
+        StringBuilder text = new StringBuilder().append(examined).append(examined == 1 ? " Seite" : " Seiten")
+                .append(" geprüft · ").append(funnel.relevant().size()).append(" relevant");
+        if (!funnel.used().isEmpty()) {
+            text.append(" · ").append(funnel.used().size()).append(" verwendet");
+        }
+        return text.toString();
     }
 
     /** „Evidenz ausreichend“ bzw. „1 Quelle: nicht ausreichend“. */
@@ -152,6 +198,7 @@ final class ChatResearchCard {
     }
 
     void cancelling() {
+        cancelled = true;
         current = CANCELLING;
         update();
     }
@@ -166,10 +213,25 @@ final class ChatResearchCard {
         model.finishActivity(key, succeeded, summary());
     }
 
-    /** „abgeschlossen: 2 Suchen, 11 Treffer, 6 Quellen im Kontext“. */
+    /**
+     * „Recherche abgeschlossen · 57 Seiten geprüft · 8 relevante Quellen · 3 verwendet“; abgebrochen oder teilweise
+     * mit den bis dahin ehrlich erreichten Zahlen. Ohne Trichter: „abgeschlossen: 2 Suchen, 11 Treffer, 6 Quellen im
+     * Kontext“.
+     */
     String summary() {
-        if (failed && hits == 0) {
+        if (failed && hits == 0 && (funnel == null || funnel.examined().isEmpty())) {
             return "Wissenssuche ausgefallen";
+        }
+        if (funnel != null && !funnel.examined().isEmpty()) {
+            int examined = funnel.examined().size();
+            int relevant = funnel.relevant().size();
+            // the answer may start before the final funnel arrives: only a finished incomplete funnel is partial
+            boolean partial = failed || funnel.phase() == FunnelPhase.DONE && !funnel.complete();
+            String state = cancelled ? "Recherche abgebrochen"
+                    : partial ? "Recherche teilweise abgeschlossen" : "Recherche abgeschlossen";
+            return state + " · " + examined + (examined == 1 ? " Seite" : " Seiten") + " geprüft · " + relevant
+                    + (relevant == 1 ? " relevante Quelle" : " relevante Quellen") + " · " + funnel.used().size()
+                    + " verwendet";
         }
         StringBuilder text = new StringBuilder("abgeschlossen: ").append(searches)
                 .append(searches == 1 ? " Suche, " : " Suchen, ").append(hits).append(" Treffer");
@@ -180,14 +242,20 @@ final class ChatResearchCard {
     }
 
     String body() {
-        StringBuilder text = new StringBuilder();
+        StringBuilder text = new StringBuilder(funnelLine());
         for (String line : lines) {
             text.append(text.length() == 0 ? "" : "\n").append(line);
         }
         if (!current.isEmpty()) {
             text.append(text.length() == 0 ? "" : "\n").append(current);
         }
-        text.append(" [[bar:").append(Math.min(completed, max)).append('/').append(max).append("]]");
+        if (funnel == null) {
+            text.append(" [[bar:").append(Math.min(completed, max)).append('/').append(max).append("]]");
+        } else {
+            int total = max * PHASES;
+            int done = completed >= max ? total : Math.min(worked, total);
+            text.append(" [[bar:").append(done).append('/').append(total).append("]]");
+        }
         return text.toString();
     }
 

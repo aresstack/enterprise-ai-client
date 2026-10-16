@@ -225,7 +225,9 @@ public class ChatResearchActivityTest {
         assertEquals(TranscriptEntry.Author.ASSISTANT, entries.get(1).getAuthor());
         assertTrue("Quellen an der Antwort", entries.get(1).hasSources());
         String summary = shell.recorder.addedActivities.get(0).getActivitySummary();
-        assertTrue(summary, summary.startsWith("abgeschlossen: 1 Suche, "));
+        assertTrue(summary, summary.startsWith("Recherche abgeschlossen · "));
+        assertTrue(summary, summary.contains(" Seite"));
+        assertTrue(summary, summary.contains(" geprüft · "));
     }
 
     @Test
