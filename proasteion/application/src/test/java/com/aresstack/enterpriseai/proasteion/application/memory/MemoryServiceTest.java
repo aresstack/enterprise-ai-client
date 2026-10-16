@@ -252,7 +252,7 @@ public class MemoryServiceTest {
     }
 
     /** Store double with the port's contract: version-bound delete, ids never reused, duplicates not rewritten. */
-    private static final class InMemoryStore implements MemoryStorePort {
+    static final class InMemoryStore implements MemoryStorePort {
         final Map<MemoryId, Memory> all = new LinkedHashMap<MemoryId, Memory>();
         private final AtomicInteger numbers = new AtomicInteger();
 
