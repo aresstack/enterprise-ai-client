@@ -248,8 +248,8 @@ public final class SearchDrivenIndexingUseCase {
         }
         try {
             runs.appendAll(events);
-        } catch (RuntimeException e) {
-            return; // the log never fails a search
+        } catch (RuntimeException ignored) {
+            // the log never fails a search; load outcomes are still attempted below
         }
         final List<Integer> positions = new ArrayList<Integer>(order);
         series.onHarvest((position, harvest, failure) -> {
