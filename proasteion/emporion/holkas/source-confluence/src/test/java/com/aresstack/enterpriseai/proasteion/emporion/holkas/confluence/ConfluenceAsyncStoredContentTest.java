@@ -123,11 +123,51 @@ public class ConfluenceAsyncStoredContentTest {
     }
 
     @Test
-    public void statusesMapToTheSameKindsAsTheBlockingCall() throws Exception {
+    public void aRestrictedPageLooksLikeAnUnknownOneAsInTheBlockingCall() throws Exception {
         confluence.restricted.add("101");
 
-        assertKind(Kind.ACCESS_DENIED, source.storedContentAsync("101"));
+        assertKind(Kind.NOT_FOUND, source.storedContentAsync("101"));
         assertKind(Kind.NOT_FOUND, source.storedContentAsync("999"));
+    }
+
+    @Test
+    public void transientFailuresAreRetriedWithTheConfiguredRules() throws Exception {
+        RecordingSecretProvider secrets = new RecordingSecretProvider();
+        AsyncConfluenceKnowledgeSource retrying = new AsyncConfluenceKnowledgeSource(SOURCE,
+                ConfluenceConfig.builder(FakeConfluence.BASE).credentialRef(RecordingSecretProvider.REF)
+                        .maxRetries(2).retryBackoffMillis(1).maxRetryBackoffMillis(1).build(),
+                confluence, async, mapping, secrets, new VaultEntryOptions(secrets, RecordingSecretProvider.REF));
+        confluence.forcedFailure = new IOException("Verbindung zurückgesetzt");
+
+        CompletionStage<StoredContent> stage = retrying.storedContentAsync("101");
+        Throwable failure = failureAfterRetries(stage);
+
+        assertEquals(3, async.uris.size());
+        assertEquals(Kind.UNAVAILABLE, ((KnowledgeSourceException) failure).kind());
+        assertTrue(failure.getMessage(), failure.getMessage().contains("nach 2 Wiederholungen"));
+    }
+
+    @Test
+    public void aRetryRecoversWhenConfluenceAnswersAgain() throws Exception {
+        RecordingSecretProvider secrets = new RecordingSecretProvider();
+        AsyncConfluenceKnowledgeSource retrying = new AsyncConfluenceKnowledgeSource(SOURCE,
+                ConfluenceConfig.builder(FakeConfluence.BASE).credentialRef(RecordingSecretProvider.REF)
+                        .maxRetries(1).retryBackoffMillis(1).maxRetryBackoffMillis(1).build(),
+                confluence, async, mapping, secrets, new VaultEntryOptions(secrets, RecordingSecretProvider.REF));
+        confluence.forcedFailure = new IOException("Verbindung zurückgesetzt");
+        CompletionStage<StoredContent> stage = retrying.storedContentAsync("101");
+        answerAll();
+        confluence.forcedFailure = null;
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!stage.toCompletableFuture().isDone() && System.nanoTime() < deadline) {
+            answerAll();
+            Thread.sleep(5);
+        }
+
+        assertEquals(2, async.uris.size());
+        assertEquals("101", stage.toCompletableFuture().get(1, TimeUnit.SECONDS).resource().metadata()
+                .get("confluence.contentId").get());
     }
 
     @Test
@@ -237,6 +277,15 @@ public class ConfluenceAsyncStoredContentTest {
         } catch (ExecutionException e) {
             return e.getCause();
         }
+    }
+
+    private Throwable failureAfterRetries(CompletionStage<?> stage) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!stage.toCompletableFuture().isDone() && System.nanoTime() < deadline) {
+            answerAll();
+            Thread.sleep(5);
+        }
+        return failure(stage);
     }
 
     private void assertKind(Kind expected, CompletionStage<?> stage) throws Exception {

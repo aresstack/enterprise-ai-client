@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
+import com.aresstack.enterpriseai.source.api.RateLimitedException;
 import com.aresstack.enterpriseai.source.api.ResponseTooLargeException;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -34,8 +35,10 @@ import java.util.logging.Logger;
  * {@code ConfluenceRestClient} übernommen; JSON über Gson statt Jackson.
  *
  * <p>HTTP-Status werden auf {@link Kind} abgebildet: 401/403 und Weiterleitungen (Login-Seite) →
- * {@code ACCESS_DENIED}, 404 → {@code NOT_FOUND}, 429/5xx und Netzfehler → {@code UNAVAILABLE}, alles andere →
- * {@code INVALID_RESPONSE}. Meldungen nennen Vorgang und Status, nie Antwortkörper oder Header.
+ * {@code ACCESS_DENIED}, 404 → {@code NOT_FOUND}, 429/5xx und Netzfehler → {@code UNAVAILABLE} (429 als
+ * {@link RateLimitedException}), alles andere → {@code INVALID_RESPONSE}. Meldungen nennen Vorgang und Status, nie
+ * Antwortkörper oder Header. REST-Aufrufe über {@code send} werden bei Netzfehler, 429 und 5xx bis zu
+ * {@link ConfluenceConfig#maxRetries()} Mal mit wachsender Wartezeit wiederholt.
  */
 final class ConfluenceRestClient {
 
@@ -194,41 +197,149 @@ final class ConfluenceRestClient {
     }
 
     /**
-     * Wie {@link #storedPage}, aber über den asynchronen Transport: dieselbe Anfrage, dieselbe Fehlerabbildung und
-     * dieselbe JSON-Abbildung, die auf {@code mapping} läuft statt auf dem I/O-Thread des Transports. Fehler beenden
-     * die Stufe ausnahmsweise mit {@link KnowledgeSourceException}; ein Abbruch der Stufe bricht die Anfrage ab.
+     * Wie {@link #storedPage}, aber über den asynchronen Transport: dieselbe Anfrage, dieselben Wiederholungen,
+     * dieselbe Fehlerabbildung und dieselbe JSON-Abbildung, die auf {@code mapping} läuft statt auf dem I/O-Thread des
+     * Transports. Fehler beenden die Stufe ausnahmsweise mit {@link KnowledgeSourceException}; ein Abbruch der Stufe
+     * bricht die laufende Anfrage oder die Wartezeit vor der nächsten Wiederholung ab.
      */
     java.util.concurrent.CompletionStage<StoredPage> storedPageAsync(Session session, final String contentId,
             ConfluenceAsyncHttpTransport async, java.util.concurrent.Executor mapping) {
         final java.util.concurrent.CompletableFuture<StoredPage> result =
                 new java.util.concurrent.CompletableFuture<StoredPage>();
-        final int maxBytes = config.maxResponseBytes();
-        final java.util.concurrent.CompletionStage<ConfluenceHttpResponse> request;
+        URI uri;
         try {
-            request = async.getAsync(uri(storedPagePath(contentId), "Seite"), session.headers, maxBytes);
+            uri = uri(storedPagePath(contentId), "Seite");
         } catch (KnowledgeSourceException e) {
             result.completeExceptionally(e);
             return result;
-        } catch (RuntimeException e) {
-            result.completeExceptionally(e);
-            return result;
         }
-        request.whenCompleteAsync((response, error) -> {
-            try {
-                if (error != null) {
-                    throw transportFailure(error, "Seite", maxBytes);
-                }
-                result.complete(storedPage(checked(response, "Seite"), contentId));
-            } catch (KnowledgeSourceException | RuntimeException e) {
-                result.completeExceptionally(e);
-            }
-        }, mapping);
+        final java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>> current =
+                new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>>();
         result.whenComplete((page, error) -> {
-            if (result.isCancelled()) {
-                request.toCompletableFuture().cancel(true);
+            java.util.concurrent.Future<?> running = current.get();
+            if (result.isCancelled() && running != null) {
+                running.cancel(true);
             }
         });
+        new AsyncAttempt<StoredPage>(uri, session.headers, "Seite", config.maxResponseBytes(), async, mapping,
+                current, result, response -> storedPage(response, contentId)).start(0);
         return result;
+    }
+
+    /** Abbildung einer erfolgreichen Antwort; läuft auf dem Executor der Abbildung. */
+    private interface ResponseMapper<T> {
+        T map(ConfluenceHttpResponse response) throws KnowledgeSourceException;
+    }
+
+    /** Wartezeiten vor asynchronen Wiederholungen; der Thread plant nur, er wartet nie auf Netz-I/O. */
+    private static final class RetryTimer {
+        static final java.util.concurrent.ScheduledThreadPoolExecutor TIMER = timer();
+
+        private static java.util.concurrent.ScheduledThreadPoolExecutor timer() {
+            java.util.concurrent.ScheduledThreadPoolExecutor timer = new java.util.concurrent.ScheduledThreadPoolExecutor(
+                    1, runnable -> {
+                        Thread thread = new Thread(runnable, "confluence-retry");
+                        thread.setDaemon(true);
+                        return thread;
+                    });
+            timer.setRemoveOnCancelPolicy(true);
+            return timer;
+        }
+    }
+
+    /** Ein asynchroner Abruf mit den Wiederholungsregeln von {@link #send}. */
+    private final class AsyncAttempt<T> {
+        private final URI uri;
+        private final Map<String, String> headers;
+        private final String what;
+        private final int maxBytes;
+        private final ConfluenceAsyncHttpTransport async;
+        private final java.util.concurrent.Executor mapping;
+        private final java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>> current;
+        private final java.util.concurrent.CompletableFuture<T> result;
+        private final ResponseMapper<T> mapper;
+
+        AsyncAttempt(URI uri, Map<String, String> headers, String what, int maxBytes,
+                     ConfluenceAsyncHttpTransport async, java.util.concurrent.Executor mapping,
+                     java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>> current,
+                     java.util.concurrent.CompletableFuture<T> result, ResponseMapper<T> mapper) {
+            this.uri = uri;
+            this.headers = headers;
+            this.what = what;
+            this.maxBytes = maxBytes;
+            this.async = async;
+            this.mapping = mapping;
+            this.current = current;
+            this.result = result;
+            this.mapper = mapper;
+        }
+
+        void start(final int attempt) {
+            if (result.isDone()) {
+                return;
+            }
+            final java.util.concurrent.CompletableFuture<ConfluenceHttpResponse> request;
+            try {
+                request = async.getAsync(uri, headers, maxBytes).toCompletableFuture();
+            } catch (RuntimeException e) {
+                result.completeExceptionally(e);
+                return;
+            }
+            current.set(request);
+            if (result.isCancelled()) {
+                request.cancel(true);
+                return;
+            }
+            request.whenCompleteAsync((response, error) -> handle(attempt, response, error), mapping);
+        }
+
+        private void handle(final int attempt, ConfluenceHttpResponse response, Throwable error) {
+            KnowledgeSourceException failure;
+            try {
+                if (error == null && response.isSuccess()) {
+                    result.complete(mapper.map(response));
+                    return;
+                }
+                if (error != null) {
+                    failure = transportFailure(error, what, maxBytes);
+                    if (failure instanceof ResponseTooLargeException || !(unwrapped(error) instanceof IOException)) {
+                        result.completeExceptionally(failure);
+                        return;
+                    }
+                } else {
+                    failure = statusFailure(what, response.status());
+                    if (!retryable(response.status())) {
+                        result.completeExceptionally(failure);
+                        return;
+                    }
+                }
+            } catch (KnowledgeSourceException | RuntimeException e) {
+                result.completeExceptionally(e);
+                return;
+            }
+            if (attempt >= config.maxRetries()) {
+                result.completeExceptionally(attempt == 0 ? failure : exhausted(failure, attempt));
+                return;
+            }
+            long delay = backoffMillis(attempt, config.retryBackoffMillis(), config.maxRetryBackoffMillis());
+            LOG.warning("[Confluence] " + failure.getMessage() + "; Wiederholung " + (attempt + 1) + " von "
+                    + config.maxRetries() + " in " + delay + " ms");
+            java.util.concurrent.Future<?> timer = RetryTimer.TIMER.schedule(() -> start(attempt + 1),
+                    delay, java.util.concurrent.TimeUnit.MILLISECONDS);
+            current.set(timer);
+            if (result.isCancelled()) {
+                timer.cancel(false);
+            }
+        }
+    }
+
+    private static Throwable unwrapped(Throwable error) {
+        Throwable failure = error;
+        while ((failure instanceof java.util.concurrent.CompletionException
+                || failure instanceof java.util.concurrent.ExecutionException) && failure.getCause() != null) {
+            failure = failure.getCause();
+        }
+        return failure;
     }
 
     private static String storedPagePath(String contentId) {
@@ -698,6 +809,19 @@ final class ConfluenceRestClient {
     }
 
     /** Die Einmalcode-Seite eines Zwei-Faktor-Plugins statt der Datei; trägt die unveränderte Seite für das Formular. */
+    /**
+     * HTTP 403: angemeldet, aber für dieses Objekt nicht berechtigt (Art {@code ACCESS_DENIED}). Für eine einzelne Seite
+     * heißt das „für dieses Konto nicht sichtbar“, siehe {@code ConfluenceKnowledgeSource#resourceMetadata}.
+     */
+    static final class Forbidden extends KnowledgeSourceException {
+
+        private static final long serialVersionUID = 1L;
+
+        Forbidden(String message) {
+            super(Kind.ACCESS_DENIED, message);
+        }
+    }
+
     static final class TwoFactorRequired extends KnowledgeSourceException {
 
         private static final long serialVersionUID = 1L;
@@ -1472,13 +1596,65 @@ final class ConfluenceRestClient {
     private ConfluenceHttpResponse send(Session session, String path, String what, int maxBytes)
             throws KnowledgeSourceException {
         URI uri = uri(path, what);
-        ConfluenceHttpResponse response;
-        try {
-            response = transport.get(uri, session.headers, maxBytes);
-        } catch (IOException e) {
-            throw transportFailure(e, what, maxBytes);
+        for (int attempt = 0; ; attempt++) {
+            KnowledgeSourceException failure;
+            try {
+                ConfluenceHttpResponse response = transport.get(uri, session.headers, maxBytes);
+                if (response.isSuccess()) {
+                    return response;
+                }
+                failure = statusFailure(what, response.status());
+                if (!retryable(response.status())) {
+                    throw failure;
+                }
+            } catch (ConfluenceResponseTooLargeException e) {
+                throw transportFailure(e, what, maxBytes);
+            } catch (IOException e) {
+                failure = transportFailure(e, what, maxBytes);
+            }
+            if (attempt >= config.maxRetries()) {
+                throw attempt == 0 ? failure : exhausted(failure, attempt);
+            }
+            long delay = backoffMillis(attempt, config.retryBackoffMillis(), config.maxRetryBackoffMillis());
+            LOG.warning("[Confluence] " + failure.getMessage() + "; Wiederholung " + (attempt + 1) + " von "
+                    + config.maxRetries() + " in " + delay + " ms");
+            pause(delay, failure);
         }
-        return checked(response, what);
+    }
+
+    /** Netzfehler, Ratenbegrenzung und Serverfehler können vorübergehend sein; alles andere nicht. */
+    private static boolean retryable(int status) {
+        return status == 429 || status >= 500;
+    }
+
+    /** Fehler nach der letzten Wiederholung; eine Ratenbegrenzung bleibt als {@link RateLimitedException} erkennbar. */
+    private static KnowledgeSourceException exhausted(KnowledgeSourceException failure, int retries) {
+        String message = failure.getMessage() + " (nach " + retries + " Wiederholungen)";
+        if (failure instanceof RateLimitedException) {
+            return new RateLimitedException(message);
+        }
+        return new KnowledgeSourceException(failure.kind(), message, failure.getCause());
+    }
+
+    /**
+     * Wartezeit vor Wiederholung {@code attempt + 1}: {@code base * 2^attempt}, höchstens {@code max}, davon zufällig
+     * 50–100 %, damit parallele Abrufe nicht im Gleichschritt wiederholen.
+     */
+    static long backoffMillis(int attempt, int base, int max) {
+        long delay = Math.min((long) max, (long) base << Math.min(attempt, 20));
+        return delay / 2 + (long) (Math.random() * (delay - delay / 2 + 1));
+    }
+
+    private static void pause(long millis, KnowledgeSourceException failure) throws KnowledgeSourceException {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw failure;
+        }
     }
 
     private URI uri(String path, String what) throws KnowledgeSourceException {
@@ -1489,24 +1665,12 @@ final class ConfluenceRestClient {
         }
     }
 
-    private static ConfluenceHttpResponse checked(ConfluenceHttpResponse response, String what)
-            throws KnowledgeSourceException {
-        if (response.isSuccess()) {
-            return response;
-        }
-        throw statusFailure(what, response.status());
-    }
-
     /**
      * Bildet einen Transportfehler ab, synchron wie asynchron (dort ggf. in {@code CompletionException} verpackt):
      * zu groß → {@link ResponseTooLargeException}, {@link IOException} → {@code UNAVAILABLE}.
      */
     private static KnowledgeSourceException transportFailure(Throwable error, String what, int maxBytes) {
-        Throwable failure = error;
-        while ((failure instanceof java.util.concurrent.CompletionException
-                || failure instanceof java.util.concurrent.ExecutionException) && failure.getCause() != null) {
-            failure = failure.getCause();
-        }
+        Throwable failure = unwrapped(error);
         if (failure instanceof ConfluenceResponseTooLargeException) {
             return new ResponseTooLargeException(what + ": Antwort größer als " + maxBytes + " Bytes", maxBytes);
         }
@@ -1519,8 +1683,11 @@ final class ConfluenceRestClient {
 
     /** Bildet einen Fehlerstatus auf {@link Kind} ab (siehe Klassenkommentar). */
     private static KnowledgeSourceException statusFailure(String what, int status) {
-        if (status == 401 || status == 403) {
-            return new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Zugriff verweigert (HTTP " + status + ")");
+        if (status == 403) {
+            return new Forbidden(what + ": Zugriff verweigert (HTTP 403)");
+        }
+        if (status == 401) {
+            return new KnowledgeSourceException(Kind.ACCESS_DENIED, what + ": Zugriff verweigert (HTTP 401)");
         }
         if (status >= 300 && status < 400) {
             return new KnowledgeSourceException(Kind.ACCESS_DENIED,
@@ -1529,7 +1696,10 @@ final class ConfluenceRestClient {
         if (status == 404) {
             return new KnowledgeSourceException(Kind.NOT_FOUND, what + ": nicht gefunden (HTTP 404)");
         }
-        if (status == 429 || status >= 500) {
+        if (status == 429) {
+            return new RateLimitedException(what + ": Confluence begrenzt die Anfragen (HTTP 429)");
+        }
+        if (status >= 500) {
             return new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence antwortet mit HTTP " + status);
         }
         return new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": unerwartete Antwort HTTP " + status);
@@ -1593,7 +1763,10 @@ final class ConfluenceRestClient {
                 body == null ? null : string(body, "value"),
                 links == null ? null : string(links, "webui"), labels)
                 .withServerBase(links == null ? null : string(links, "base"))
-                .withCreated(history == null ? null : instant(string(history, "createdDate")), createdBy);
+                .withCreated(history == null ? null : instant(string(history, "createdDate")), createdBy)
+                .withLabelsIncomplete(labelPage != null
+                        && (labelArray == null || object(labelPage, "_links") != null
+                        && string(object(labelPage, "_links"), "next") != null));
     }
 
     private static Attachment toAttachment(JsonObject json, String containerId) throws KnowledgeSourceException {
@@ -1789,15 +1962,22 @@ final class ConfluenceRestClient {
         final Instant createdAt;
         /** Benutzername (sonst User-Key) aus {@code history.createdBy}, nur mit {@code expand=history}. */
         final String createdBy;
+        /**
+         * {@code true}, wenn {@code metadata.labels} geliefert, aber nicht vollständig ist (weitere Seite per
+         * {@code _links.next} oder ohne {@code results}); {@code labels} enthält dann nur einen Teil.
+         */
+        final boolean labelsIncomplete;
 
         Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
              String parentId, String html, String webUi, List<String> labels) {
-            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "", null, null, null, null);
+            this(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, "", null, null, null, null,
+                    false);
         }
 
         private Page(String id, String title, String spaceKey, String version, Instant modifiedAt,
                      String parentId, String html, String webUi, List<String> labels, String excerpt,
-                     String serverBase, String storage, Instant createdAt, String createdBy) {
+                     String serverBase, String storage, Instant createdAt, String createdBy,
+                     boolean labelsIncomplete) {
             this.id = id;
             this.title = title;
             this.spaceKey = spaceKey;
@@ -1812,16 +1992,17 @@ final class ConfluenceRestClient {
             this.storage = storage;
             this.createdAt = createdAt;
             this.createdBy = createdBy;
+            this.labelsIncomplete = labelsIncomplete;
         }
 
         Page withExcerpt(String excerpt) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
-                    serverBase, storage, createdAt, createdBy);
+                    serverBase, storage, createdAt, createdBy, labelsIncomplete);
         }
 
         Page withTitle(String newTitle) {
             return new Page(id, newTitle, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
-                    serverBase, storage, createdAt, createdBy);
+                    serverBase, storage, createdAt, createdBy, labelsIncomplete);
         }
 
         /** Fill web address and modification time from the search wrapper where the content lacks them. */
@@ -1829,22 +2010,27 @@ final class ConfluenceRestClient {
             String address = webUi == null || webUi.trim().isEmpty() ? url : webUi;
             Instant when = modifiedAt == null ? lastModified : modifiedAt;
             return new Page(id, title, spaceKey, version, when, parentId, html, address, labels, excerpt,
-                    serverBase, storage, createdAt, createdBy);
+                    serverBase, storage, createdAt, createdBy, labelsIncomplete);
         }
 
         Page withServerBase(String base) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt, base,
-                    storage, createdAt, createdBy);
+                    storage, createdAt, createdBy, labelsIncomplete);
         }
 
         Page withStorage(String storageValue) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
-                    serverBase, storageValue, createdAt, createdBy);
+                    serverBase, storageValue, createdAt, createdBy, labelsIncomplete);
+        }
+
+        Page withLabelsIncomplete(boolean incomplete) {
+            return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
+                    serverBase, storage, createdAt, createdBy, incomplete);
         }
 
         Page withCreated(Instant created, String creator) {
             return new Page(id, title, spaceKey, version, modifiedAt, parentId, html, webUi, labels, excerpt,
-                    serverBase, storage, created, creator);
+                    serverBase, storage, created, creator, labelsIncomplete);
         }
     }
 
