@@ -5,7 +5,11 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import com.aresstack.enterpriseai.astu.acropolis.chalcotheca.KnowledgeIndexPort;
+import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResource;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
+import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
+import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.SourceDefinitionStore;
 
 import java.io.IOException;
@@ -263,6 +267,63 @@ public final class KnowledgeSourceManagement {
         }
         return new KnowledgeSourceRegistration(provider.open(SourceAddress.of(address), definition.settings()),
                 provider.scope(definition.settings()));
+    }
+
+    /**
+     * "Verbindung testen" for a draft, generic for every source type: opens the source through its provider and asks
+     * it for at most one resource of the configured scope. This touches the network and reads credentials through the
+     * adapter, so callers run it off the UI thread. Nothing is stored or indexed.
+     */
+    public SourceConnectionCheck checkConnection(SourceDefinition draft) {
+        if (draft == null) {
+            throw new IllegalArgumentException("draft must not be null");
+        }
+        KnowledgeSourceProvider provider = providers.get(draft.typeId());
+        if (provider == null) {
+            return SourceConnectionCheck.failure("Unbekannter Quelltyp.");
+        }
+        List<String> problems = provider.validate(draft.settings());
+        if (!problems.isEmpty()) {
+            return SourceConnectionCheck.failure("Einstellungen unvollständig: " + String.join("; ", problems));
+        }
+        String address = addressOf(draft);
+        if (address.isEmpty()) {
+            return SourceConnectionCheck.failure(ADDRESS_RULE);
+        }
+        try {
+            KnowledgeSourcePort port = provider.open(SourceAddress.of(address), draft.settings());
+            SourceScope scope = provider.scope(draft.settings());
+            SourceScope probe = SourceScope.builder().startPoints(scope.startPoints()).maxDepth(scope.maxDepth())
+                    .maxResources(1).build().withExcludedPartitions(scope.excludedPartitions());
+            List<KnowledgeResource> found = port.discover(probe);
+            return SourceConnectionCheck.success(found.isEmpty()
+                    ? "Verbindung erfolgreich, aber im gewählten Umfang wurde nichts gefunden."
+                    : "Verbindung erfolgreich, Inhalte gefunden.");
+        } catch (KnowledgeSourceException e) {
+            return SourceConnectionCheck.failure(label(e.kind()) + detail(e.getMessage()));
+        } catch (RuntimeException e) {
+            return SourceConnectionCheck.failure("Verbindung fehlgeschlagen (" + e.getClass().getSimpleName() + ")"
+                    + detail(e.getMessage()));
+        }
+    }
+
+    private static String label(KnowledgeSourceException.Kind kind) {
+        switch (kind) {
+            case ACCESS_DENIED:
+                return "Anmeldung fehlgeschlagen oder Zugriff verweigert";
+            case NOT_FOUND:
+                return "Nicht gefunden";
+            case UNAVAILABLE:
+                return "Quelle nicht erreichbar";
+            case INVALID_RESPONSE:
+                return "Unerwartete Antwort der Quelle";
+            default:
+                return "Verbindung fehlgeschlagen";
+        }
+    }
+
+    private static String detail(String message) {
+        return message == null || message.trim().isEmpty() ? "." : ": " + message.trim();
     }
 
     /** Die gespeicherte Quelle mit dieser Adresse oder {@code null}. */
