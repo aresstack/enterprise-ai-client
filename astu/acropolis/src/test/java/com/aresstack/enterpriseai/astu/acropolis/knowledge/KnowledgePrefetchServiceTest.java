@@ -137,6 +137,36 @@ public class KnowledgePrefetchServiceTest {
     }
 
     @Test
+    public void currentPagesAreReportedAsReusedWithoutDownload() throws Exception {
+        service(5, 2);
+        prefetch.prefetch("drawer", candidates("A", "B"), 0).awaitIndexed(2, 10_000L);
+        loaded.clear();
+        final List<String> harvested = new CopyOnWriteArrayList<String>();
+        KnowledgePrefetchService.Series again = prefetch.prefetch("drawer", candidates("A", "B"), 0);
+        again.onHarvest((position, harvest, failure) -> harvested.add(position + ":" + harvest));
+        again.awaitIndexed(2, 10_000L);
+        waitUntil(() -> harvested.size() == 2);
+        Collections.sort(harvested);
+        assertEquals(java.util.Arrays.asList("0:ALREADY_CURRENT", "1:ALREADY_CURRENT"), harvested);
+        assertTrue("nothing downloaded again", loaded.isEmpty());
+    }
+
+    @Test
+    public void harvestReportsLoadsAndFailuresPerPosition() throws Exception {
+        service(5, 1);
+        wiki.failWith("B", KnowledgeSourceException.Kind.UNAVAILABLE);
+        final List<String> harvested = new CopyOnWriteArrayList<String>();
+        KnowledgePrefetchService.Series series = prefetch.prefetch("drawer", java.util.Arrays.asList(
+                new KnowledgePrefetchService.Candidate(wiki, wiki.idOf("A"), null),
+                new KnowledgePrefetchService.Candidate(wiki, wiki.idOf("B"), null)), 0);
+        series.onHarvest((position, harvest, failure) -> harvested.add(position + ":"
+                + (failure == null ? harvest : "FAILED")));
+        waitUntil(() -> harvested.size() == 2);
+        Collections.sort(harvested);
+        assertEquals(java.util.Arrays.asList("0:LOADED", "1:FAILED"), harvested);
+    }
+
+    @Test
     public void prefetchedPagesAreIndexedInTheBackgroundWithoutAnyoneWaiting() throws Exception {
         service(5, 2);
         prefetch.prefetch("drawer", candidates("A", "B"), 0);

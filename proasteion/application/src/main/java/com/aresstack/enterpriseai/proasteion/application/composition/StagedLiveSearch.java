@@ -16,6 +16,10 @@ import java.util.function.Supplier;
  * die Evidenz nicht reicht ({@link Stage#awaitMore()}), auf höchstens {@link LiveSearchConfig#maxPages()}. Auf
  * Passagen und Embeddings wartet sie nie; die bereitet der Vorlader im Hintergrund auf, ebenso die übrigen Treffer.
  * Die Grenzen werden je Suche gelesen (ohne Neustart).
+ *
+ * <p>Since #154 the series is in load order: with a reranker, {@code initialPages} are the best-scored hits by title +
+ * excerpt, not the first ones of the source; {@code maxPages} likewise counts in that order. Without a reranker both
+ * keep their old meaning (source order).
  */
 final class StagedLiveSearch implements RetrievalPreparation {
 

@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.astu.acropolis.knowledge;
 
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
+import com.aresstack.enterpriseai.searchrun.api.CandidateEvent;
+import com.aresstack.enterpriseai.searchrun.api.CandidateEventKind;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOccurrence;
 import com.aresstack.enterpriseai.searchrun.api.CandidateOrigin;
 import com.aresstack.enterpriseai.searchrun.api.KnowledgeCandidate;
@@ -45,6 +47,10 @@ import java.util.Set;
  * <p>Every search is also recorded as a {@link KnowledgeSearchRun} (#153): all received candidates in merged order,
  * with every occurrence per source, so a hit can be deepened later without searching again. Recording never changes
  * the search; when the run log fails, the run stays in the {@link Result} and {@link Result#runRecorded()} is false.
+ *
+ * <p>Before loading, all hits are scored on title + excerpt ({@link ExcerptRanking}, #154) and loaded best first. The
+ * ranking only sets the load order: every hit stays in the result and in the prefetch window as before, the run keeps
+ * the discovery order, and scores, queueing and load outcomes are appended to the run as separate events.
  */
 public final class SearchDrivenIndexingUseCase {
 
@@ -57,6 +63,7 @@ public final class SearchDrivenIndexingUseCase {
     private final SourceCalls sourceCalls;
     private final KnowledgeSearchRunPort runs;
     private final Clock clock;
+    private volatile ExcerptRanking ranking = ExcerptRanking.off();
 
     /** Mit eigenem Vorlader (direktes Lesen aus der Quelle, Standard-Einstellungen). */
     public SearchDrivenIndexingUseCase(IndexKnowledgeUseCase indexing) {
@@ -94,6 +101,11 @@ public final class SearchDrivenIndexingUseCase {
         this.sourceCalls = sourceCalls;
         this.runs = runs;
         this.clock = clock;
+    }
+
+    /** Scores title + excerpt of all live hits before loading (#154); {@code null} = source order. */
+    public void rankExcerptsWith(ExcerptRanking ranking) {
+        this.ranking = ranking == null ? ExcerptRanking.off() : ranking;
     }
 
     /** Der Vorlader (Cache, Priority-Lesen) dieser Suche. */
@@ -200,9 +212,64 @@ public final class SearchDrivenIndexingUseCase {
         }
         KnowledgeSearchRun run = run(query, startedAt, asked, failures, found, occurrences);
         boolean recorded = record(run);
+        ExcerptRanking.Priority priority = ranking.prioritize(query.trim(), found);
+        List<FoundResource> prioritized = new ArrayList<FoundResource>(found.size());
+        List<KnowledgePrefetchService.Candidate> loadOrder =
+                new ArrayList<KnowledgePrefetchService.Candidate>(candidates.size());
+        for (int index : priority.order()) {
+            prioritized.add(found.get(index));
+            loadOrder.add(candidates.get(index));
+        }
         KnowledgePrefetchService.Series series = prefetch.prefetch(channel == null ? DEFAULT_CHANNEL : channel,
-                candidates, 0, awaited);
-        return new Result(found, series, failures, run, recorded);
+                loadOrder, 0, awaited);
+        if (recorded) {
+            recordPriority(run, priority, series);
+        }
+        return new Result(prioritized, series, failures, run, recorded, priority);
+    }
+
+    /** Appends scores, queueing and (later, from the prefetch threads) load outcomes to the run. */
+    private void recordPriority(final KnowledgeSearchRun run, final ExcerptRanking.Priority priority,
+                                KnowledgePrefetchService.Series series) {
+        Instant now = clock.instant();
+        List<CandidateEvent> events = new ArrayList<CandidateEvent>();
+        List<Integer> order = priority.order();
+        if (priority.ranked()) {
+            for (int p = 0; p < order.size(); p++) {
+                int index = order.get(p);
+                events.add(new CandidateEvent(run.id(), index + 1, CandidateEventKind.EXCERPT_SCORED, now,
+                        "priority " + (p + 1), priority.score(index)));
+            }
+        }
+        int queued = Math.min(series.size(), order.size());
+        for (int p = 0; p < queued; p++) {
+            events.add(new CandidateEvent(run.id(), order.get(p) + 1, CandidateEventKind.PREFETCH_QUEUED, now,
+                    "load position " + (p + 1), null));
+        }
+        try {
+            runs.appendAll(events);
+        } catch (RuntimeException ignored) {
+            // the log never fails a search; load outcomes are still attempted below
+        }
+        final List<Integer> positions = new ArrayList<Integer>(order);
+        series.onHarvest((position, harvest, failure) -> {
+            if (position >= positions.size()) {
+                return;
+            }
+            CandidateEventKind kind = harvest == KnowledgePrefetchService.Harvest.ALREADY_CURRENT
+                    ? CandidateEventKind.ALREADY_CURRENT
+                    : harvest == KnowledgePrefetchService.Harvest.LOADED
+                    ? CandidateEventKind.LOADED : CandidateEventKind.LOAD_FAILED;
+            String detail = failure == null ? null : failure instanceof KnowledgeSourceException
+                    ? SearchKnowledgeSourcesUseCase.problemText((KnowledgeSourceException) failure)
+                    : failure.getClass().getSimpleName();
+            try {
+                runs.append(new CandidateEvent(run.id(), positions.get(position) + 1, kind, clock.instant(), detail,
+                        null));
+            } catch (RuntimeException ignored) {
+                // the log never fails prefetching
+            }
+        });
     }
 
     private static KnowledgeSearchRun run(String query, Instant startedAt, List<SourceAddress> asked,
@@ -263,15 +330,23 @@ public final class SearchDrivenIndexingUseCase {
         private final Map<SourceAddress, String> failures;
         private final KnowledgeSearchRun run;
         private final boolean runRecorded;
+        private final ExcerptRanking.Priority priority;
         private volatile List<ResourceIndexingOutcome> outcomes = Collections.emptyList();
 
         Result(List<FoundResource> hits, KnowledgePrefetchService.Series series,
-               Map<SourceAddress, String> failures, KnowledgeSearchRun run, boolean runRecorded) {
+               Map<SourceAddress, String> failures, KnowledgeSearchRun run, boolean runRecorded,
+               ExcerptRanking.Priority priority) {
             this.hits = Collections.unmodifiableList(new ArrayList<FoundResource>(hits));
             this.series = series;
             this.failures = Collections.unmodifiableMap(new LinkedHashMap<SourceAddress, String>(failures));
             this.run = run;
             this.runRecorded = runRecorded;
+            this.priority = priority;
+        }
+
+        /** How the hits were ordered for loading (#154): reranked on title + excerpt, or the source order. */
+        public ExcerptRanking.Priority priority() {
+            return priority;
         }
 
         /** What this search received, candidate by candidate (#153); candidates are not sources. */
@@ -312,6 +387,7 @@ public final class SearchDrivenIndexingUseCase {
             return series;
         }
 
+        /** All hits in load order: best excerpt score first, or the merged source order without ranking. */
         public List<FoundResource> hits() {
             return hits;
         }

@@ -161,42 +161,53 @@ public final class H2KnowledgeSearchRunStore implements KnowledgeSearchRunPort, 
         if (event == null) {
             throw new IllegalArgumentException("event must not be null");
         }
+        appendAll(Collections.singletonList(event));
+    }
+
+    @Override
+    public void appendAll(List<CandidateEvent> events) {
+        if (events == null) {
+            throw new IllegalArgumentException("events must not be null");
+        }
+        for (CandidateEvent event : events) {
+            if (event == null) {
+                throw new IllegalArgumentException("events must not contain null");
+            }
+        }
+        if (events.isEmpty()) {
+            return;
+        }
+        SearchRunId run = events.get(0).run();
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
-            try {
-                long number;
-                try (Statement statement = connection.createStatement();
-                     ResultSet rows = statement.executeQuery("SELECT NEXT VALUE FOR SEARCH_CANDIDATE_EVENT_NUMBER")) {
-                    rows.next();
-                    number = rows.getLong(1);
-                }
-                try (PreparedStatement insert = connection.prepareStatement("INSERT INTO SEARCH_CANDIDATE_EVENT("
-                        + "EVENT_NUMBER, RUN_ID, CANDIDATE_NUMBER, KIND, OCCURRED_AT, DETAIL, SCORE)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-                    insert.setLong(1, number);
-                    insert.setString(2, event.run().value());
-                    insert.setInt(3, event.candidateNumber());
-                    insert.setString(4, event.kind().name());
-                    insert.setObject(5, OffsetDateTime.ofInstant(event.at(), ZoneOffset.UTC));
-                    insert.setString(6, event.detail());
+            try (PreparedStatement insert = connection.prepareStatement("INSERT INTO SEARCH_CANDIDATE_EVENT("
+                    + "EVENT_NUMBER, RUN_ID, CANDIDATE_NUMBER, KIND, OCCURRED_AT, DETAIL, SCORE)"
+                    + " VALUES (NEXT VALUE FOR SEARCH_CANDIDATE_EVENT_NUMBER, ?, ?, ?, ?, ?, ?)")) {
+                for (CandidateEvent event : events) {
+                    insert.setString(1, event.run().value());
+                    insert.setInt(2, event.candidateNumber());
+                    insert.setString(3, event.kind().name());
+                    insert.setObject(4, OffsetDateTime.ofInstant(event.at(), ZoneOffset.UTC));
+                    insert.setString(5, event.detail());
                     if (event.score() == null) {
-                        insert.setNull(7, Types.DOUBLE);
+                        insert.setNull(6, Types.DOUBLE);
                     } else {
-                        insert.setDouble(7, event.score());
+                        insert.setDouble(6, event.score());
                     }
+                    // one statement per event keeps the sequence order equal to the list order
                     insert.executeUpdate();
                 }
                 connection.commit();
             } catch (SQLException e) {
                 connection.rollback();
                 if (e.getErrorCode() == ErrorCode.REFERENTIAL_INTEGRITY_VIOLATED_PARENT_MISSING_1) {
-                    throw new SearchRunStoreException("Search run " + event.run() + " has no candidate "
-                            + event.candidateNumber(), e);
+                    throw new SearchRunStoreException("An event names a candidate that search run " + run
+                            + " does not have", e);
                 }
                 throw e;
             }
         } catch (SQLException e) {
-            throw failure("append an event to search run " + event.run(), e);
+            throw failure("append events to search run " + run, e);
         }
     }
 

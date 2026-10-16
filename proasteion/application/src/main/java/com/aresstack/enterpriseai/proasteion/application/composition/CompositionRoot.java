@@ -268,6 +268,14 @@ public final class CompositionRoot {
         this.prefetch = new KnowledgePrefetchService(indexing, ports.rawIndex(), retryingDocuments,
                 () -> settings.current().knowledge().prefetch());
         this.searchIndexing = new SearchDrivenIndexingUseCase(prefetch, sourceRetry, ports.searchRuns());
+        // Excerpt reranking (#154): the selected cross-encoder scores title + excerpt of every live hit and sets the
+        // load order; without a model, or when it fails, the source order stays. Never drops a hit.
+        this.searchIndexing.rankExcerptsWith(new com.aresstack.enterpriseai.astu.acropolis.knowledge.ExcerptRanking(
+                ports.reranker() == null ? null : ports.reranker()::rerank, () -> {
+                    com.aresstack.enterpriseai.astu.modelcatalog.ModelReference selected = config().models()
+                            .selections().get(com.aresstack.enterpriseai.astu.modelcatalog.ModelCategory.RERANK);
+                    return selected == null ? null : selected.modelId();
+                }));
         // Adaptiv (ein Evidenz-Bewerter je Kandidatenrunde, gestufte Live-Suche). Alle Grenzen (Quellen, Mindestzahl,
         // Nachsuchen, Live-Suche, Kandidaten) gelten ohne Neustart ab dem nächsten Turn; FollowUpResearch prüft hier
         // nur den Wissenskontext früherer Nachrichten, die Zahl der Nachsuchen kommt aus retrieval.maxFollowUps.
