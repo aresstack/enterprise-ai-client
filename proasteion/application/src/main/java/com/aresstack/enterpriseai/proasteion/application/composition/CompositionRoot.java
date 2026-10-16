@@ -152,6 +152,8 @@ public final class CompositionRoot {
     private final KnowledgeMcpTools knowledgeTools;
     /** Persistent memories (#144), {@code null} without a memory store. */
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
+    /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
+    private volatile com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver memoryProjects;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
@@ -371,10 +373,15 @@ public final class CompositionRoot {
                 AttachmentTools::definitions);
         // Memories (#144): chat only, built per turn with the trusted chat id (memoryChatTools). The agent endpoint
         // has no verifiable chat or user, so it gets no memory tools. memory_delete goes through the catalog's
-        // approval gate (#145; project/global ASK by default). Project scope waits for the chat projects of #143.
+        // approval gate (#145; project/global ASK by default). The project scope follows the chat's current project
+        // (#143), asked on every call through resolveMemoryProjectsWith.
         this.memories = ports.memories() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
-                System.getProperty("user.name", "local"), null, toolCatalog.approvals());
+                System.getProperty("user.name", "local"), chatId -> {
+                    com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver projects =
+                            memoryProjects;
+                    return projects == null ? null : projects.projectOf(chatId);
+                }, toolCatalog.approvals());
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
                     () -> McpChatTool.definitions(
@@ -685,6 +692,15 @@ public final class CompositionRoot {
             }
         }
         return McpChatTool.all(active);
+    }
+
+    /**
+     * Where the memories learn a chat's current project (#143); asked on every memory call, so moving a chat
+     * withdraws the old project's memories at once. {@code null}: no chat has a project.
+     */
+    public void resolveMemoryProjectsWith(
+            com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver projects) {
+        this.memoryProjects = projects;
     }
 
     /** Removes the memories of a finally deleted chat (project and global memories stay). */
