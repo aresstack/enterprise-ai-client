@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceCatalog;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.KnowledgeSourceRegistration;
 import com.aresstack.enterpriseai.astu.acropolis.source.KnowledgeSourceManagement;
+import com.aresstack.enterpriseai.astu.acropolis.source.SourceConnectionCheck;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.source.KnowledgeSourceType;
 import com.aresstack.enterpriseai.astu.source.SourceDefinition;
@@ -499,6 +500,29 @@ public final class KnowledgeSourcesController implements KnowledgeSourceActions 
             @Override
             public SourceDefinition draft(String typeId) {
                 return target.draft(typeId, taken());
+            }
+
+            @Override
+            public boolean canCheckConnection() {
+                return true;
+            }
+
+            @Override
+            public void checkConnection(final SourceDefinition draft, final BiConsumer<Boolean, String> onResult) {
+                try {
+                    workExecutor.execute(() -> {
+                        SourceConnectionCheck check;
+                        try {
+                            check = target.checkConnection(draft);
+                        } catch (RuntimeException e) {
+                            check = SourceConnectionCheck.failure("Test fehlgeschlagen: " + e.getClass().getSimpleName());
+                        }
+                        final SourceConnectionCheck delivered = check;
+                        uiExecutor.execute(() -> onResult.accept(delivered.successful(), delivered.message()));
+                    });
+                } catch (RuntimeException rejected) {
+                    onResult.accept(Boolean.FALSE, "Test gerade nicht möglich.");
+                }
             }
 
             @Override

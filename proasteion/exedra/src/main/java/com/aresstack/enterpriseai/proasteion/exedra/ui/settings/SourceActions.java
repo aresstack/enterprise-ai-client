@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.astu.source.SourceDefinition;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -66,5 +67,18 @@ public interface SourceActions {
      * ohne Zertifikat), wie MainframeMate ihn dort ablegt; läuft im Hintergrund, ein Fehler landet im Protokoll.
      */
     default void storeVaultCertificateAlias(String entryTitle, String alias) {
+    }
+
+    /** Whether "Verbindung testen" is offered; without it the button stays hidden. */
+    default boolean canCheckConnection() {
+        return false;
+    }
+
+    /**
+     * "Verbindung testen" for the current draft: contacts the source in the background (network, KeePass) and later
+     * delivers on the EDT whether it answered, plus a message for the user without setting values.
+     */
+    default void checkConnection(SourceDefinition draft, BiConsumer<Boolean, String> onResult) {
+        onResult.accept(Boolean.FALSE, "In dieser Umgebung nicht verfügbar.");
     }
 }

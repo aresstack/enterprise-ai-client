@@ -60,6 +60,7 @@ public final class SourcePanel extends JPanel {
 
     public static final String SAVE_LABEL = "Speichern";
     public static final String CANCEL_LABEL = "Abbrechen";
+    public static final String CHECK_LABEL = "Verbindung testen";
     static final String NOTE = "Gespeichert wird in die Konfigurationsdatei; danach wird die Quelle indexiert.\n"
             + "Mit KeePass genügt der Eintrag: Benutzer, Passwort und URL stehen dort.";
 
@@ -73,6 +74,8 @@ public final class SourcePanel extends JPanel {
     private final JTextArea problemsText = new JTextArea();
     private final ComposerButton saveButton;
     private final ComposerButton cancelButton;
+    private final ComposerButton checkButton;
+    private final JLabel checkResult = new JLabel();
     private final JLabel heading = new JLabel();
     private Listener listener;
 
@@ -95,6 +98,7 @@ public final class SourcePanel extends JPanel {
         this.problemsPlate = new ComicSectionPanel(palette);
         this.saveButton = ComposerButton.primary(null, SAVE_LABEL, ResearchUiPalette.ACCENT_BLUE, null);
         this.cancelButton = new ComposerButton(null, CANCEL_LABEL, false);
+        this.checkButton = new ComposerButton(null, CHECK_LABEL, false);
         setBackground(palette.getSurface());
         setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         buildUi();
@@ -115,6 +119,7 @@ public final class SourcePanel extends JPanel {
         editor.load(source);
         heading.setText(titleFor(source, editor.type(), originalId));
         showProblems(Collections.<String>emptyList());
+        showCheckResult(null, "");
     }
 
     /** Typwechsel beim Hinzufügen: neuer Entwurf mit den Vorgaben des Typs. */
@@ -171,8 +176,13 @@ public final class SourcePanel extends JPanel {
         JPanel buttons = new JPanel(new BorderLayout());
         buttons.setOpaque(false);
         buttons.setBorder(BorderFactory.createEmptyBorder(4, 12, 0, 12));
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         left.setOpaque(false);
+        checkButton.setToolTipText("Die Quelle mit diesen Einstellungen abfragen, ohne zu speichern");
+        checkButton.setVisible(actions.canCheckConnection());
+        checkResult.setFont(ResearchUiTypography.regular(12f));
+        left.add(checkButton);
+        left.add(checkResult);
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setOpaque(false);
         saveButton.setToolTipText("Quelle prüfen, speichern und indexieren");
@@ -193,6 +203,7 @@ public final class SourcePanel extends JPanel {
 
     private void wire() {
         saveButton.addActionListener(event -> save());
+        checkButton.addActionListener(event -> checkConnection());
         cancelButton.addActionListener(event -> finish(Outcome.CANCELLED, null));
     }
 
@@ -258,6 +269,47 @@ public final class SourcePanel extends JPanel {
         return true;
     }
 
+    /**
+     * "Verbindung testen": checks the draft locally first, then lets the source answer in the background; the result
+     * shows next to the button. Nothing is saved.
+     */
+    public void checkConnection() {
+        SourceDefinition draft = editor.toDefinition();
+        List<String> problems;
+        try {
+            problems = actions.validate(draft, originalId);
+        } catch (RuntimeException e) {
+            problems = Collections.singletonList("Prüfung fehlgeschlagen: " + e.getClass().getSimpleName());
+        }
+        if (!problems.isEmpty()) {
+            showProblems(problems);
+            showCheckResult(null, "");
+            return;
+        }
+        showProblems(Collections.<String>emptyList());
+        checkButton.setEnabled(false);
+        showCheckResult(null, "Verbindung wird geprüft …");
+        try {
+            actions.checkConnection(draft.withAddress(actions.addressOf(draft)), (successful, message) -> {
+                checkButton.setEnabled(true);
+                showCheckResult(successful, message);
+            });
+        } catch (RuntimeException e) {
+            checkButton.setEnabled(true);
+            showCheckResult(Boolean.FALSE, "Test fehlgeschlagen: " + e.getClass().getSimpleName());
+        }
+    }
+
+    private void showCheckResult(Boolean successful, String message) {
+        String text = message == null ? "" : message;
+        checkResult.setText(text.isEmpty() ? "" : (successful == null ? "" : successful ? "✓ " : "✗ ") + text);
+        checkResult.setToolTipText(text.isEmpty() ? null : text);
+        checkResult.setForeground(successful == null ? ResearchUiPalette.LIGHT_CONTROL_TEXT
+                : successful ? palette.getAgentPetrol() : palette.getAccentRed());
+        revalidate();
+        repaint();
+    }
+
     /** Hinweis wie MainframeMate, wenn „Zertifikat verwenden“ an ist, aber keins gewählt wurde (nicht blockierend). */
     private boolean confirmWithoutCertificate() {
         int choice = JOptionPane.showOptionDialog(this,
@@ -321,5 +373,13 @@ public final class SourcePanel extends JPanel {
 
     ComposerButton cancelButton() {
         return cancelButton;
+    }
+
+    ComposerButton checkButton() {
+        return checkButton;
+    }
+
+    String checkResult() {
+        return checkResult.getText();
     }
 }
