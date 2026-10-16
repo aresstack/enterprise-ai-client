@@ -22,6 +22,15 @@ final class ModuleRegistry {
 
     static final String ROOT_PACKAGE = "com.aresstack.enterpriseai";
 
+    /**
+     * Third-party sources copied unchanged into exactly one adapter module, under their original package (see the
+     * module's VENDORED.md). Only that module may hold classes of the package; it stays an implementation detail of
+     * the adapter. Adding an entry is an architecture decision.
+     */
+    private static final Map<String, String> VENDORED_PACKAGES = Collections.singletonMap(
+            // WD4J, the WebDriver BiDi client from MainframeMate (#141, owner decision 2026-10-16).
+            "browser-firefox", "de.bund.zrb");
+
     private final Map<String, ArchitectureModule> modules;
 
     private ModuleRegistry(Map<String, ArchitectureModule> modules) {
@@ -209,6 +218,12 @@ final class ModuleRegistry {
                 .module("architecture-tests", "architecture", ModuleKind.ARCHITECTURE_TESTS, "AP24")
                 .module("integration-tests", "integration", ModuleKind.INTEGRATION_TESTS, "AP25")
                 .build();
+    }
+
+    /** Is {@code packageName} the vendored third-party package of {@code moduleName}? */
+    boolean isVendored(String moduleName, String packageName) {
+        String vendored = VENDORED_PACKAGES.get(moduleName);
+        return vendored != null && (packageName.equals(vendored) || packageName.startsWith(vendored + "."));
     }
 
     Collection<ArchitectureModule> modules() {

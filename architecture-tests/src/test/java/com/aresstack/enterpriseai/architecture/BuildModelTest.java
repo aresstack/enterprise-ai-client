@@ -78,7 +78,7 @@ public class BuildModelTest {
             for (JavaClass javaClass : classes) {
                 if (module.ownsPackage(javaClass.getPackageName())) {
                     hasClassInBasePackage = true;
-                } else {
+                } else if (!REGISTRY.isVendored(moduleName, javaClass.getPackageName())) {
                     violations.add(javaClass.getName() + " liegt in " + moduleName + ", aber außerhalb von "
                             + module.basePackage());
                 }

@@ -54,18 +54,21 @@ public final class FirefoxEngine implements BrowserEngine {
 
     /**
      * The Firefox executable: {@code configured} if given, else the usual install locations of the platform, else
-     * {@code null}.
+     * {@code null}. Environment and OS name come from the composition root, which alone reads configuration.
+     *
+     * @param environment the process environment ({@code ProgramFiles}, {@code PATH}, …)
+     * @param osName      the {@code os.name} system property
      */
-    public static Path locate(String configured) {
+    public static Path locate(String configured, java.util.Map<String, String> environment, String osName) {
         if (configured != null && !configured.trim().isEmpty()) {
             Path path = Paths.get(configured.trim());
             return Files.isRegularFile(path) ? path : null;
         }
         List<Path> candidates = new ArrayList<Path>();
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             for (String variable : new String[]{"ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"}) {
-                String base = System.getenv(variable);
+                String base = environment.get(variable);
                 if (base != null) {
                     candidates.add(Paths.get(base, "Mozilla Firefox", "firefox.exe"));
                 }
@@ -73,7 +76,7 @@ public final class FirefoxEngine implements BrowserEngine {
         } else if (os.contains("mac")) {
             candidates.add(Paths.get("/Applications/Firefox.app/Contents/MacOS/firefox"));
         } else {
-            String pathVariable = System.getenv("PATH");
+            String pathVariable = environment.get("PATH");
             if (pathVariable != null) {
                 for (String directory : pathVariable.split(File.pathSeparator)) {
                     if (!directory.isEmpty()) {

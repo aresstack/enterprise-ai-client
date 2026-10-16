@@ -53,6 +53,7 @@ public class FirefoxEngineTest {
 
     @Test
     public void missingConfiguredExecutableIsNotFound() {
-        assertEquals(null, FirefoxEngine.locate(folder.getRoot().toPath().resolve("no-firefox").toString()));
+        assertEquals(null, FirefoxEngine.locate(folder.getRoot().toPath().resolve("no-firefox").toString(),
+                java.util.Collections.<String, String>emptyMap(), "Linux"));
     }
 }

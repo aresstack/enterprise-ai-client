@@ -33,7 +33,8 @@ public class TwoFirefoxChatsIT {
     @Before
     public void setUp() {
         Assume.assumeTrue("Firefox integration test not requested", Boolean.getBoolean("enterpriseai.firefox.it"));
-        Path firefox = FirefoxEngine.locate(System.getProperty("enterpriseai.firefox"));
+        Path firefox = FirefoxEngine.locate(System.getProperty("enterpriseai.firefox"), System.getenv(),
+                System.getProperty("os.name"));
         Assume.assumeTrue("Firefox not installed", firefox != null);
         runtime = new ChatBrowserRuntime(new FirefoxEngine(firefox, 60000L),
                 new BrowserProfileStore(folder.getRoot().toPath()));

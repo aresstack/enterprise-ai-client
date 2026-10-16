@@ -113,7 +113,7 @@ public final class AdapterAssembly {
      */
     private static void browsers(ApplicationPorts.Builder ports) {
         java.nio.file.Path firefox = com.aresstack.enterpriseai.browser.firefox.FirefoxEngine.locate(
-                System.getProperty(FIREFOX_PROPERTY));
+                System.getProperty(FIREFOX_PROPERTY), System.getenv(), System.getProperty("os.name"));
         if (firefox == null) {
             return;
         }
