@@ -362,7 +362,7 @@ public final class RagChatUseCase {
             try {
                 sent = sendWithKnowledge(id, userText, rag, options, listener, extraContext, via, steps, from, policy);
             } finally {
-                steps.funnelChanged(funnel.finish(sent != null && !steps.isCancelled()));
+                steps.funnelChanged(funnel.finish(sent != null && !sent.retrievalFailed() && !steps.isCancelled()));
             }
             return sent.withFunnel(funnel.snapshot());
         } finally {
@@ -455,7 +455,7 @@ public final class RagChatUseCase {
             progress.searchStarted(query, queries.size(), maxSearches);
             progress.liveSearchStarted(query);
             try {
-                preparation.prepare(query, rag.sources());
+                preparation.prepare(query, rag.sources(), progress);
             } catch (RuntimeException e) {
                 // Die Live-Suche ist eine Ergänzung; ohne sie antwortet der Turn aus dem vorhandenen Index.
             }

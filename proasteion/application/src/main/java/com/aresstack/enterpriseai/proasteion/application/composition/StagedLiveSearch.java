@@ -59,9 +59,18 @@ final class StagedLiveSearch implements RetrievalPreparation {
 
     @Override
     public void prepare(String query, Collection<SourceAddress> sources) {
+        prepare(query, sources, RetrievalProgress.none());
+    }
+
+    @Override
+    public void prepare(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
         LiveSearchConfig current = limits.get();
         Found found = searcher.search(sources, query, current.hitsPerSource());
-        await(found, Math.min(found.hits(), current.maxPages()), RetrievalProgress.none());
+        progress.liveHitsFound(found.hits());
+        if (found.runId() != null) {
+            progress.liveSearchRecorded(found.runId());
+        }
+        await(found, Math.min(found.hits(), current.maxPages()), progress);
     }
 
     @Override

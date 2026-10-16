@@ -41,9 +41,31 @@ public class StagedLiveSearchTest {
                         listener.accept(available);
                     }
                 }
+
+                @Override
+                public String runId() {
+                    return "run-1";
+                }
             };
         }
     };
+
+    @Test
+    public void bothSearchModesReportTheRecordedRunForTheFunnel() {
+        StagedLiveSearch live = new StagedLiveSearch(() -> new LiveSearchConfig(1, 4, 10), searcher);
+        final List<String> runs = new ArrayList<String>();
+        RetrievalProgress progress = new RetrievalProgress() {
+            @Override
+            public void liveSearchRecorded(String runId) {
+                runs.add(runId);
+            }
+        };
+
+        live.prepare("Frage", Collections.<SourceAddress>emptySet(), progress);
+        live.begin("Frage", Collections.<SourceAddress>emptySet(), progress);
+
+        assertEquals(java.util.Arrays.asList("run-1", "run-1"), runs);
+    }
 
     @Test
     public void firstEvaluationWaitsForTheInitialPagesOnly() {

@@ -20,6 +20,14 @@ public interface RetrievalPreparation {
     void prepare(String query, Collection<SourceAddress> sources);
 
     /**
+     * Like {@link #prepare(String, Collection)}; reports the live search to {@code progress} (at least
+     * {@link RetrievalProgress#liveSearchRecorded}, so the turn's funnel sees the run).
+     */
+    default void prepare(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
+        prepare(query, sources);
+    }
+
+    /**
      * Wie {@link #prepare}, kehrt aber womöglich schon zurück, bevor alle Treffer indexiert sind. Standard: wartet
      * wie {@link #prepare} und hat danach nichts mehr nachzuladen.
      */
