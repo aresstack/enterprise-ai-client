@@ -698,7 +698,6 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         if (!ConfluenceIds.isContentId(localId)) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Keine Seiten-ID dieser Quelle: " + localId);
         }
-        final Instant retrievedAt = Instant.now();
         ConfluenceRestClient.StoredAttachments stored;
         try {
             stored = withSession(new Operation<ConfluenceRestClient.StoredAttachments>() {
@@ -716,7 +715,7 @@ public final class ConfluenceKnowledgeSource implements SearchableKnowledgeSourc
         }
         return new StoredAttachmentList(attachments, stored.payloads,
                 stored.contentType == null ? "application/json" : mediaType(stored.contentType),
-                ATTACHMENT_LIST_FORMAT, retrievedAt, stored.warnings);
+                ATTACHMENT_LIST_FORMAT, stored.retrievedAt, stored.warnings);
     }
 
     private static String sortedExpand(String expand) {

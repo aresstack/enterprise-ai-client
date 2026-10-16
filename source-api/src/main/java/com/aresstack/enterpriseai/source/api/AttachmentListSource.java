@@ -9,14 +9,15 @@ public interface AttachmentListSource {
 
     /**
      * All attachments of one resource. Pages through the whole list; a list the source cannot deliver completely
-     * fails instead of coming back shorter. Entries the source delivers without a usable ID are left out and named in
-     * {@link StoredAttachmentList#warnings()}.
+     * fails instead of coming back shorter. Entries the source delivers without a usable ID are left out and reported
+     * by position in {@link StoredAttachmentList#warnings()}; the warnings never contain file names.
      *
      * @param localId the local ID in the source, as {@link StoredContentSource#localId} returns it
      * @throws ResponseTooLargeException if one response exceeds the configured size limit; nothing is truncated
      * @throws KnowledgeSourceException  {@code NOT_FOUND} if there is no such resource or it is not visible,
      *                                   {@code UNSUPPORTED} if the ID has no form this source knows,
-     *                                   {@code INVALID_RESPONSE} if the list exceeds {@link #MAX_ATTACHMENTS} or its
+     *                                   {@code INVALID_RESPONSE} if the list has more than {@link #MAX_ATTACHMENTS} entries
+     *                                   (usable or not) or its
      *                                   pagination repeats itself
      */
     StoredAttachmentList storedAttachments(String localId) throws KnowledgeSourceException;

@@ -100,6 +100,20 @@ public class ConfluenceAttachmentListTest {
     }
 
     @Test
+    public void retrievedAtIsTheTimeOfTheFirstAnswerAfterRetries() throws Exception {
+        ConfluenceKnowledgeSource retrying = new ConfluenceKnowledgeSource(SOURCE,
+                ConfluenceConfig.builder(FakeConfluence.BASE).credentialRef(RecordingSecretProvider.REF).pageSize(2)
+                        .maxRetries(1).retryBackoffMillis(200).build(), confluence, new RecordingSecretProvider());
+        confluence.failNext(503, 1);
+        java.time.Instant before = java.time.Instant.now();
+
+        StoredAttachmentList list = retrying.storedAttachments("101");
+
+        assertTrue(list.retrievedAt().toString(), !list.retrievedAt().isBefore(before.plusMillis(100)));
+        assertEquals(3, list.attachments().size());
+    }
+
+    @Test
     public void failuresAreNeverAnEmptyList() throws Exception {
         confluence.restricted.add("101");
         assertKind(Kind.NOT_FOUND, "101");
