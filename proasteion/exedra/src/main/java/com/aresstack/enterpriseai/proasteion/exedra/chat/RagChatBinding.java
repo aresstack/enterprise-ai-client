@@ -41,6 +41,8 @@ import com.aresstack.enterpriseai.astu.acropolis.rag.RagSource;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalPath;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievalProgress;
+import com.aresstack.enterpriseai.searchrun.api.KnowledgeFunnel;
+import com.aresstack.enterpriseai.searchrun.api.FunnelPhase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrievedChunk;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
@@ -959,6 +961,21 @@ public final class RagChatBinding implements ChatShellActions {
             @Override
             public void contextReady(final int sources) {
                 card(card -> card.contextReady(sources));
+            }
+
+            @Override
+            public void funnelChanged(final KnowledgeFunnel funnel) {
+                // only a card that a search opened: a turn without search shows no research card;
+                // the final state arrives with attach() via the turn, so it needs no extra UI round trip
+                if (funnel.phase() == FunnelPhase.DONE) {
+                    return;
+                }
+                listener.onUi(() -> {
+                    ChatResearchCard card = request.card;
+                    if (card != null && card.isOpen() && !request.cancelRequested) {
+                        card.funnel(funnel);
+                    }
+                });
             }
 
             @Override

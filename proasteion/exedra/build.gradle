@@ -26,6 +26,7 @@ dependencies {
     implementation project(':acp-client-api')
     implementation project(':speech-api')
     implementation project(':model-api')
+    implementation project(':search-run-api')
     implementation project(':proasteion:platform:network')
     // Markdown-Rendering der Antworten (app.ui.markdown, aus askai-java8 arch): flexmark mit Tabellen, Autolinks und
     // Durchstreichen; Mermaid-Zäune werden mit mermaid-java (GraalJS + Batik, ohne Browser und Netz) zu Bildern.
