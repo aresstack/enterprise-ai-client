@@ -143,7 +143,10 @@ public final class ToolCatalog {
         return result;
     }
 
-    private McpToolContribution gated(McpToolContribution tool) {
+    /**
+     * Wraps a tool built outside the catalog (e.g. bound to a conversation, #141) with this catalog's approval check.
+     */
+    public McpToolContribution gated(McpToolContribution tool) {
         if (tool.getHandler() instanceof ApprovingMcpToolHandler) {
             return tool;
         }

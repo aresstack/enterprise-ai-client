@@ -551,7 +551,7 @@ public final class CompositionRoot {
             // #141: the agent gets the browser of the chat it works for; the host binds the chat, never the model.
             for (McpToolContribution tool : browserTools.contributionsFor(conversation)) {
                 if (toolCatalog.isEnabled(tool.getName())) {
-                    tools.add(tool);
+                    tools.add(toolCatalog.gated(tool));
                 }
             }
         }
@@ -732,7 +732,7 @@ public final class CompositionRoot {
         List<McpToolContribution> active = new ArrayList<McpToolContribution>();
         for (McpToolContribution tool : browserTools.contributionsFor(conversation)) {
             if (toolCatalog.isEnabled(tool.getName())) {
-                active.add(tool);
+                active.add(toolCatalog.gated(tool));
             }
         }
         return McpChatTool.all(active);
