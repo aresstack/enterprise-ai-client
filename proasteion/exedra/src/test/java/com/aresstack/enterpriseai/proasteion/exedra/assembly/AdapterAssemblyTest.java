@@ -133,7 +133,7 @@ public class AdapterAssemblyTest {
                     instanceof ConfluenceKnowledgeSource);
             assertFalse("Agent-Modus ist in der Beispielkonfiguration aus", ports.hasAgent());
             assertEquals(Arrays.asList("local-models", "mcp-server", "knowledge-index", "raw-knowledge-index",
-                    "fact-store", "memory-store"),
+                    "fact-store", "memory-store", "search-run-store"),
                     ports.resourceNames());
             assertFalse(ports.toString().toLowerCase().contains("password"));
         } finally {
