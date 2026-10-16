@@ -156,8 +156,14 @@ public final class ShellAssembly {
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
                     .withDiagnostics(root.turnDiagnostics())
-                    // Tools bound to the conversation of the turn (#141: the chat's own browser).
-                    .withConversationTools(root::conversationChatTools));
+                    // Tools bound to the turn's chat: memories (#144) and the chat's own browser (#141).
+                    .withChatTools(chatId -> {
+                        List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
+                                new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(
+                                        root.memoryChatTools(chatId));
+                        tools.addAll(root.conversationChatTools(new ChatConversationId(chatId)));
+                        return tools;
+                    }));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.
@@ -165,6 +171,8 @@ public final class ShellAssembly {
         final ChatProjects chatProjects = new ChatProjects(
                 new FileChatProjectStore(chatsDirectory.resolveSibling(CHAT_PROJECTS_FILE)));
         root.ragChat().withProjectContext(chatProjects);
+        // Memories (#144): scope=project follows the chat's current project; an unresolved assignment has none.
+        root.resolveMemoryProjectsWith(chatProjects);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
@@ -387,6 +395,8 @@ public final class ShellAssembly {
             public void delete(String chatId) {
                 history.delete(chatId);
                 root.deleteChatBrowserProfile(chatId); // #141: the chat's browser profile goes with the chat
+                // Chat memories (#144) go with their chat; project and global memories stay.
+                root.deleteChatMemories(chatId);
             }
         }, agentService == null ? null : new ConversationLifecycle.AgentSessions() {
             @Override

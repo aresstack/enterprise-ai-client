@@ -87,6 +87,10 @@ final class ModuleRegistry {
                 .module("fact-api", "fact.api", ModuleKind.PORT, "Fakten", "astu")
                 .module("fact-h2", "fact.h2", ModuleKind.ADAPTER, "Fakten", "astu", "fact-api")
 
+                // Persistente Erinnerungen (#144): eigener Port, H2 nur im Adapter memory-h2; kein Fakt, keine Quelle.
+                .module("memory-api", "memory.api", ModuleKind.PORT, "Erinnerungen", "astu")
+                .module("memory-h2", "memory.h2", ModuleKind.ADAPTER, "Erinnerungen", "astu", "memory-api")
+
                 .module("source-api", "source.api", ModuleKind.PORT, "E", "astu")
                 .module("source-mediawiki", "proasteion.emporion.holkas.mediawiki", ModuleKind.ADAPTER, "E", "astu", "source-api",
                         "network")
@@ -210,8 +214,8 @@ final class ModuleRegistry {
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
                         "text-runtime-api", "text-local", "text-onnx", "speech-opennlp", "research-domain",
                         "research-api", "research-scope", "research-store", "research-agent-runtime",
-                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "browser-api",
-                        "browser-runtime", "browser-firefox")
+                        "research-concept", "research-agent-acp", "help", "fact-api", "fact-h2", "memory-api", "memory-h2",
+                        "browser-api", "browser-runtime", "browser-firefox")
                 // Die Swing-Schale über dem Kompositionspunkt (corenth ADR-0001): kennt application, Kern, Ports und
                 // comic-controls, aber keinen Adapter; nicht holkas, deigma, tamias, anagraphai oder pinakes.
                 .module("exedra", "proasteion.exedra", ModuleKind.UI_SHELL, "B (AP4, AP22, AP23)",

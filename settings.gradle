@@ -47,6 +47,9 @@ include 'astu:acropolis:chalcotheca:pinakes'
 include 'fact-api'
 include 'fact-h2'
 
+include 'memory-api'
+include 'memory-h2'
+
 // Strang E – Knowledge Sources (Strang F: source-confluence)
 include 'source-api'
 include 'proasteion:emporion:holkas:source-mediawiki'

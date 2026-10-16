@@ -45,6 +45,7 @@ public final class ApplicationPorts implements Closeable {
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
     private final com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
+    private final com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
     private final KnowledgeSourceCatalog sources;
     private final SecretProvider secrets;
     private final AgentBackend agent;
@@ -74,6 +75,7 @@ public final class ApplicationPorts implements Closeable {
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
         this.browsers = builder.browsers;
+        this.memories = builder.memories;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
         this.secrets = builder.secrets;
         this.agent = builder.agent;
@@ -144,6 +146,11 @@ public final class ApplicationPorts implements Closeable {
     /** The browsers of the chats (#141), or {@code null} when no browser engine is available. */
     public com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers() {
         return browsers;
+    }
+
+    /** Persistent memories (#144), or {@code null} without a memory store: then the chat has no memory tools. */
+    public com.aresstack.enterpriseai.memory.api.MemoryStorePort memories() {
+        return memories;
     }
 
     /**
@@ -259,6 +266,7 @@ public final class ApplicationPorts implements Closeable {
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
         private com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
+        private com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
         private KnowledgeSourceCatalog sources;
         private SecretProvider secrets;
         private AgentBackend agent;
@@ -327,6 +335,11 @@ public final class ApplicationPorts implements Closeable {
         /** The chat-bound browsers (#141); {@code null}: no browser tools. */
         public Builder browsers(com.aresstack.enterpriseai.browser.api.ChatBrowserPort value) {
             this.browsers = value;
+            return this;
+        }
+
+        public Builder memories(com.aresstack.enterpriseai.memory.api.MemoryStorePort value) {
+            this.memories = value;
             return this;
         }
 

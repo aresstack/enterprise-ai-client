@@ -19,6 +19,9 @@ dependencies {
     implementation project(':browser-api')
     implementation project(':browser-runtime')
     implementation project(':browser-firefox')
+    // Persistent memories (#144): port and embedded H2 adapter.
+    implementation project(':memory-api')
+    implementation project(':memory-h2')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
     implementation project(':proasteion:emporion:holkas:source-localfiles')

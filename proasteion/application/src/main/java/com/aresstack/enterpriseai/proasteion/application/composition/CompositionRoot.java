@@ -124,6 +124,7 @@ public final class CompositionRoot {
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
     static final String ORIGIN_BROWSER = "Browser des Chats (BrowserMcpTools)";
+    static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
@@ -153,6 +154,10 @@ public final class CompositionRoot {
     /** Browser tools of the chats (#141), {@code null} without a browser engine. */
     private final com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools browserTools;
     private volatile java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> agentConversation;
+    /** Persistent memories (#144), {@code null} without a memory store. */
+    private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
+    /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
+    private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
@@ -370,6 +375,24 @@ public final class CompositionRoot {
         });
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
+        // Memories (#144): chat only, built per turn with the trusted chat id (memoryChatTools). The agent endpoint
+        // has no verifiable chat or user, so it gets no memory tools. memory_delete goes through the catalog's
+        // approval gate (#145; project/global ASK by default). The project scope follows the chat's current project
+        // (#143), asked on every call through resolveMemoryProjectsWith.
+        this.memories = ports.memories() == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
+                System.getProperty("user.name", "local"), conversation -> {
+                    com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects =
+                            memoryProjects;
+                    return projects == null
+                            ? com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext.none()
+                            : projects.resolve(conversation);
+                }, toolCatalog.approvals());
+        if (memories != null) {
+            toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
+                    () -> McpChatTool.definitions(
+                            MemoryTools.forChat(null, "")));
+        }
         registerHelpTools(toolCatalog, config.agent().toolSettings());
         // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
@@ -707,6 +730,40 @@ public final class CompositionRoot {
 
     public KnowledgeMcpTools knowledgeTools() {
         return knowledgeTools;
+    }
+
+    /**
+     * The active memory tools ({@code memory_save}, {@code memory_search}, {@code memory_delete}) bound to the chat
+     * {@code chatId}; empty without a memory store or when all are switched off in the "Tools" tab.
+     */
+    public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> memoryChatTools(String chatId) {
+        if (memories == null || chatId == null) {
+            return Collections.emptyList();
+        }
+        List<McpToolContribution> active = new ArrayList<McpToolContribution>();
+        for (McpToolContribution tool
+                : MemoryTools.forChat(memories, chatId)) {
+            if (toolCatalog.isEnabled(tool.getName())) {
+                active.add(tool);
+            }
+        }
+        return McpChatTool.all(active);
+    }
+
+    /**
+     * Where the memories learn a chat's current project (#143); asked on every memory call, so moving a chat
+     * withdraws the old project's memories at once. {@code null}: no chat has a project.
+     */
+    public void resolveMemoryProjectsWith(
+            com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects) {
+        this.memoryProjects = projects;
+    }
+
+    /** Removes the memories of a finally deleted chat (project and global memories stay). */
+    public void deleteChatMemories(String chatId) {
+        if (memories != null) {
+            memories.deleteChat(chatId);
+        }
     }
 
     /**
