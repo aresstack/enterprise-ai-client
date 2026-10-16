@@ -90,7 +90,10 @@ public class SearchRunRecordingTest {
                     candidate.occurrences());
         }
         assertEquals("Antrag 18", run.candidate(18).get().title());
-        assertTrue("recording adds no events: a candidate is no source", runs.events(run.id()).isEmpty());
+        for (CandidateEvent event : runs.events(run.id())) {
+            assertTrue("without a reranker only queueing and loading are recorded: " + event,
+                    event.kind() != com.aresstack.enterpriseai.searchrun.api.CandidateEventKind.EXCERPT_SCORED);
+        }
     }
 
     @Test
@@ -148,7 +151,7 @@ public class SearchRunRecordingTest {
     }
 
     /** A searchable source with fixed hits; {@code null} hits: the search fails. */
-    private static final class FixedSource implements SearchableKnowledgeSource {
+    static final class FixedSource implements SearchableKnowledgeSource {
 
         private final SourceAddress id;
         private final List<SourceSearchHit> hits;
@@ -187,7 +190,7 @@ public class SearchRunRecordingTest {
         }
     }
 
-    private static class MemoryRuns implements KnowledgeSearchRunPort {
+    static class MemoryRuns implements KnowledgeSearchRunPort {
 
         private final Map<SearchRunId, KnowledgeSearchRun> runs = new LinkedHashMap<SearchRunId, KnowledgeSearchRun>();
         private final List<CandidateEvent> events = new ArrayList<CandidateEvent>();
@@ -205,6 +208,11 @@ public class SearchRunRecordingTest {
         @Override
         public synchronized void append(CandidateEvent event) {
             events.add(event);
+        }
+
+        @Override
+        public synchronized void appendAll(List<CandidateEvent> list) {
+            events.addAll(list);
         }
 
         @Override

@@ -102,6 +102,10 @@ public class KnowledgeSearchRunNumberingTest {
             }
 
             @Override
+            public void appendAll(List<CandidateEvent> events) {
+            }
+
+            @Override
             public List<CandidateEvent> events(SearchRunId id) {
                 return new ArrayList<CandidateEvent>();
             }

@@ -19,6 +19,9 @@ public interface KnowledgeSearchRunPort {
     /** Appends an event; refused when the run or its candidate does not exist. */
     void append(CandidateEvent event);
 
+    /** Appends several events in one write, in list order; refused as a whole when one of them is refused. */
+    void appendAll(List<CandidateEvent> events);
+
     /** All events of a run in the order they were appended. */
     List<CandidateEvent> events(SearchRunId id);
 }

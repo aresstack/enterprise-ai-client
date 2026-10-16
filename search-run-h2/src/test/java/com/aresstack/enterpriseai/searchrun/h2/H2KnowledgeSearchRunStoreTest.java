@@ -137,6 +137,28 @@ public class H2KnowledgeSearchRunStoreTest {
     }
 
     @Test
+    public void appendAllKeepsListOrderAndIsAllOrNothing() {
+        KnowledgeSearchRun run = new KnowledgeSearchRun(SearchRunId.random(), "q", STARTED,
+                Collections.singletonList(WIKI), null, Arrays.asList(candidate(1, "a", 0), candidate(2, "b", 1)));
+        store.record(run);
+        store.appendAll(Arrays.asList(
+                new CandidateEvent(run.id(), 2, CandidateEventKind.EXCERPT_SCORED, STARTED, "priority 1", 0.9),
+                new CandidateEvent(run.id(), 1, CandidateEventKind.EXCERPT_SCORED, STARTED, "priority 2", 0.1)));
+        try {
+            store.appendAll(Arrays.asList(
+                    new CandidateEvent(run.id(), 1, CandidateEventKind.PREFETCH_QUEUED, STARTED, null, null),
+                    new CandidateEvent(run.id(), 9, CandidateEventKind.PREFETCH_QUEUED, STARTED, null, null)));
+            fail("a batch with an unknown candidate must be refused");
+        } catch (SearchRunStoreException expected) {
+            // expected
+        }
+        List<CandidateEvent> events = store.events(run.id());
+        assertEquals(2, events.size());
+        assertEquals(2, events.get(0).candidateNumber());
+        assertEquals(1, events.get(1).candidateNumber());
+    }
+
+    @Test
     public void runIdIsWrittenOnlyOnce() {
         KnowledgeSearchRun run = new KnowledgeSearchRun(SearchRunId.random(), "q", STARTED,
                 Collections.singletonList(WIKI), null, Collections.singletonList(candidate(1, "a", 0)));

@@ -12,5 +12,12 @@ public enum CandidateEventKind {
     /** The full text was loaded. */
     LOADED,
     /** Loading the full text failed. */
-    LOAD_FAILED
+    LOAD_FAILED,
+    /**
+     * Title and excerpt went through the candidate reranker; {@link CandidateEvent#score()} is the score, the detail
+     * names the load priority. Means "promising for deepening", never "evidence" or "used".
+     */
+    EXCERPT_SCORED,
+    /** The candidate was queued for loading and indexing; the detail names its position in the load order. */
+    PREFETCH_QUEUED
 }

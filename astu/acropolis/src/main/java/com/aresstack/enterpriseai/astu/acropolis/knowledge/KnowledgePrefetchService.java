@@ -233,6 +233,7 @@ public final class KnowledgePrefetchService {
             boolean rawCurrent = raw == null || isRawCurrent(candidate.id(), candidate.revision());
             if (prepared && rawCurrent) {
                 // Revision bekannt, im Rohindex und aufbereitet: weder laden noch aufbereiten.
+                pending.harvest.complete(Harvest.ALREADY_CURRENT);
                 pending.available.complete(Boolean.TRUE);
                 indexed.complete(ResourceIndexingOutcome.done(candidate.id(), "", IndexingStatus.UNCHANGED, 0));
                 return;
@@ -247,6 +248,7 @@ public final class KnowledgePrefetchService {
             if (document == null) {
                 document = remember(loadCurrent(candidate.source(), candidate.id(), candidate.revision()));
             }
+            pending.harvest.complete(Harvest.LOADED);
             // Ebene A: sofort in den Rohindex (eigener Pool); Ebene B: Aufbereitung im Hintergrund, unabhängig davon.
             if (raw != null && !rawCurrent) {
                 storeRaw(document, candidate.snippet(), pending.available);
@@ -764,6 +766,7 @@ public final class KnowledgePrefetchService {
         final CompletableFuture<ResourceIndexingOutcome> indexed = new CompletableFuture<ResourceIndexingOutcome>();
         final CompletableFuture<Boolean> available = new CompletableFuture<Boolean>();
         final java.util.concurrent.atomic.AtomicBoolean urgent = new java.util.concurrent.atomic.AtomicBoolean();
+        final CompletableFuture<Harvest> harvest = new CompletableFuture<Harvest>();
 
         Pending() {
             if (raw == null) {
@@ -779,11 +782,13 @@ public final class KnowledgePrefetchService {
         }
 
         void fail(Throwable failure) {
+            harvest.completeExceptionally(failure);
             available.completeExceptionally(failure);
             indexed.completeExceptionally(failure);
         }
 
         void cancel() {
+            harvest.cancel(false);
             available.cancel(false);
             indexed.cancel(false);
         }
@@ -919,6 +924,24 @@ public final class KnowledgePrefetchService {
         }
     }
 
+    /** How the full text of a prefetched hit became available (#154). */
+    public enum Harvest {
+        /** Already in the index with the reported revision: nothing was downloaded. */
+        ALREADY_CURRENT,
+        /** Loaded (from the source or the copy of exactly the reported revision). */
+        LOADED
+    }
+
+    /** Learns how each entry of a series ended; called on a prefetch thread, must return quickly. */
+    public interface HarvestListener {
+        /**
+         * @param position zero-based position in the series (the order passed to {@link #prefetch})
+         * @param harvest  how it became available, or {@code null} when it failed
+         * @param failure  why it failed, or {@code null}
+         */
+        void harvested(int position, Harvest harvest, Throwable failure);
+    }
+
     /** Eine Vorlade-Serie in Rangfolge; abgebrochen, sobald derselbe Kanal neu vorlädt. */
     public static final class Series {
 
@@ -974,6 +997,35 @@ public final class KnowledgePrefetchService {
                 }
             }
             return available;
+        }
+
+        /**
+         * Reports how every entry of the series ends (loaded, already current, failed); cancelled entries are not
+         * reported. Entries that already ended are reported at once.
+         */
+        public void onHarvest(final HarvestListener listener) {
+            if (listener == null) {
+                return;
+            }
+            List<Pending> entries;
+            synchronized (this) {
+                entries = new ArrayList<Pending>(pending);
+            }
+            for (int i = 0; i < entries.size(); i++) {
+                final int position = i;
+                entries.get(i).harvest.whenComplete((harvest, failure) -> {
+                    if (failure instanceof CancellationException) {
+                        return;
+                    }
+                    Throwable cause = failure instanceof java.util.concurrent.CompletionException
+                            && failure.getCause() != null ? failure.getCause() : failure;
+                    try {
+                        listener.harvested(position, failure == null ? harvest : null, cause);
+                    } catch (RuntimeException ignored) {
+                        // a listener never breaks prefetching
+                    }
+                });
+            }
         }
 
         /** Wie viele Treffer die Serie vorlädt. */
