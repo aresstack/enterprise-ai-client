@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.emporion.holkas.localfiles;
+package com.aresstack.enterpriseai.source.api.files;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -6,25 +6,25 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Include and exclude rules of a local files source (issue #120), as glob patterns on the path relative to the source
- * folder with {@code /} as separator: {@code *} matches within one name, {@code **} across folders, {@code ?} one
- * character. Like {@code .gitignore}, a pattern applies below any folder ({@code *.tmp}, {@code ~$*},
+ * Include and exclude rules of a file-tree source (local files #120, Git repositories #137), as glob patterns on the
+ * path relative to the source root with {@code /} as separator: {@code *} matches within one name, {@code **}
+ * across folders, {@code ?} one character. Like {@code .gitignore}, a pattern applies below any folder ({@code *.tmp}, {@code ~$*},
  * {@code node_modules/**}) unless a leading {@code /} ties it to the source folder; a pattern ending in {@code /**}
  * excludes a whole folder. Matching ignores letter case, like Windows. Without include patterns every indexable file
  * is included.
  */
-final class FilePatterns {
+public final class FilePatterns {
 
     private final List<Rule> includes;
     private final List<Rule> excludes;
 
-    FilePatterns(List<String> includes, List<String> excludes) {
+    public FilePatterns(List<String> includes, List<String> excludes) {
         this.includes = compile(includes);
         this.excludes = compile(excludes);
     }
 
     /** Patterns from a setting: separated by commas, semicolons or line breaks. */
-    static List<String> split(String value) {
+    public static List<String> split(String value) {
         List<String> patterns = new ArrayList<String>();
         if (value != null) {
             for (String part : value.split("[,;\\r\\n]+")) {
@@ -37,7 +37,7 @@ final class FilePatterns {
     }
 
     /** Whether a file (relative path) is indexed: included (or no includes) and not excluded. */
-    boolean acceptsFile(String relative) {
+    public boolean acceptsFile(String relative) {
         if (excluded(relative)) {
             return false;
         }
@@ -53,7 +53,7 @@ final class FilePatterns {
     }
 
     /** Whether a folder (relative path, empty for the source folder itself) is walked into. */
-    boolean entersFolder(String relative) {
+    public boolean entersFolder(String relative) {
         return relative.isEmpty() || !(excluded(relative) || excluded(relative + "/"));
     }
 

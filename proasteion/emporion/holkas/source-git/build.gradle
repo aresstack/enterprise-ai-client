@@ -1,0 +1,12 @@
+description = 'Adapter: Git-Repository (ein Ref, aktueller Stand) als Knowledge Source. JGit nur adapterintern, nur lesend; Token über einen Callback der Composition Root, Extraktion von PDF/Office über den Port deigma.'
+
+dependencies {
+    api project(':source-api')
+    // Proxy route per target (port); the composition root supplies the implementation.
+    api project(':proasteion:platform:network')
+    api project(':proasteion:emporion:deigma')
+
+    implementation libs.jgit
+
+    testImplementation testFixtures(project(':source-api'))
+}
