@@ -165,7 +165,7 @@ public final class ShellAssembly {
                 new FileChatProjectStore(chatsDirectory.resolveSibling(CHAT_PROJECTS_FILE)));
         root.ragChat().withProjectContext(chatProjects);
         // Memories (#144): scope=project follows the chat's current project; an unresolved assignment has none.
-        root.resolveMemoryProjectsWith(chatId -> chatProjects.resolve(chatId).projectId());
+        root.resolveMemoryProjectsWith(chatProjects);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.

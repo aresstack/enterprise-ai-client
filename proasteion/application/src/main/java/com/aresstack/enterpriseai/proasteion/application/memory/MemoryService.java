@@ -1,6 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.application.memory;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver;
 import com.aresstack.enterpriseai.astu.approval.ApprovalPolicy;
+import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
 import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
 import com.aresstack.enterpriseai.astu.approval.ApprovalTarget;
@@ -46,7 +48,7 @@ public final class MemoryService {
 
     private final MemoryStorePort store;
     private final String userId;
-    private final ChatProjectResolver projects;
+    private final ProjectContextResolver projects;
     private final ToolApprovalGate approvals;
 
     /**
@@ -56,14 +58,14 @@ public final class MemoryService {
      *                  {@code null}: a gate without rules and without anyone to ask, so only chat memories can be
      *                  deleted
      */
-    public MemoryService(MemoryStorePort store, String userId, ChatProjectResolver projects,
+    public MemoryService(MemoryStorePort store, String userId, ProjectContextResolver projects,
                          ToolApprovalGate approvals) {
         if (store == null || userId == null || userId.trim().isEmpty()) {
             throw new IllegalArgumentException("store and userId must be given");
         }
         this.store = store;
         this.userId = userId;
-        this.projects = projects == null ? chatId -> null : projects;
+        this.projects = projects == null ? ProjectContextResolver.none() : projects;
         this.approvals = approvals == null ? new ToolApprovalGate(ApprovalRules::none,
                 ApprovalPromptPort.unavailable(), ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS) : approvals;
         this.approvals.registerResolver(DELETE_TOOL, (toolName, arguments) -> deletionTarget(arguments),
@@ -125,7 +127,7 @@ public final class MemoryService {
         MemoryOwner owner;
         switch (scope) {
             case PROJECT:
-                String projectId = projects.projectOf(chatId);
+                String projectId = projectOf(chatId);
                 if (projectId == null || projectId.trim().isEmpty()) {
                     return MemoryResult.error("Not saved: this chat is not assigned to a project, so there is no "
                             + "project scope. Save it for this chat or globally instead, if the user wants that.");
@@ -252,12 +254,23 @@ public final class MemoryService {
     private List<MemoryOwner> accessibleOwners(String chatId) {
         List<MemoryOwner> owners = new ArrayList<MemoryOwner>(3);
         owners.add(MemoryOwner.chat(chatId));
-        String projectId = projects.projectOf(chatId);
+        String projectId = projectOf(chatId);
         if (projectId != null && !projectId.trim().isEmpty()) {
             owners.add(MemoryOwner.project(projectId));
         }
         owners.add(MemoryOwner.global(userId));
         return owners;
+    }
+
+    /** The chat's current project (#143), or {@code null}; an unresolvable assignment counts as none (fail closed). */
+    private String projectOf(String chatId) {
+        try {
+            String projectId = projects.resolve(new ChatConversationId(chatId)).projectId();
+            return projectId == null || projectId.trim().isEmpty() ? null : projectId;
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "Project of a chat not resolved, memories without project: " + e.getMessage(), e);
+            return null;
+        }
     }
 
     private static String preview(String content) {

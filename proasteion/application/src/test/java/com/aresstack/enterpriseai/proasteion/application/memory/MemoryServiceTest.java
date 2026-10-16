@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.application.memory;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectStore;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects;
+import com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectsRecord;
 import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
 import com.aresstack.enterpriseai.astu.approval.ApprovalPolicy;
 import com.aresstack.enterpriseai.astu.approval.ApprovalRequest;
@@ -16,7 +19,6 @@ import org.junit.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -32,7 +34,19 @@ import static org.junit.Assert.assertTrue;
 public class MemoryServiceTest {
 
     private final InMemoryStore store = new InMemoryStore();
-    private final Map<String, String> projectOf = new HashMap<String, String>();
+    private final ChatProjects projects = new ChatProjects(new ChatProjectStore() {
+        private ChatProjectsRecord record = new ChatProjectsRecord();
+
+        @Override
+        public ChatProjectsRecord load() {
+            return record;
+        }
+
+        @Override
+        public void save(ChatProjectsRecord saved) {
+            record = saved;
+        }
+    });
     private final List<ApprovalRequest> asked = new ArrayList<ApprovalRequest>();
     private boolean approve;
     private Runnable whileAsking = () -> { };
@@ -47,7 +61,7 @@ public class MemoryServiceTest {
     }
 
     private MemoryService service(ApprovalRules rules) {
-        return new MemoryService(store, "alice", projectOf::get, gate(rules));
+        return new MemoryService(store, "alice", projects, gate(rules));
     }
 
     private MemoryService service() {
@@ -93,19 +107,31 @@ public class MemoryServiceTest {
 
     @Test
     public void movingAChatWithdrawsAccessToTheOldProjectAtOnce() {
-        projectOf.put("chat-a", "P-A");
+        String a = projects.create("A", null);
+        String b = projects.create("B", null);
+        assertTrue(projects.assign("chat-a", a));
         String id = id(service().save("chat-a", "Codefreeze ab Montag", "project"));
         assertTrue(service().search("chat-a", "codefreeze", null, 0).text().contains(id));
 
-        projectOf.put("chat-a", "P-B");
+        assertTrue(projects.assign("chat-a", b));
         assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).text());
         approve = true;
         assertTrue(service().delete("chat-a", id).isError());
         assertTrue(asked.isEmpty());
         assertEquals(1, store.all.size());
 
-        projectOf.remove("chat-a");
+        assertTrue(projects.assign("chat-a", null));
         assertEquals("No memories found.", service().search("chat-a", "codefreeze", null, 0).text());
+    }
+
+    @Test
+    public void projectMemoryIsSharedByTheChatsOfThatProjectOnly() {
+        String p = projects.create("P", null);
+        projects.assign("chat-a", p);
+        projects.assign("chat-b", p);
+        service().save("chat-a", "Codefreeze ab Montag", "project");
+        assertTrue(service().search("chat-b", "codefreeze", null, 0).text().contains("[project"));
+        assertEquals("No memories found.", service().search("chat-c", "codefreeze", null, 0).text());
     }
 
     @Test

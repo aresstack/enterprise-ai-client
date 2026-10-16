@@ -153,7 +153,7 @@ public final class CompositionRoot {
     /** Persistent memories (#144), {@code null} without a memory store. */
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
     /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
-    private volatile com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver memoryProjects;
+    private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
@@ -377,10 +377,12 @@ public final class CompositionRoot {
         // (#143), asked on every call through resolveMemoryProjectsWith.
         this.memories = ports.memories() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryService(ports.memories(),
-                System.getProperty("user.name", "local"), chatId -> {
-                    com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver projects =
+                System.getProperty("user.name", "local"), conversation -> {
+                    com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects =
                             memoryProjects;
-                    return projects == null ? null : projects.projectOf(chatId);
+                    return projects == null
+                            ? com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext.none()
+                            : projects.resolve(conversation);
                 }, toolCatalog.approvals());
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
@@ -699,7 +701,7 @@ public final class CompositionRoot {
      * withdraws the old project's memories at once. {@code null}: no chat has a project.
      */
     public void resolveMemoryProjectsWith(
-            com.aresstack.enterpriseai.proasteion.application.memory.ChatProjectResolver projects) {
+            com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects) {
         this.memoryProjects = projects;
     }
 
