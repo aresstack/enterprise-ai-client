@@ -560,7 +560,7 @@ public class RagChatBindingTest {
         List<ChatMessage> sent = port.lastRequest().messages();
         assertEquals(ChatRole.SYSTEM, sent.get(0).role());
         String system = sent.get(0).content();
-        assertTrue(system, system.startsWith("Antworte knapp.\n\n"));
+        assertTrue(system, system.endsWith("\n\nAntworte knapp.")); // prompt after the turn context (#126)
         assertTrue(system, system.contains("folgende Passage aus einer früheren Assistentenantwort"));
         assertTrue(system, system.contains("\u201Edas Vorsystem für die Übermittlung\u201C"));
         assertEquals("sichtbarer Text unverändert an das Modell", "Was meinst du hier mit Vorsystem?",
@@ -877,8 +877,8 @@ public class RagChatBindingTest {
         });
         awaitIdle(fixture.model);
 
-        assertEquals("Antworte knapp.\n\n"
-                        + com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT.modelNote(),
+        assertEquals(com.aresstack.enterpriseai.astu.acropolis.chat.MessageOrigin.SPEECH_TRANSCRIPT.modelNote()
+                        + "\n\nAntworte knapp.",
                 port.lastRequest().messages().get(0).content());
         assertEquals("Aklima bitte erstmal das Programm", entries(fixture.model).get(0).getText());
     }
