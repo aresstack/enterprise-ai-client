@@ -988,8 +988,10 @@ public class RagChatUseCaseTest {
         assertTrue(answer, answer.contains("planned-next-action: USE_APPLICATION_HELP"));
         assertTrue(answer, answer.contains("sag kurz, wie du die Nachricht verstanden hast"));
         assertFalse("the answer reads the interpretation, not the raw analysis", answer.contains("<client-turn-analysis>"));
-        assertEquals(Collections.singletonList(answer.substring(answer.indexOf("<client-answer-plan>"))),
-                planned);
+        // The plan block comes first, the editable system prompt follows it (#126).
+        assertEquals(Collections.singletonList(answer.substring(answer.indexOf("<client-answer-plan>"),
+                answer.indexOf("</client-answer-plan>") + "</client-answer-plan>".length())), planned);
+        assertTrue(answer, answer.endsWith("\n\nSystem"));
         assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
         assertEquals(2, chat.conversation(id).messages().size());
     }
