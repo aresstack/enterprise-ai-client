@@ -63,6 +63,8 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.SavedChatItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ShellFrame;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatProjectItem;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.WorkspaceActions;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser;
+import com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement;
 import com.aresstack.enterpriseai.astu.acropolis.agent.AgentService;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
 import com.aresstack.enterpriseai.astu.acropolis.history.ChatRecord;
@@ -527,6 +529,29 @@ public final class ShellAssembly {
                 // The new conversation belongs to the project from its first question on.
                 chatProjects.assign(history.currentChatId(), projectId);
                 return true;
+            }
+
+            @Override
+            public List<MemoryBrowser> chatMemories(String chatId) {
+                MemoryManagement management = root.memoryManagement();
+                List<MemoryBrowser> browsers = new ArrayList<MemoryBrowser>();
+                MemoryBrowser chat = StoreMemoryBrowser.of(management, MemoryManagement.Owner.CHAT, chatId);
+                if (chat == null) {
+                    return browsers;
+                }
+                browsers.add(chat);
+                MemoryBrowser project = StoreMemoryBrowser.of(management, MemoryManagement.Owner.PROJECT,
+                        chatProjects.projectOf(chatId));
+                if (project != null) {
+                    browsers.add(project);
+                }
+                browsers.add(StoreMemoryBrowser.of(management, MemoryManagement.Owner.GLOBAL, null));
+                return browsers;
+            }
+
+            @Override
+            public MemoryBrowser projectMemories(String projectId) {
+                return StoreMemoryBrowser.of(root.memoryManagement(), MemoryManagement.Owner.PROJECT, projectId);
             }
 
             @Override

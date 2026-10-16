@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
 import com.aresstack.enterpriseai.proasteion.exedra.ui.agent.ShellMode;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser;
 
 import java.io.File;
 import java.util.Collections;
@@ -133,5 +134,20 @@ public interface WorkspaceActions {
      */
     default boolean newChatInProjectRequested(String projectId) {
         return false;
+    }
+
+    // ------------------------------------------------------------------ memories (#144)
+
+    /**
+     * The memories a chat sees, one browser per owner: the chat, its current project (if any) and the user's global
+     * memories; empty without a memory store.
+     */
+    default List<MemoryBrowser> chatMemories(String chatId) {
+        return Collections.emptyList();
+    }
+
+    /** The memories of a project, or {@code null} without a memory store. */
+    default MemoryBrowser projectMemories(String projectId) {
+        return null;
     }
 }

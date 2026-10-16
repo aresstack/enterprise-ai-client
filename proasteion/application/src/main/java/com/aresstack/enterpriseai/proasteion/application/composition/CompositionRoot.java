@@ -156,6 +156,7 @@ public final class CompositionRoot {
     private volatile java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> agentConversation;
     /** Persistent memories (#144), {@code null} without a memory store. */
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryService memories;
+    private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement;
     /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
     private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
@@ -388,6 +389,9 @@ public final class CompositionRoot {
                             ? com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext.none()
                             : projects.resolve(conversation);
                 }, toolCatalog.approvals());
+        this.memoryManagement = ports.memories() == null ? null
+                : new com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement(ports.memories(),
+                System.getProperty("user.name", "local"));
         if (memories != null) {
             toolCatalog.registerDefinitions(ORIGIN_MEMORY, EnumSet.of(ToolChannel.CHAT),
                     () -> McpChatTool.definitions(
@@ -757,6 +761,11 @@ public final class CompositionRoot {
     public void resolveMemoryProjectsWith(
             com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects) {
         this.memoryProjects = projects;
+    }
+
+    /** List and delete memories of one chat, project or the user (#144 management view); {@code null} without store. */
+    public com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement() {
+        return memoryManagement;
     }
 
     /** Removes the memories of a finally deleted chat (project and global memories stay). */

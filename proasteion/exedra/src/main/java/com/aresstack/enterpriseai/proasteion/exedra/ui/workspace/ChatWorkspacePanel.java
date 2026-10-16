@@ -132,6 +132,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     static final String DELETE_CHAT_LABEL = "Chat löschen";
     static final String RENAME_CHAT_LABEL = "Umbenennen …";
     static final String EXPORT_CHAT_LABEL = "Chat exportieren …";
+    static final String CHAT_MEMORIES_LABEL = "Erinnerungen …";
     static final String RESTORE_CHAT_LABEL = "Wiederherstellen";
     static final String DELETED_META = "Gelöscht";
 
@@ -1045,6 +1046,15 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         export.setEnabled(actions != null && actions.canExportChats());
         export.addActionListener(event -> exportChat(chatId, title));
         menu.add(export);
+        final List<com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser> memories =
+                actions == null ? Collections.<com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser>emptyList()
+                        : actions.chatMemories(chatId);
+        if (!memories.isEmpty()) {
+            JMenuItem memoryItem = new JMenuItem(CHAT_MEMORIES_LABEL);
+            memoryItem.addActionListener(event -> com.aresstack.enterpriseai.proasteion.exedra.ui.memory
+                    .MemoryManagerPanel.showDialog(this, "Erinnerungen – " + (title == null ? "Chat" : title), memories));
+            menu.add(memoryItem);
+        }
         JMenuItem delete = new JMenuItem(DELETE_CHAT_LABEL);
         delete.setEnabled(!chatShell.model().isStreaming());
         delete.addActionListener(event -> deleteChat(chatId));
@@ -1081,6 +1091,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     static final String MOVE_CHAT_LABEL = "Verschieben nach";
     static final String NEW_CHAT_IN_PROJECT_LABEL = "Neuer Chat in diesem Projekt";
     static final String PROJECT_CONTEXT_LABEL = "Projektanweisungen …";
+    static final String PROJECT_MEMORIES_LABEL = "Erinnerungen …";
     static final String NEW_SUBPROJECT_LABEL = "Unterprojekt anlegen …";
     static final String RENAME_PROJECT_LABEL = "Umbenennen …";
     static final String DELETE_PROJECT_LABEL = "Löschen …";
@@ -1336,6 +1347,15 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         JMenuItem context = new JMenuItem(PROJECT_CONTEXT_LABEL);
         context.addActionListener(event -> editProjectContext(project));
         menu.add(context);
+        final com.aresstack.enterpriseai.proasteion.exedra.ui.memory.MemoryBrowser memories =
+                actions == null ? null : actions.projectMemories(project.id());
+        if (memories != null) {
+            JMenuItem memoryItem = new JMenuItem(PROJECT_MEMORIES_LABEL);
+            memoryItem.addActionListener(event -> com.aresstack.enterpriseai.proasteion.exedra.ui.memory
+                    .MemoryManagerPanel.showDialog(this, "Erinnerungen – Projekt „" + project.name() + "“",
+                            Collections.singletonList(memories)));
+            menu.add(memoryItem);
+        }
         menu.addSeparator();
         JMenuItem sub = new JMenuItem(NEW_SUBPROJECT_LABEL);
         sub.addActionListener(event -> createProject(project.id()));
