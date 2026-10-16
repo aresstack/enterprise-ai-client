@@ -289,6 +289,19 @@ public final class SearchDrivenIndexingUseCase {
             return runRecorded ? run.id().value() : null;
         }
 
+        /**
+         * Number of the live hit {@code id} in the run ("Treffer 18"), or 0 when the run has no such candidate. The
+         * run numbers only the live candidates in discovery order, independent of how a caller lists hits.
+         */
+        public int candidateNumber(KnowledgeResourceId id) {
+            for (KnowledgeCandidate candidate : run.candidates()) {
+                if (candidate.resourceId().equals(id)) {
+                    return candidate.number();
+                }
+            }
+            return 0;
+        }
+
         /** How many candidates the run received. */
         public int candidateCount() {
             return run.candidates().size();
