@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.astu.embedding.EmbeddingModelIdentity;
 import com.aresstack.enterpriseai.astu.embedding.EmbeddingVector;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeChunkId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeTokenCounter;
+import com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingException;
 import com.aresstack.enterpriseai.embedding.api.EmbeddingFailureKind;
@@ -287,11 +288,28 @@ public final class RetrieveKnowledgeUseCase {
      * Wie {@link #retrieve(String, Collection)}; meldet vor jedem Suchpfad an {@code progress}, welcher gerade läuft.
      */
     public RetrievalResult retrieve(String query, Collection<SourceAddress> sources, RetrievalProgress progress) {
+        return retrieve(query, sources, null, progress);
+    }
+
+    /**
+     * Like {@link #retrieve(String, Collection, RetrievalProgress)}, plus the files of the chat project
+     * {@code visibleProject} (#143). Project files of any other project never appear, whatever {@code sources} says:
+     * "all sources" means all sources outside chat projects plus the one visible project.
+     *
+     * @param visibleProject the project source the turn may see ({@link ProjectKnowledge#source}), {@code null}: none
+     */
+    public RetrievalResult retrieve(String query, Collection<SourceAddress> sources, SourceAddress visibleProject,
+                                    RetrievalProgress progress) {
         RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
         if (query == null || query.trim().isEmpty()) {
             return RetrievalResult.empty();
         }
         Collection<SourceAddress> filter = sources == null ? Collections.<SourceAddress>emptySet() : sources;
+        if (visibleProject != null && !filter.isEmpty() && !filter.contains(visibleProject)) {
+            List<SourceAddress> widened = new ArrayList<SourceAddress>(filter);
+            widened.add(visibleProject);
+            filter = widened;
+        }
         List<RetrievalWarning> warnings = new ArrayList<RetrievalWarning>();
         RuntimeException lastFailure = null;
         int failedPaths = 0;
@@ -354,12 +372,24 @@ public final class RetrieveKnowledgeUseCase {
         if (failedPaths == activePaths) {
             throw new KnowledgeRetrievalException(warnings, lastFailure);
         }
-        List<RetrievedChunk> fused = expand(new ReciprocalRankFusion(current).fuse(keywordHits, semanticHits), filter);
+        List<RetrievedChunk> fused = visibleTo(visibleProject,
+                expand(new ReciprocalRankFusion(current).fuse(keywordHits, semanticHits), filter));
         int maxResults = maxResults();
         if (fused.size() > maxResults) {
             fused = fused.subList(0, maxResults);
         }
         return new RetrievalResult(fused, warnings);
+    }
+
+    /** Drops every hit from a chat project other than {@code visibleProject} (#143); the order stays. */
+    private static List<RetrievedChunk> visibleTo(SourceAddress visibleProject, List<RetrievedChunk> hits) {
+        List<RetrievedChunk> visible = new ArrayList<RetrievedChunk>(hits.size());
+        for (RetrievedChunk hit : hits) {
+            if (ProjectKnowledge.isVisible(hit.chunk().sourceId(), visibleProject)) {
+                visible.add(hit);
+            }
+        }
+        return visible.size() == hits.size() ? hits : visible;
     }
 
     /**

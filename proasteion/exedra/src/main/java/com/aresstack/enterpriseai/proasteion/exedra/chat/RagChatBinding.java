@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.chat;
 
+import com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.chat.RagSourceFilter;
 import com.aresstack.enterpriseai.proasteion.application.chat.ToolUsePolicy;
@@ -413,6 +414,13 @@ public final class RagChatBinding implements ChatShellActions {
                 ragOptions = RagOptions.enabled();
             } else if (!sources.allowedSources().isEmpty()) {
                 ragOptions = RagOptions.enabled().restrictedTo(sources.allowedSources());
+            } else {
+                // No source checked, but the chat's project files (#143) are still knowledge of this chat.
+                EffectiveProjectContext project = rag.projectContext(conversationId);
+                if (project.isResolved() && project.projectId() != null) {
+                    ragOptions = RagOptions.enabled().restrictedTo(
+                            Collections.singleton(ProjectKnowledge.source(project.projectId())));
+                }
             }
         }
         // Wissens-Werkzeuge, sobald es etwas zu suchen (angehakte Quelle) oder zu lesen (Seite) gibt; ein Bookmark
@@ -504,8 +512,21 @@ public final class RagChatBinding implements ChatShellActions {
                                     available.add(tool);
                                 }
                             }
-                            // Memories (#144) bound to this chat: offered on every tool turn.
-                            available.addAll(support.chatTools(conversation.value()));
+                            // Tools bound to this chat (memories #144, browser #141, the project's knowledge tools
+                            // #143), offered on every tool turn. A chat tool replaces a general tool of the same name:
+                            // in a project chat, knowledge_search/knowledge_read also see that project's files.
+                            for (AiTool bound : support.chatTools(conversation.value())) {
+                                boolean replaced = false;
+                                for (int i = 0; i < available.size(); i++) {
+                                    if (available.get(i).name().equals(bound.name())) {
+                                        available.set(i, bound);
+                                        replaced = true;
+                                    }
+                                }
+                                if (!replaced) {
+                                    available.add(bound);
+                                }
+                            }
                             List<String> offered = new ArrayList<String>(available.size());
                             for (AiTool tool : available) {
                                 offered.add(tool.name());

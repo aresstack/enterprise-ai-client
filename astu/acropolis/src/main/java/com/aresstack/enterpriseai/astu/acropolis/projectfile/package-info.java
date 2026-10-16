@@ -1,5 +1,5 @@
 /**
- * Shared project files (#143): a store per chat project and the chat-bound tools that read them. The tools resolve
- * the chat's current project on every call and fail closed; project files never enter the knowledge index.
+ * Shared project files (#143): the store per chat project. The files are indexed as normal knowledge under their
+ * project's source ({@code ProjectKnowledge}) and visible only to chats that currently belong to that project.
  */
 package com.aresstack.enterpriseai.astu.acropolis.projectfile;

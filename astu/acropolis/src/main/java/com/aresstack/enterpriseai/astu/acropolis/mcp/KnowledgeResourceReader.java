@@ -13,6 +13,7 @@ import com.aresstack.enterpriseai.astu.knowledge.KnowledgeDocument;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgePassageId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceRef;
+import com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
@@ -42,9 +43,17 @@ final class KnowledgeResourceReader {
     private final LoadKnowledgeDocumentUseCase documents;
     private final SearchDrivenIndexingUseCase live;
     private final ResolveKnowledgeAddressUseCase addresses;
+    /** The one chat project whose files may be read (#143), {@code null}: none. */
+    private final SourceAddress visibleProject;
 
     KnowledgeResourceReader(LoadKnowledgeDocumentUseCase documents, SearchDrivenIndexingUseCase live,
                             ResolveKnowledgeAddressUseCase addresses) {
+        this(documents, live, addresses, null);
+    }
+
+    KnowledgeResourceReader(LoadKnowledgeDocumentUseCase documents, SearchDrivenIndexingUseCase live,
+                            ResolveKnowledgeAddressUseCase addresses, SourceAddress visibleProject) {
+        this.visibleProject = visibleProject;
         this.documents = documents;
         this.live = live;
         this.addresses = addresses;
@@ -185,6 +194,10 @@ final class KnowledgeResourceReader {
 
     /** One read of a resource id; {@code addressProblem} says whether the failure may be a wrong address. */
     private Attempt attempt(KnowledgeResourceId id, KnowledgePassageId passage, int maxChars) {
+        // Project files (#143) only for the chat's current project; any other reads as unknown, also by an old id.
+        if (!ProjectKnowledge.isVisible(id, visibleProject)) {
+            return new Attempt(unknown(id), false);
+        }
         ResolvedResource resolved;
         try {
             resolved = new ResolveKnowledgeResourceUseCase(live.prefetch().indexing(), live.prefetch(), documents)
@@ -201,7 +214,15 @@ final class KnowledgeResourceReader {
             return new Attempt(McpToolResult.error("Reading '" + id.value() + "' failed. Try again or read another "
                     + "hit — example: " + EXAMPLE), false);
         }
+        if (!ProjectKnowledge.isVisible(resolved.ref().sourceId(), visibleProject)) {
+            return new Attempt(unknown(id), false);
+        }
         return new Attempt(McpToolResult.ok(render(resolved, passage, maxChars), provenance(resolved)), false);
+    }
+
+    private static McpToolResult unknown(KnowledgeResourceId id) {
+        return McpToolResult.error("Document '" + id.value() + "' is not available. Search first, then read a hit "
+                + "— example: knowledge_search query=\"Urlaubsantrag\", then knowledge_read " + EXAMPLE);
     }
 
     /** Name the read resource as context the answer rests on (issue #118), from its reference, not from the text. */

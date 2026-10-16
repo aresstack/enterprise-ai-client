@@ -73,7 +73,7 @@ public class TurnContextTest {
         assertEquals(ChatMessage.system("PLAN\n\nSei knapp.\n\n" + TurnContext.RULES_HEADER + "\nRULE"),
                 sent.get(0));
         assertEquals(ChatMessage.user("Was ist IAR?"), sent.get(sent.size() - 1));
-        assertEquals(ChatMessage.user("Was ist IAR?"),
-                chat.conversation(id).messages().get(chat.conversation(id).messages().size() - 1));
+        // The answer streams on its own thread and may already follow the user message in the history.
+        assertTrue(chat.conversation(id).messages().contains(ChatMessage.user("Was ist IAR?")));
     }
 }

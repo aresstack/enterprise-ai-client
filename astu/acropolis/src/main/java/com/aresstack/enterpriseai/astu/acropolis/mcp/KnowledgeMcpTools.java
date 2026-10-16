@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.PageNavigationUseCase
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.ResolveKnowledgeAddressUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SearchDrivenIndexingUseCase;
 import com.aresstack.enterpriseai.astu.acropolis.rag.RetrieveKnowledgeUseCase;
+import com.aresstack.enterpriseai.astu.knowledge.ProjectKnowledge;
 import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 
@@ -63,6 +64,11 @@ public final class KnowledgeMcpTools {
     private final KnowledgeAttachmentsTool attachments;
     private final KnowledgeResolveUrlTool resolveUrl;
     private volatile boolean shutdown;
+    private final RetrieveKnowledgeUseCase retrieval;
+    private final LoadKnowledgeDocumentUseCase documents;
+    private final SearchDrivenIndexingUseCase live;
+    private final Predicate<SourceAddress> enabled;
+    private final IntSupplier treeChildLimit;
 
     /**
      * @param retrieval hybride Suche im Index
@@ -89,17 +95,31 @@ public final class KnowledgeMcpTools {
     public KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
                              SearchDrivenIndexingUseCase live, Predicate<SourceAddress> enabled,
                              KnowledgeToolSettings settings, IntSupplier treeChildLimit) {
+        this(retrieval, documents, live, enabled, settings, treeChildLimit, null);
+    }
+
+    private KnowledgeMcpTools(RetrieveKnowledgeUseCase retrieval, LoadKnowledgeDocumentUseCase documents,
+                              SearchDrivenIndexingUseCase live, Predicate<SourceAddress> enabled,
+                              KnowledgeToolSettings settings, IntSupplier treeChildLimit,
+                              SourceAddress visibleProject) {
         if (enabled == null) {
             throw new IllegalArgumentException("enabled ist Pflicht");
         }
         if (retrieval == null || documents == null || live == null) {
             throw new IllegalArgumentException("retrieval, documents und live sind Pflicht");
         }
+        this.retrieval = retrieval;
+        this.documents = documents;
+        this.live = live;
+        this.enabled = enabled;
+        this.treeChildLimit = treeChildLimit;
         this.settings = settings == null ? KnowledgeToolSettings.defaults() : settings;
-        this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
-        this.indexSearch = new KnowledgeIndexSearchTool(retrieval, live, documents::catalog, enabled, this.settings);
+        this.search = new KnowledgeSearchTool(retrieval, live, documents::catalog, enabled, this.settings, false,
+                visibleProject);
+        this.indexSearch = new KnowledgeIndexSearchTool(retrieval, live, documents::catalog, enabled, this.settings,
+                visibleProject);
         ResolveKnowledgeAddressUseCase addresses = new ResolveKnowledgeAddressUseCase(documents::catalog);
-        KnowledgeResourceReader reader = new KnowledgeResourceReader(documents, live, addresses);
+        KnowledgeResourceReader reader = new KnowledgeResourceReader(documents, live, addresses, visibleProject);
         this.read = new KnowledgeReadTool(reader, this.settings);
         this.readMany = new KnowledgeReadManyTool(reader, this.settings);
         this.attachments = new KnowledgeAttachmentsTool(new ListKnowledgeAttachmentsUseCase(documents::catalog),
@@ -109,6 +129,19 @@ public final class KnowledgeMcpTools {
         this.tree = new KnowledgeTreeTool(new BrowseKnowledgeHierarchyUseCase(documents::catalog,
                 new PageNavigationUseCase()), this.settings,
                 treeChildLimit == null ? fixed::treeChildLimit : treeChildLimit);
+    }
+
+    /**
+     * The same tools for a chat of the project {@code visibleProject} (#143): {@code knowledge_search},
+     * {@code knowledge_index_search}, {@code knowledge_read} and {@code knowledge_read_many} also find and read that
+     * project's files. This instance itself sees no project file. The caller resolves the project from the turn's
+     * trusted chat id, never from the model, and must {@link #shutdown()} the copy when it drops it.
+     */
+    public KnowledgeMcpTools scopedTo(SourceAddress visibleProject) {
+        if (!ProjectKnowledge.isProjectSource(visibleProject)) {
+            throw new IllegalArgumentException("visibleProject must be a chat project source: " + visibleProject);
+        }
+        return new KnowledgeMcpTools(retrieval, documents, live, enabled, settings, treeChildLimit, visibleProject);
     }
 
     public KnowledgeToolSettings settings() {
