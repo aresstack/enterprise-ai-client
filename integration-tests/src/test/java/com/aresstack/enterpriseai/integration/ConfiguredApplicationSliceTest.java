@@ -227,7 +227,9 @@ public class ConfiguredApplicationSliceTest {
 
         FakeChatCompletionsServer.Recorded request = chatServer.lastRequest();
         assertEquals("Bearer " + API_KEY, request.authorization());
-        assertTrue(request.systemContent(), request.systemContent().startsWith("Antworte knapp und nenne die Quelle."));
+        // Dynamic turn context comes before the editable system prompt (#126).
+        assertTrue(request.systemContent(), request.systemContent().indexOf("Antworte knapp und nenne die Quelle.")
+                > request.systemContent().indexOf("--- ENDE KONTEXT ---"));
         assertTrue(request.systemContent(), request.systemContent().contains("--- KONTEXT ---"));
         assertTrue(request.systemContent(), request.systemContent().contains("drei Monate zum Quartalsende"));
 

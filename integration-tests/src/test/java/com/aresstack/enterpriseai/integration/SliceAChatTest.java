@@ -137,7 +137,7 @@ public class SliceAChatTest {
         assertTrue("stream=true im Body", request.streamRequested());
         assertEquals("application/json; charset=utf-8", request.contentType());
         assertEquals(MODEL, request.body().get("model").getAsString());
-        assertTrue(request.systemContent(), request.systemContent().startsWith(SYSTEM_PROMPT));
+        assertTrue(request.systemContent(), request.systemContent().endsWith(SYSTEM_PROMPT)); // after the turn context (#126)
         List<String> messages = request.messages();
         assertEquals("user: Was ist die Antwort?", messages.get(messages.size() - 1));
 
