@@ -274,8 +274,6 @@ public class ChatResearchActivityTest {
         assertEquals(entries.toString(), 2, entries.size());
         assertEquals(TranscriptEntry.State.CANCELLED, entries.get(1).getState());
         assertEquals("keine Nachsuche nach dem Stop (nur die Antwort ging an das Modell)", 1, port.requests().size());
-        String summary = shell.recorder.addedActivities.get(0).getActivitySummary();
-        assertTrue(summary, summary.startsWith("Recherche abgebrochen"));
         assertFalse(chat.isBusy(conversation));
     }
 
