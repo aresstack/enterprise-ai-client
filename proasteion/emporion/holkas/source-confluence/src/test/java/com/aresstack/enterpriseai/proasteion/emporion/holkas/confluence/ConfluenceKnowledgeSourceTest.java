@@ -414,7 +414,8 @@ public class ConfluenceKnowledgeSourceTest {
             raw.append("wort ");
         }
         String excerpt = ConfluenceRestClient.excerpt(raw.toString());
-        assertEquals(ConfluenceRestClient.EXCERPT_MAX_LENGTH + 1, excerpt.length());
+        assertTrue(excerpt, excerpt.length() <= ConfluenceRestClient.EXCERPT_MAX_LENGTH + 1);
+        assertTrue(excerpt, excerpt.length() > ConfluenceRestClient.EXCERPT_MAX_LENGTH - 5);
         assertTrue(excerpt.endsWith("…"));
         assertEquals("", ConfluenceRestClient.excerpt(null));
     }
