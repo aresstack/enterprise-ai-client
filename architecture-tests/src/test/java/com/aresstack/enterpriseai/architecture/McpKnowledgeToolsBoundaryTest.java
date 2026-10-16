@@ -57,12 +57,7 @@ public class McpKnowledgeToolsBoundaryTest {
 
     @BeforeClass
     public static void importProductionClasses() {
-        BuildModel model = BuildModel.load();
-        List<File> directories = new ArrayList<File>();
-        for (String module : model.scannedModules()) {
-            directories.addAll(model.existingClassDirectoriesOf(module));
-        }
-        productionClasses = new ClassFileImporter().importPaths(BuildModelTest.toPaths(directories));
+        productionClasses = ProductionClasses.all();
     }
 
     /** Aus {@code source.api} dürfen die Werkzeuge nur die Fehlerart kennen, um sie in Meldungen zu übersetzen. */

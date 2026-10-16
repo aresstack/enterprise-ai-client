@@ -30,12 +30,7 @@ public class RagBoundaryTest {
 
     @BeforeClass
     public static void importProductionClasses() {
-        BuildModel model = BuildModel.load();
-        List<File> directories = new ArrayList<File>();
-        for (String module : model.scannedModules()) {
-            directories.addAll(model.existingClassDirectoriesOf(module));
-        }
-        productionClasses = new ClassFileImporter().importPaths(BuildModelTest.toPaths(directories));
+        productionClasses = ProductionClasses.all();
     }
 
     @Test
