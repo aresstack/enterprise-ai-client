@@ -299,6 +299,14 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
     }
 
     @Override
+    public void entryRemoved(TranscriptEntry entry) {
+        // An answered turn removes its research card: the balance saved meanwhile must leave the record too.
+        if (!restoring && entry.getAuthor() == TranscriptEntry.Author.ACTIVITY) {
+            save();
+        }
+    }
+
+    @Override
     public void stateChanged() {
         // gespeichert wird je Zeile
     }
