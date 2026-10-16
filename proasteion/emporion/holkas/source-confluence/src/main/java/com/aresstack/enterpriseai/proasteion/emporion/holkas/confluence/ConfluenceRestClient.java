@@ -245,6 +245,53 @@ final class ConfluenceRestClient {
                 });
     }
 
+    /** {@code expand} der vollständigen Anhangsliste ({@link #storedAttachments}). */
+    static final String ATTACHMENT_LIST_EXPAND = "version,container";
+
+    /**
+     * Die vollständige Anhangsliste einer Seite: alle Listenseiten von {@code /child/attachment} unverändert, dazu die
+     * daraus gelesenen Anhänge. Einträge ohne brauchbare ID fehlen in {@link StoredAttachments#attachments} und stehen
+     * als Warnung da. Es wird nie gekürzt: mehr als {@code max} Anhänge oder ein sich wiederholender Folgelink sind
+     * {@code INVALID_RESPONSE}.
+     */
+    StoredAttachments storedAttachments(Session session, String contentId, int max) throws KnowledgeSourceException {
+        String what = "Anhangsliste";
+        List<byte[]> payloads = new ArrayList<byte[]>();
+        List<Attachment> attachments = new ArrayList<Attachment>();
+        List<String> warnings = new ArrayList<String>();
+        String contentType = null;
+        Set<String> visited = new HashSet<String>();
+        String next = "/rest/api/content/" + contentId + "/child/attachment?expand=" + ATTACHMENT_LIST_EXPAND
+                + "&start=0&limit=" + config.pageSize();
+        while (next != null) {
+            if (!visited.add(next)) {
+                throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Folgelink wiederholt sich");
+            }
+            ConfluenceHttpResponse response = send(session, next, what, config.maxResponseBytes());
+            JsonObject json = jsonObject(response, what);
+            payloads.add(response.body());
+            if (contentType == null) {
+                contentType = response.contentType();
+            }
+            int index = 0;
+            for (JsonObject result : results(json, what)) {
+                index++;
+                if (attachmentId(result) == null) {
+                    warnings.add("Listenseite " + payloads.size() + ", Eintrag " + index
+                            + ": Anhang ohne gültige ID (" + idShape(result) + ") ausgelassen");
+                    continue;
+                }
+                attachments.add(toAttachment(result, contentId));
+                if (attachments.size() > max) {
+                    throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                            what + ": mehr als " + max + " Anhänge, Liste wird nicht gekürzt");
+                }
+            }
+            next = nextLink(json, what);
+        }
+        return new StoredAttachments(payloads, contentType, attachments, warnings);
+    }
+
     /** Ein Anhang; {@code NOT_FOUND}, wenn es ihn nicht gibt. */
     Attachment attachment(Session session, String attachmentId) throws KnowledgeSourceException {
         JsonObject json = getJson(session, "/rest/api/content/" + attachmentId + "?expand=version,container",
@@ -1874,6 +1921,22 @@ final class ConfluenceRestClient {
             this.payload = payload;
             this.contentType = contentType;
             this.page = page;
+        }
+    }
+
+    /** Antwortkörper aller Seiten einer Anhangsliste, unverändert, mit den daraus gelesenen Anhängen. */
+    static final class StoredAttachments {
+        final List<byte[]> payloads;
+        final String contentType;
+        final List<Attachment> attachments;
+        final List<String> warnings;
+
+        StoredAttachments(List<byte[]> payloads, String contentType, List<Attachment> attachments,
+                          List<String> warnings) {
+            this.payloads = payloads;
+            this.contentType = contentType;
+            this.attachments = attachments;
+            this.warnings = warnings;
         }
     }
 
