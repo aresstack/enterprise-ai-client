@@ -97,7 +97,7 @@ public class RagChatUseCaseTest {
         List<ChatMessage> sent = chatPort.lastRequest().messages();
         assertEquals(2, sent.size());
         assertEquals(ChatRole.SYSTEM, sent.get(0).role());
-        assertEquals("Du bist hilfsbereit.\n\n" + turn.context().text(), sent.get(0).content());
+        assertEquals(turn.context().text() + "\n\nDu bist hilfsbereit.", sent.get(0).content());
         assertTrue(sent.get(0).content().contains("apt install openjdk-8-jdk"));
         assertEquals(ChatMessage.user(QUESTION), sent.get(1));
         assertNoDeveloperRole(chatPort.requests());
@@ -787,7 +787,7 @@ public class RagChatUseCaseTest {
         String triage = chatPort.requests().get(0).messages().get(1).content();
         assertTrue(triage, triage.contains(note));
         assertTrue(triage, triage.endsWith("Aktuelle Nachricht: Aklima bitte erstmal das Programm"));
-        assertEquals(ChatMessage.system("System\n\n" + note), chatPort.lastRequest().messages().get(0));
+        assertEquals(ChatMessage.system(note + "\n\nSystem"), chatPort.lastRequest().messages().get(0));
         assertEquals("the note stays out of the history",
                 ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
     }
@@ -924,7 +924,7 @@ public class RagChatUseCaseTest {
         assertTrue(block, block.contains("suspected-tokens: Aklima"));
         String triage = chatPort.requests().get(0).messages().get(1).content();
         assertTrue(triage, triage.contains(block + "\n\nAktuelle Nachricht: Aklima bitte erstmal das Programm"));
-        assertEquals(ChatMessage.system("System\n\n" + block), chatPort.lastRequest().messages().get(0));
+        assertEquals(ChatMessage.system(block + "\n\nSystem"), chatPort.lastRequest().messages().get(0));
         assertEquals(ChatMessage.user("Aklima bitte erstmal das Programm"), chat.conversation(id).messages().get(0));
     }
 

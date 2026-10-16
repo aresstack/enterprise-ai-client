@@ -172,9 +172,8 @@ public final class ChatService {
      * Wie {@link #send(ChatConversationId, String, ChatOptions, ChatTurnListener)}, gibt dem Modell aber für
      * genau diesen Turn zusätzlich {@code context} mit, z. B. abgerufenes Wissen (RAG).
      *
-     * <p>Der Kontext wird als System-Anteil an den System-Prompt angehängt (durch eine Leerzeile getrennt) bzw.
-     * bildet ohne System-Prompt die einzige System-Nachricht; er steht damit vor der Historie und getrennt von
-     * der Nutzerfrage. Er gelangt nicht in die Historie: Dort stehen wie bei {@code send} nur die unveränderte
+     * <p>The context becomes part of the single system message, in front of the editable system prompt (see {@link
+     * TurnContext#compose(String)}); it stands before the history and apart from the user message. Er gelangt nicht in die Historie: Dort stehen wie bei {@code send} nur die unveränderte
      * Nutzerfrage und die Antwort, spätere Turns sehen den Kontext nicht mehr. Die Rolle {@code developer} wird
      * nie verwendet.
      *
@@ -182,8 +181,7 @@ public final class ChatService {
      */
     public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
                                     ChatTurnListener listener) {
-        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener,
-                chatPort);
+        return sendWithContext(id, userText, TurnContext.of(context), options, listener, chatPort);
     }
 
     /**
@@ -195,7 +193,21 @@ public final class ChatService {
      */
     public ChatTurn sendWithContext(ChatConversationId id, String userText, String context, ChatOptions options,
                                     ChatTurnListener listener, ChatCompletionPort via) {
-        return start(id, userText, context == null || context.trim().isEmpty() ? null : context, options, listener,
+        return sendWithContext(id, userText, TurnContext.of(context), options, listener, via);
+    }
+
+    /**
+     * Like {@link #sendWithContext(ChatConversationId, String, String, ChatOptions, ChatTurnListener,
+     * ChatCompletionPort)} with a structured context: the system message is composed by {@link
+     * TurnContext#compose(String)}, i.e. dynamic turn data, then the editable system prompt, then the client rules.
+     * The user message and the history stay unchanged.
+     *
+     * @param context the turn context; {@code null} or empty behaves like {@code send}
+     * @param via     port for this turn only; {@code null} means the default port
+     */
+    public ChatTurn sendWithContext(ChatConversationId id, String userText, TurnContext context, ChatOptions options,
+                                    ChatTurnListener listener, ChatCompletionPort via) {
+        return start(id, userText, context == null || context.isEmpty() ? null : context, options, listener,
                 via == null ? chatPort : via);
     }
 
@@ -214,12 +226,12 @@ public final class ChatService {
         return chatPort.complete(new ChatRequest(new ArrayList<ChatMessage>(messages), effective));
     }
 
-    private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,
+    private ChatTurn start(ChatConversationId id, String userText, TurnContext context, ChatOptions options,
                            ChatTurnListener listener) {
         return start(id, userText, context, options, listener, chatPort);
     }
 
-    private ChatTurn start(ChatConversationId id, String userText, String context, ChatOptions options,
+    private ChatTurn start(ChatConversationId id, String userText, TurnContext context, ChatOptions options,
                            ChatTurnListener listener, ChatCompletionPort port) {
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
@@ -271,8 +283,9 @@ public final class ChatService {
         }
     }
 
-    private static List<ChatMessage> withContext(ChatConversation conversation, String context) {
-        String system = conversation.systemPrompt() == null ? context : conversation.systemPrompt() + "\n\n" + context;
+    /** The one place the system message of a turn with context is composed (#126). */
+    private static List<ChatMessage> withContext(ChatConversation conversation, TurnContext context) {
+        String system = context.compose(conversation.systemPrompt());
         List<ChatMessage> messages = new ArrayList<ChatMessage>(conversation.messages().size() + 1);
         messages.add(ChatMessage.system(system));
         messages.addAll(conversation.messages());

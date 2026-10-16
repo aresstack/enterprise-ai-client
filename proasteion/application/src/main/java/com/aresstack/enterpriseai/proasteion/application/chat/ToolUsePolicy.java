@@ -1,10 +1,16 @@
 package com.aresstack.enterpriseai.proasteion.application.chat;
 
+import com.aresstack.enterpriseai.astu.acropolis.chat.TurnContext;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.InformationNeed;
+import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Client principles for choosing tools in the chat, as system part of every turn with tools. They apply regardless of
@@ -44,7 +50,82 @@ public final class ToolUsePolicy {
             + "kennst, ersetzt die Recherche nicht. Antworte nur aus den Befunden und nenne ihre Quellen; findet sie "
             + "nichts, sag das und nenne eine öffentliche Bedeutung nur als mögliche Lesart, nie stillschweigend.";
 
+    static final String ROUTE_PREFIX = "[Routing für diese Nachricht laut Antwortplan] ";
+
+    static final String ROUTE_DIRECT = ROUTE_PREFIX + "Antworte direkt, ohne Programmhilfe und ohne Recherche in den "
+            + "Wissensquellen, außer die Nachricht verlangt das ausdrücklich.";
+
+    static final String ROUTE_HELP = ROUTE_PREFIX + "Es geht um dieses Programm: nutze " + AppHelpMcpTools.APP_HELP_SEARCH
+            + " und " + AppHelpMcpTools.APP_HELP_READ + ", nicht die Wissensquellen des Nutzers.";
+
+    static final String ROUTE_RESEARCH = ROUTE_PREFIX + "Organisationsspezifischer Informationsbedarf: nutze "
+            + ResearchDelegationTool.NAME + " mit dem Auftrag in natürlicher Sprache, bevor du antwortest.";
+
+    static final String ROUTE_SEARCH = ROUTE_PREFIX + "Organisationsspezifischer Informationsbedarf: nutze "
+            + KnowledgeMcpTools.KNOWLEDGE_SEARCH + " mit wenigen Kernbegriffen, bevor du antwortest.";
+
     private ToolUsePolicy() {
+    }
+
+    /** What the chat should do for a turn, derived from the answer plan; names no tool. */
+    enum Route {
+        DIRECT, APPLICATION_HELP, RESEARCH, NONE
+    }
+
+    /** The route of {@code plan}: the planned next action decides, else the information need. */
+    static Route route(AnswerPlan plan) {
+        if (plan == null || !plan.isKnown()) {
+            return Route.NONE;
+        }
+        NextAction next = plan.nextAction();
+        if (next == NextAction.USE_APPLICATION_HELP) {
+            return Route.APPLICATION_HELP;
+        }
+        if (next == NextAction.SEARCH_INTERNAL_KNOWLEDGE || next == NextAction.RESOLVE_INTERNAL_TERM) {
+            return Route.RESEARCH;
+        }
+        if (next == NextAction.ANSWER_DIRECTLY) {
+            return Route.DIRECT;
+        }
+        if (next != NextAction.UNKNOWN) {
+            return Route.NONE; // clarification is answered by the client, external search is not routed here
+        }
+        InformationNeed need = plan.informationNeed();
+        if (need == InformationNeed.APPLICATION_HELP) {
+            return Route.APPLICATION_HELP;
+        }
+        if (need == InformationNeed.INTERNAL_KNOWLEDGE || need == InformationNeed.TERM_RESOLUTION) {
+            return Route.RESEARCH;
+        }
+        if (need == InformationNeed.NO_INFORMATION_NEEDED || need == InformationNeed.GENERAL_KNOWLEDGE) {
+            return Route.DIRECT;
+        }
+        return Route.NONE;
+    }
+
+    /**
+     * @param offered names of the tools the turn offers
+     * @return the routing rule for a plan, naming only offered tools; a route whose tool is not offered gives no rule
+     */
+    public static TurnContext.PlanRouting routing(Collection<String> offered) {
+        final List<String> tools = offered == null ? new ArrayList<String>() : new ArrayList<String>(offered);
+        return plan -> rule(route(plan), tools);
+    }
+
+    static String rule(Route route, Collection<String> offered) {
+        switch (route) {
+            case DIRECT:
+                return offered.isEmpty() ? null : ROUTE_DIRECT;
+            case APPLICATION_HELP:
+                return offered.contains(AppHelpMcpTools.APP_HELP_SEARCH) ? ROUTE_HELP : null;
+            case RESEARCH:
+                if (offered.contains(ResearchDelegationTool.NAME)) {
+                    return ROUTE_RESEARCH;
+                }
+                return offered.contains(KnowledgeMcpTools.KNOWLEDGE_SEARCH) ? ROUTE_SEARCH : null;
+            default:
+                return null;
+        }
     }
 
     /**

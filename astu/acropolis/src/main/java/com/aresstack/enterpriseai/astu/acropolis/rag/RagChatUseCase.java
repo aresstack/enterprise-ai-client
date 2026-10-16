@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.rag;
 
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatService;
+import com.aresstack.enterpriseai.astu.acropolis.chat.TurnContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver;
 import com.aresstack.enterpriseai.astu.acropolis.chat.ChatTurn;
@@ -296,6 +297,22 @@ public final class RagChatUseCase {
     public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
                             ChatTurnListener listener, String extraContext, ChatCompletionPort via,
                             RetrievalProgress progress, MessageOrigin origin) {
+        return send(id, userText, rag, options, listener, TurnContext.of(extraContext), via, progress, origin);
+    }
+
+    /**
+     * Like {@link #send(ChatConversationId, String, RagOptions, ChatOptions, ChatTurnListener, String,
+     * ChatCompletionPort, RetrievalProgress, MessageOrigin)} with a structured turn context (#126): this use case adds
+     * the project context, the reading of the message, the retrieved knowledge and the routing rule for the plan;
+     * {@link ChatService} composes them with the editable system prompt in one fixed order.
+     *
+     * @param context the caller's part of the turn context (client rules, attachments, quotes ...); {@code null} for
+     *                none
+     */
+    public RagChatTurn send(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
+                            ChatTurnListener listener, TurnContext context, ChatCompletionPort via,
+                            RetrievalProgress progress, MessageOrigin origin) {
+        TurnContext extraContext = context == null ? TurnContext.empty() : context;
         MessageOrigin from = origin == null ? MessageOrigin.TYPED : origin;
         if (userText == null || userText.trim().isEmpty()) {
             throw new IllegalArgumentException("user text must not be blank");
@@ -306,15 +323,15 @@ public final class RagChatUseCase {
         // Resolved for every turn from the current assignment, never bound when the chat started (#143).
         EffectiveProjectContext project = projectContext(id);
         turnScopes.put(id, project.scope());
-        extraContext = join(project.systemContext(), extraContext);
+        extraContext = extraContext.with(TurnContext.Section.PROJECT, project.systemContext());
         AnswerPlanningPolicy policy = policy();
         if (rag == null || !rag.isEnabled()) {
             TurnReading reading = read(id, userText, from, options, policy, policy.isEnabled(), progress);
-            extraContext = join(reading.hint(from), extraContext);
+            extraContext = reading.contextFor(extraContext, from);
             if (reading.clarifies()) {
                 return clarify(id, userText, options, listener, extraContext, reading);
             }
-            ChatTurn turn = extraContext == null && via == null
+            ChatTurn turn = extraContext.isEmpty() && via == null
                     ? chat.send(id, userText, options, listener)
                     : chat.sendWithContext(id, userText, extraContext, options, listener, via);
             return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
@@ -328,7 +345,7 @@ public final class RagChatUseCase {
         try {
             RetrievalProgress steps = progress == null ? RetrievalProgress.none() : progress;
             TurnReading reading = read(id, userText, from, options, policy, true, steps);
-            extraContext = join(reading.hint(from), extraContext);
+            extraContext = reading.contextFor(extraContext, from);
             if (reading.clarifies()) {
                 return clarify(id, userText, options, listener, extraContext, reading);
             }
@@ -348,7 +365,7 @@ public final class RagChatUseCase {
     }
 
     private RagChatTurn sendWithRetrieval(ChatConversationId id, String userText, RagOptions rag,
-                                          ChatOptions options, ChatTurnListener listener, String extraContext,
+                                          ChatOptions options, ChatTurnListener listener, TurnContext extraContext,
                                           ChatCompletionPort via, RetrievalProgress progress,
                                           FollowUpResearch followUps, MessageOrigin origin,
                                           TurnReading reading, AnswerPlanningPolicy policy) {
@@ -456,8 +473,9 @@ public final class RagChatUseCase {
             return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,
                     hitCounts, reused);
         }
-        String combined = join(join(context.text(), followUps.isEnabled()
-                ? searchNote(allQueries, !context.sources().isEmpty()) : null), extraContext);
+        TurnContext combined = extraContext.with(TurnContext.Section.KNOWLEDGE, context.text())
+                .with(TurnContext.Section.RETRIEVAL_NOTES, followUps.isEnabled()
+                        ? searchNote(allQueries, !context.sources().isEmpty()) : null);
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
@@ -673,7 +691,7 @@ public final class RagChatUseCase {
     }
 
     private RagChatTurn sendAdaptive(ChatConversationId id, String userText, RagOptions rag, ChatOptions options,
-                                     ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                                     ChatTurnListener listener, TurnContext extraContext, ChatCompletionPort via,
                                      RetrievalProgress progress, EvidencePolicy policy, MessageOrigin origin,
                                      TurnReading reading, AnswerPlanningPolicy planning) {
         String analysis = reading.modelHint();
@@ -846,8 +864,9 @@ public final class RagChatUseCase {
             return unresolved(id, userText, options, listener, extraContext, reading, context, warnings, queries,
                     hitCounts, reused);
         }
-        String combined = join(join(join(context.text(), gap), searchNote(allQueries, !context.sources().isEmpty())),
-                extraContext);
+        TurnContext combined = extraContext.with(TurnContext.Section.KNOWLEDGE, context.text())
+                .with(TurnContext.Section.RETRIEVAL_NOTES, gap)
+                .with(TurnContext.Section.RETRIEVAL_NOTES, searchNote(allQueries, !context.sources().isEmpty()));
         ChatTurn turn = chat.sendWithContext(id, userText, combined, options, listener, via);
         return new RagChatTurn(turn, true, context, warnings, failed, queries, hitCounts, reused);
     }
@@ -857,7 +876,7 @@ public final class RagChatUseCase {
      * Kontextblock, der Wissenskontext früherer Nachrichten bleibt für spätere.
      */
     private RagChatTurn withoutSearch(ChatConversationId id, String userText, ChatOptions options,
-                                      ChatTurnListener listener, String extraContext, ChatCompletionPort via,
+                                      ChatTurnListener listener, TurnContext extraContext, ChatCompletionPort via,
                                       RetrievalProgress progress) {
         progress.searchSkipped();
         ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener, via);
@@ -957,7 +976,7 @@ public final class RagChatUseCase {
      * question lands in the history like any answer.
      */
     private RagChatTurn clarify(ChatConversationId id, String userText, ChatOptions options,
-                                ChatTurnListener listener, String extraContext, TurnReading reading) {
+                                ChatTurnListener listener, TurnContext extraContext, TurnReading reading) {
         ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
                 new ClarificationPort(reading.answerPlan.clarificationQuestion()));
         return new RagChatTurn(turn, false, PromptContext.empty(0), Collections.<RetrievalWarning>emptyList(),
@@ -969,7 +988,7 @@ public final class RagChatUseCase {
      * other readings of the plan as questions. The question lands in the history like any answer.
      */
     private RagChatTurn unresolved(ChatConversationId id, String userText, ChatOptions options,
-                                   ChatTurnListener listener, String extraContext, TurnReading reading,
+                                   ChatTurnListener listener, TurnContext extraContext, TurnReading reading,
                                    PromptContext context, List<RetrievalWarning> warnings, List<String> queries,
                                    List<Integer> hitCounts, int reused) {
         ChatTurn turn = chat.sendWithContext(id, userText, extraContext, options, listener,
@@ -1050,19 +1069,18 @@ public final class RagChatUseCase {
             return planBlock != null ? planBlock : analysis;
         }
 
+        /**
+         * {@code context} with what the model reads about the message as {@link TurnContext.Section#TURN_READING} and
+         * the routing rule for the plan, if any.
+         */
+        TurnContext contextFor(TurnContext context, MessageOrigin origin) {
+            return context.with(TurnContext.Section.TURN_READING, hint(origin)).routed(answerPlan);
+        }
+
         /** As {@link #modelHint()}, with the origin note of a dictation when there is neither. */
         String hint(MessageOrigin origin) {
             String hint = modelHint();
             return hint != null ? hint : origin.modelNote();
         }
-    }
-
-    private static String join(String first, String second) {
-        boolean hasFirst = first != null && !first.trim().isEmpty();
-        boolean hasSecond = second != null && !second.trim().isEmpty();
-        if (hasFirst && hasSecond) {
-            return first + "\n\n" + second;
-        }
-        return hasFirst ? first : hasSecond ? second : null;
     }
 }
