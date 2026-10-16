@@ -950,7 +950,12 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     private void applyActivity(final RowState state, final TranscriptEntry entry) {
         final AnimatedThoughtBubblePanel thought = state.thought;
         if (thought == null) {
-            return; // schon zur Ergebniszeile geworden
+            // already a result line: a later summary (the final funnel of the research card) rebuilds it
+            if (entry.getState() != TranscriptEntry.State.STREAMING) {
+                replaceRow(state, entry);
+                refresh(isNearBottom());
+            }
+            return;
         }
         if (entry.getState() == TranscriptEntry.State.STREAMING) {
             thought.updateActivity(entry.getActivityTitle(), entry.getText());
