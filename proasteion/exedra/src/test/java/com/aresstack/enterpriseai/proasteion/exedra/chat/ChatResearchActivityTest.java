@@ -137,7 +137,9 @@ public class ChatResearchActivityTest {
         assertTrue(states.toString(), containsFragment(states, "Treffer: "));
         assertTrue(states.toString(), containsFragment(states, ChatResearchCard.PREPARING));
         for (String state : states) {
-            assertFalse("keine erfundenen Seitenzähler: " + state, state.contains("Seiten"));
+            // page counts only as the funnel line taken from the search run protocol
+            assertFalse("keine erfundenen Seitenzähler: " + state,
+                    state.replaceAll("\\d+ Seiten geprüft", "").contains("Seiten"));
         }
     }
 
