@@ -107,6 +107,8 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     public static final String NAVIGATION_TAB = "Navigation";
     /** Die Karte des Lesebereichs neben Chat und Agent im Deck. */
     static final String READER_CARD = "READER";
+    static final String PROJECT_CARD = "PROJECT";
+    static final String OPEN_PROJECT_LABEL = "Projekt öffnen";
     private final List<ChatSidebarTab> agentTabs = new ArrayList<ChatSidebarTab>();
     static final String NEW_CHAT_LABEL = "+ Neuer Chat";
     static final String SETTINGS_TOOLTIP = "Einstellungen";
@@ -167,6 +169,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     private AWTEventListener sidebarMouseWatcher;
     private boolean menuLocked;
     private WorkspaceActions actions;
+    private ChatProjectView projectView;
     /** Fasst die Ereignisse eines Ziehens am Teiler zu EINEM Schreibvorgang zusammen. */
     private final Timer sidebarWidthSaveTimer;
     private int pendingSidebarWidth = -1;
@@ -1333,6 +1336,9 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
 
     JPopupMenu projectMenu(final ChatProjectItem project) {
         JPopupMenu menu = new JPopupMenu();
+        JMenuItem open = new JMenuItem(OPEN_PROJECT_LABEL);
+        open.addActionListener(event -> openProject(project));
+        menu.add(open);
         JMenuItem newChat = new JMenuItem(NEW_CHAT_IN_PROJECT_LABEL);
         newChat.setEnabled(!chatShell.model().isStreaming());
         newChat.addActionListener(event -> {
@@ -1407,6 +1413,40 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     }
 
     /** The project instructions (free text); they apply from the next question on. */
+    /** Shows the project view (#143) in the central area. */
+    void openProject(ChatProjectItem project) {
+        if (actions == null) {
+            return;
+        }
+        if (projectView == null) {
+            projectView = new ChatProjectView(actions, this::startChatInProject, palette);
+            deck.add(projectView, PROJECT_CARD);
+        }
+        projectView.show(project);
+        readerShowing = false;
+        cards.show(deck, PROJECT_CARD);
+    }
+
+    ChatProjectView projectView() {
+        return projectView;
+    }
+
+    /** The project view's input field: a new chat in the project that asks {@code question} right away. */
+    private void startChatInProject(String projectId, String question) {
+        if (chatShell.model().isStreaming()) {
+            JOptionPane.showMessageDialog(this, "Bitte warten, bis die laufende Antwort fertig ist.",
+                    "Neuer Chat", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        modes.select(ShellMode.CHAT);
+        if (actions.newChatInProjectRequested(projectId)) {
+            expandedProjects.add(projectId);
+            showConversationCard();
+            chatShell.composer().sendText(question);
+        }
+        refreshChatList();
+    }
+
     private void editProjectContext(ChatProjectItem project) {
         javax.swing.JTextArea instructions = new javax.swing.JTextArea(project.instructions(), 10, 48);
         instructions.setLineWrap(true);

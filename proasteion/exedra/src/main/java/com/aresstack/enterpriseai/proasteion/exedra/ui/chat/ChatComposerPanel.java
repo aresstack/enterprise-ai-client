@@ -315,6 +315,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return resourcesButton;
     }
 
+    /** Puts {@code text} into the editor and sends it like the send button (e.g. from the project view, #143). */
+    public void sendText(String text) {
+        editor.setText(text == null ? "" : text);
+        submit();
+    }
+
     /** Sendet den Entwurf, wenn das Model es erlaubt; der Editor wird danach geleert. */
     void submit() {
         if (isDictationActive()) {

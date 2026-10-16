@@ -577,6 +577,42 @@ public class ChatWorkspacePanelTest {
         public boolean canMoveProject(String projectId, String parentId) {
             return !"p-a".equals(projectId) || parentId == null;
         }
+
+        final List<String> newChats = new ArrayList<String>();
+
+        @Override
+        public List<ChatProjectFileItem> projectFiles(String projectId) {
+            return "p-a".equals(projectId)
+                    ? Collections.singletonList(new ChatProjectFileItem("att-0000000a", "plan.txt", 2048))
+                    : Collections.<ChatProjectFileItem>emptyList();
+        }
+
+        @Override
+        public boolean newChatInProjectRequested(String projectId) {
+            newChats.add(projectId);
+            return true;
+        }
+    }
+
+    @Test
+    public void projectViewShowsFilesMemoriesAndStartsAChatFromItsInputField() throws Exception {
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                ChatWorkspacePanel workspace = chatOnlyWorkspace();
+                ProjectActions actions = new ProjectActions();
+                workspace.setActions(actions);
+                workspace.openProject(actions.projects.get(0));
+                ChatProjectView view = workspace.projectView();
+                assertEquals("p-a", view.projectId());
+                assertTrue(view.isVisible());
+
+                view.questionField().setText("Was ist der Zielwert?");
+                view.sendButton().doClick();
+                assertEquals(Collections.singletonList("p-a"), actions.newChats);
+                assertEquals("", view.questionField().getText());
+            }
+        });
     }
 
     @Test
@@ -629,7 +665,8 @@ public class ChatWorkspacePanelTest {
                         labels.add(((javax.swing.JMenuItem) item).getText());
                     }
                 }
-                assertEquals(Arrays.asList(ChatWorkspacePanel.NEW_CHAT_IN_PROJECT_LABEL,
+                assertEquals(Arrays.asList(ChatWorkspacePanel.OPEN_PROJECT_LABEL,
+                        ChatWorkspacePanel.NEW_CHAT_IN_PROJECT_LABEL,
                         ChatWorkspacePanel.PROJECT_CONTEXT_LABEL, ChatWorkspacePanel.NEW_SUBPROJECT_LABEL,
                         ChatWorkspacePanel.RENAME_PROJECT_LABEL, ChatWorkspacePanel.DELETE_PROJECT_LABEL), labels);
             }
