@@ -190,8 +190,52 @@ final class ConfluenceRestClient {
      *                                  {@link ResponseTooLargeException} über {@code maxResponseBytes}
      */
     StoredPage storedPage(Session session, String contentId) throws KnowledgeSourceException {
-        ConfluenceHttpResponse response = send(session, "/rest/api/content/" + contentId + "?expand="
-                + SNAPSHOT_EXPAND, "Seite", config.maxResponseBytes());
+        return storedPage(send(session, storedPagePath(contentId), "Seite", config.maxResponseBytes()), contentId);
+    }
+
+    /**
+     * Wie {@link #storedPage}, aber über den asynchronen Transport: dieselbe Anfrage, dieselbe Fehlerabbildung und
+     * dieselbe JSON-Abbildung, die auf {@code mapping} läuft statt auf dem I/O-Thread des Transports. Fehler beenden
+     * die Stufe ausnahmsweise mit {@link KnowledgeSourceException}; ein Abbruch der Stufe bricht die Anfrage ab.
+     */
+    java.util.concurrent.CompletionStage<StoredPage> storedPageAsync(Session session, final String contentId,
+            ConfluenceAsyncHttpTransport async, java.util.concurrent.Executor mapping) {
+        final java.util.concurrent.CompletableFuture<StoredPage> result =
+                new java.util.concurrent.CompletableFuture<StoredPage>();
+        final int maxBytes = config.maxResponseBytes();
+        final java.util.concurrent.CompletionStage<ConfluenceHttpResponse> request;
+        try {
+            request = async.getAsync(uri(storedPagePath(contentId), "Seite"), session.headers, maxBytes);
+        } catch (KnowledgeSourceException e) {
+            result.completeExceptionally(e);
+            return result;
+        } catch (RuntimeException e) {
+            result.completeExceptionally(e);
+            return result;
+        }
+        request.whenCompleteAsync((response, error) -> {
+            try {
+                if (error != null) {
+                    throw transportFailure(error, "Seite", maxBytes);
+                }
+                result.complete(storedPage(checked(response, "Seite"), contentId));
+            } catch (KnowledgeSourceException | RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        }, mapping);
+        result.whenComplete((page, error) -> {
+            if (result.isCancelled()) {
+                request.toCompletableFuture().cancel(true);
+            }
+        });
+        return result;
+    }
+
+    private static String storedPagePath(String contentId) {
+        return "/rest/api/content/" + contentId + "?expand=" + SNAPSHOT_EXPAND;
+    }
+
+    private StoredPage storedPage(ConfluenceHttpResponse response, String contentId) throws KnowledgeSourceException {
         JsonObject json = jsonObject(response, "Seite");
         if (!"page".equals(string(json, "type"))) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Inhalt " + contentId + " ist keine Seite");
@@ -1427,25 +1471,50 @@ final class ConfluenceRestClient {
 
     private ConfluenceHttpResponse send(Session session, String path, String what, int maxBytes)
             throws KnowledgeSourceException {
-        URI uri;
-        try {
-            uri = URI.create(config.baseUrl() + path);
-        } catch (IllegalArgumentException e) {
-            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": ungültiger Pfad");
-        }
+        URI uri = uri(path, what);
         ConfluenceHttpResponse response;
         try {
             response = transport.get(uri, session.headers, maxBytes);
-        } catch (ConfluenceResponseTooLargeException e) {
-            throw new ResponseTooLargeException(what + ": Antwort größer als " + maxBytes + " Bytes", maxBytes);
         } catch (IOException e) {
-            throw new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar ("
-                    + cause(e) + ")", e);
+            throw transportFailure(e, what, maxBytes);
         }
+        return checked(response, what);
+    }
+
+    private URI uri(String path, String what) throws KnowledgeSourceException {
+        try {
+            return URI.create(config.baseUrl() + path);
+        } catch (IllegalArgumentException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": ungültiger Pfad");
+        }
+    }
+
+    private static ConfluenceHttpResponse checked(ConfluenceHttpResponse response, String what)
+            throws KnowledgeSourceException {
         if (response.isSuccess()) {
             return response;
         }
         throw statusFailure(what, response.status());
+    }
+
+    /**
+     * Bildet einen Transportfehler ab, synchron wie asynchron (dort ggf. in {@code CompletionException} verpackt):
+     * zu groß → {@link ResponseTooLargeException}, {@link IOException} → {@code UNAVAILABLE}.
+     */
+    private static KnowledgeSourceException transportFailure(Throwable error, String what, int maxBytes) {
+        Throwable failure = error;
+        while ((failure instanceof java.util.concurrent.CompletionException
+                || failure instanceof java.util.concurrent.ExecutionException) && failure.getCause() != null) {
+            failure = failure.getCause();
+        }
+        if (failure instanceof ConfluenceResponseTooLargeException) {
+            return new ResponseTooLargeException(what + ": Antwort größer als " + maxBytes + " Bytes", maxBytes);
+        }
+        if (failure instanceof KnowledgeSourceException) {
+            return (KnowledgeSourceException) failure;
+        }
+        return new KnowledgeSourceException(Kind.UNAVAILABLE, what + ": Confluence nicht erreichbar ("
+                + cause(failure) + ")", failure);
     }
 
     /** Bildet einen Fehlerstatus auf {@link Kind} ab (siehe Klassenkommentar). */
