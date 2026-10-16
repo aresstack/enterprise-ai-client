@@ -83,11 +83,10 @@ public class ChatProjectsTest {
     public void contextChangesApplyAtOnceWithoutInheritance() {
         String a = projects.create("Vertrieb", null);
         String a1 = projects.create("Nord", a);
-        projects.updateContext(a, "  Sieze den Kunden.  ", Arrays.asList("Rabatt max. 5 %", " ", "Ansprechpartner Meier"));
+        projects.updateInstructions(a, "  Sieze den Kunden.  ");
         projects.assign("chat", a);
         EffectiveProjectContext context = projects.resolve("chat");
         assertEquals("Sieze den Kunden.", context.instructions());
-        assertEquals(Arrays.asList("Rabatt max. 5 %", "Ansprechpartner Meier"), context.memories());
         assertTrue(context.systemContext().contains("Projekt \"Vertrieb\""));
 
         projects.assign("chat", a1);
@@ -118,7 +117,7 @@ public class ChatProjectsTest {
     public void stateSurvivesARestart() {
         String a = projects.create("A", null);
         String a1 = projects.create("A1", a);
-        projects.updateContext(a1, "Kurz antworten.", Collections.<String>emptyList());
+        projects.updateInstructions(a1, "Kurz antworten.");
         projects.assign("chat", a1);
         projects.assign("left", a);
         projects.assign("left", null);

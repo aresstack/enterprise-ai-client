@@ -544,7 +544,7 @@ public class RagChatUseCaseTest {
         assertTrue(turn.sources().get(0).hit().isRestored());
     }
 
-    /** #143: project instructions and memories go into this turn's system part, resolved anew for every turn. */
+    /** #143: project instructions go into this turn's system part, resolved anew for every turn. */
     @Test
     public void projectContextIsResolvedForEveryTurnAndNeverEntersTheHistory() throws Exception {
         com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjects projects = projects();
@@ -552,20 +552,20 @@ public class RagChatUseCaseTest {
         ChatConversationId id = chat.openConversation("Du bist hilfsbereit.");
         String a = projects.create("Projekt A", null);
         String b = projects.create("Projekt B", null);
-        projects.updateContext(a, "Antworte immer auf Englisch.", Collections.singletonList("Kunde heißt Nordwind"));
-        projects.updateContext(b, "Antworte in Reimen.", Collections.<String>emptyList());
+        projects.updateInstructions(a, "Antworte immer auf Englisch.");
+        projects.updateInstructions(b, "Antworte in Reimen.");
         projects.assign(id.value(), a);
 
         chatPort.enqueueAnswer("Hello.");
         awaitDone(rag.send(id, "Hallo", RagOptions.disabled(), listener()));
         String system = chatPort.lastRequest().messages().get(0).content();
-        assertTrue(system.contains("Antworte immer auf Englisch.") && system.contains("Kunde heißt Nordwind"));
+        assertTrue(system.contains("Antworte immer auf Englisch."));
 
         projects.assign(id.value(), b);
         chatPort.enqueueAnswer("Reim.");
         awaitDone(rag.send(id, "Und jetzt?", RagOptions.disabled(), listener()));
         system = chatPort.lastRequest().messages().get(0).content();
-        assertFalse("A is gone for new turns", system.contains("Englisch") || system.contains("Nordwind"));
+        assertFalse("A is gone for new turns", system.contains("Englisch"));
         assertTrue(system.contains("Antworte in Reimen."));
 
         projects.assign(id.value(), null);

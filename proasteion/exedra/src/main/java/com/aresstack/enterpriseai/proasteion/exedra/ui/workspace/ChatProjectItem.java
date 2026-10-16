@@ -1,10 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.workspace;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-/** A chat project as the drawer shows it (#143): stable id, name, nesting and its context for the edit dialog. */
+/** A chat project as the drawer shows it (#143): stable id, name, nesting and its instructions for the edit dialog. */
 public final class ChatProjectItem {
 
     private final String id;
@@ -12,10 +8,8 @@ public final class ChatProjectItem {
     private final String parentId;
     private final int depth;
     private final String instructions;
-    private final List<String> memories;
 
-    public ChatProjectItem(String id, String name, String parentId, int depth, String instructions,
-                           List<String> memories) {
+    public ChatProjectItem(String id, String name, String parentId, int depth, String instructions) {
         if (id == null || id.isEmpty()) {
             throw new IllegalArgumentException("id must not be empty");
         }
@@ -24,8 +18,6 @@ public final class ChatProjectItem {
         this.parentId = parentId;
         this.depth = Math.max(0, depth);
         this.instructions = instructions == null ? "" : instructions;
-        this.memories = Collections.unmodifiableList(new ArrayList<String>(
-                memories == null ? Collections.<String>emptyList() : memories));
     }
 
     public String id() {
@@ -47,9 +39,5 @@ public final class ChatProjectItem {
 
     public String instructions() {
         return instructions;
-    }
-
-    public List<String> memories() {
-        return memories;
     }
 }

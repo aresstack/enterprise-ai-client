@@ -8,7 +8,6 @@ import org.junit.rules.TemporaryFolder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -24,7 +23,7 @@ public class FileChatProjectStoreTest {
         ChatProjects projects = new ChatProjects(new FileChatProjectStore(file));
         String a = projects.create("Vertrieb", null);
         String a1 = projects.create("Nord", a);
-        projects.updateContext(a1, "Kurz antworten.", Collections.singletonList("Kunde Nordwind"));
+        projects.updateInstructions(a1, "Kurz antworten.");
         projects.assign("chat-1", a1);
 
         ChatProjects restarted = new ChatProjects(new FileChatProjectStore(file));

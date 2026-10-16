@@ -1080,7 +1080,7 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
     static final String NO_PROJECT_LABEL = "Chats ohne Projekt";
     static final String MOVE_CHAT_LABEL = "Verschieben nach";
     static final String NEW_CHAT_IN_PROJECT_LABEL = "Neuer Chat in diesem Projekt";
-    static final String PROJECT_CONTEXT_LABEL = "Anweisungen & Erinnerungen …";
+    static final String PROJECT_CONTEXT_LABEL = "Projektanweisungen …";
     static final String NEW_SUBPROJECT_LABEL = "Unterprojekt anlegen …";
     static final String RENAME_PROJECT_LABEL = "Umbenennen …";
     static final String DELETE_PROJECT_LABEL = "Löschen …";
@@ -1386,25 +1386,17 @@ public final class ChatWorkspacePanel extends JPanel implements ShellModeModel.L
         }
     }
 
-    /** Instructions (free text) and memories (one per line); they apply from the next question on. */
+    /** The project instructions (free text); they apply from the next question on. */
     private void editProjectContext(ChatProjectItem project) {
-        javax.swing.JTextArea instructions = new javax.swing.JTextArea(project.instructions(), 8, 48);
+        javax.swing.JTextArea instructions = new javax.swing.JTextArea(project.instructions(), 10, 48);
         instructions.setLineWrap(true);
         instructions.setWrapStyleWord(true);
-        javax.swing.JTextArea memories = new javax.swing.JTextArea(String.join("\n", project.memories()), 6, 48);
-        memories.setLineWrap(true);
-        memories.setWrapStyleWord(true);
-        JPanel form = new JPanel();
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-        form.add(new JLabel("Projektanweisungen (gelten für jede neue Frage in diesem Projekt):"));
-        form.add(new JScrollPane(instructions));
-        form.add(Box.createVerticalStrut(8));
-        form.add(new JLabel("Projekterinnerungen (eine je Zeile):"));
-        form.add(new JScrollPane(memories));
+        JPanel form = new JPanel(new BorderLayout(0, 4));
+        form.add(new JLabel("Projektanweisungen (gelten für jede neue Frage in diesem Projekt):"), BorderLayout.NORTH);
+        form.add(new JScrollPane(instructions), BorderLayout.CENTER);
         if (JOptionPane.showConfirmDialog(this, form, "Projekt „" + project.name() + "“",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
-            actions.updateProjectContextRequested(project.id(), instructions.getText(),
-                    Arrays.asList(memories.getText().split("\\r?\\n")));
+            actions.updateProjectInstructionsRequested(project.id(), instructions.getText());
         }
     }
 

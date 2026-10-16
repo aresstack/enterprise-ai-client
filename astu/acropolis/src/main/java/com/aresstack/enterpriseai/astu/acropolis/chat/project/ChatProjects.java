@@ -20,8 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>As {@link ProjectContextResolver} it answers, for every new turn, which project context currently applies.
  * Moving a chat raises its generation, so the {@linkplain EffectiveProjectContext#scope() scope} of every earlier
  * assignment stops matching (also after moving back). Deleting a project never deletes chats: the chats of the
- * project and of its sub-projects become chats without project. Sub-projects do not inherit instructions or
- * memories.
+ * project and of its sub-projects become chats without project. Sub-projects do not inherit instructions.
  *
  * <p>Thread-safe; listeners are called after every change on the calling thread.
  */
@@ -148,23 +147,14 @@ public final class ChatProjects implements ProjectContextResolver {
         return true;
     }
 
-    /** Replaces the instructions and memories of a project; they apply to the next turn of its chats. */
-    public boolean updateContext(String projectId, String instructions, List<String> memories) {
+    /** Replaces the instructions of a project; they apply to the next turn of its chats. */
+    public boolean updateInstructions(String projectId, String instructions) {
         synchronized (this) {
             ChatProjectRecord project = projectId == null ? null : projects.get(projectId);
             if (project == null) {
                 return false;
             }
             project.setInstructions(instructions == null ? "" : instructions.trim());
-            List<String> kept = new ArrayList<String>();
-            if (memories != null) {
-                for (String memory : memories) {
-                    if (memory != null && !memory.trim().isEmpty()) {
-                        kept.add(memory.trim());
-                    }
-                }
-            }
-            project.setMemories(kept);
             persist();
         }
         fire();

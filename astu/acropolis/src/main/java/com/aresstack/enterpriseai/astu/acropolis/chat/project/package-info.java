@@ -1,6 +1,6 @@
 /**
  * Organisational chat projects (#143): nested folders in the sidebar that group saved chats and carry their own
- * context (project instructions, project memories). Not to be confused with research projects of the research agent.
+ * context (project instructions; project memories live in the memory store of #144). Not to be confused with research projects of the research agent.
  *
  * <p>The project tree and the {@code chatId → projectId} assignment are persisted through the port
  * {@link com.aresstack.enterpriseai.astu.acropolis.chat.project.ChatProjectStore}, separately from the chat messages.

@@ -207,7 +207,7 @@ public final class RagChatUseCase {
     }
 
     /**
-     * Resolve the chat project context for every new turn (#143): its instructions and memories go into this turn's
+     * Resolve the chat project context for every new turn (#143): its instructions go into this turn's
      * system part, and knowledge context is only reused under the scope it was created in.
      *
      * @param resolver {@code null} = {@link ProjectContextResolver#none()}

@@ -440,7 +440,7 @@ public final class ShellAssembly {
                 List<ChatProjectItem> items = new ArrayList<ChatProjectItem>();
                 for (ChatProjectRecord project : chatProjects.projects()) {
                     items.add(new ChatProjectItem(project.getId(), project.getName(), project.getParentId(),
-                            chatProjects.depth(project.getId()), project.getInstructions(), project.getMemories()));
+                            chatProjects.depth(project.getId()), project.getInstructions()));
                 }
                 return items;
             }
@@ -481,8 +481,8 @@ public final class ShellAssembly {
             }
 
             @Override
-            public void updateProjectContextRequested(String projectId, String instructions, List<String> memories) {
-                chatProjects.updateContext(projectId, instructions, memories);
+            public void updateProjectInstructionsRequested(String projectId, String instructions) {
+                chatProjects.updateInstructions(projectId, instructions);
             }
 
             @Override

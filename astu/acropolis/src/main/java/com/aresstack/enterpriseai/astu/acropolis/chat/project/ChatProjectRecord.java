@@ -1,11 +1,9 @@
 package com.aresstack.enterpriseai.astu.acropolis.chat.project;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * One chat project as persisted: stable id (independent of name and position), name, parent ({@code null} = top
- * level), position among its siblings, and the project context (instructions, memories). Mutable only inside
+ * level), position among its siblings, and the project instructions. Project memories
+ * are not kept here: they live only in the memory store (#144). Mutable only inside
  * {@link ChatProjects}; callers get copies.
  */
 public final class ChatProjectRecord {
@@ -15,7 +13,6 @@ public final class ChatProjectRecord {
     private String parentId;
     private int order;
     private String instructions;
-    private List<String> memories = new ArrayList<String>();
 
     /** For deserialisation. */
     public ChatProjectRecord() {
@@ -31,7 +28,6 @@ public final class ChatProjectRecord {
     ChatProjectRecord copy() {
         ChatProjectRecord copy = new ChatProjectRecord(id, name, parentId, order);
         copy.instructions = instructions;
-        copy.memories = new ArrayList<String>(getMemories());
         return copy;
     }
 
@@ -56,10 +52,6 @@ public final class ChatProjectRecord {
         return instructions != null ? instructions : "";
     }
 
-    public List<String> getMemories() {
-        return memories != null ? memories : new ArrayList<String>();
-    }
-
     void setName(String name) {
         this.name = name;
     }
@@ -74,9 +66,5 @@ public final class ChatProjectRecord {
 
     void setInstructions(String instructions) {
         this.instructions = instructions;
-    }
-
-    void setMemories(List<String> memories) {
-        this.memories = new ArrayList<String>(memories);
     }
 }

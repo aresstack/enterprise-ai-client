@@ -113,8 +113,8 @@ public interface WorkspaceActions {
     default void renameProjectRequested(String projectId, String name) {
     }
 
-    /** Replaces instructions and memories of a project; they apply to the next question. */
-    default void updateProjectContextRequested(String projectId, String instructions, List<String> memories) {
+    /** Replaces the instructions of a project; they apply to the next question. */
+    default void updateProjectInstructionsRequested(String projectId, String instructions) {
     }
 
     /** How many chats the project and its sub-projects contain (what deleting it would move out). */

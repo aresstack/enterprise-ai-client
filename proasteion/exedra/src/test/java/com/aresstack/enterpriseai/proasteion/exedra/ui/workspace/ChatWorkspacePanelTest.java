@@ -530,8 +530,8 @@ public class ChatWorkspacePanelTest {
     private static final class ProjectActions implements WorkspaceActions {
         final java.util.Map<String, String> assignment = new java.util.HashMap<String, String>();
         final List<ChatProjectItem> projects = Arrays.asList(
-                new ChatProjectItem("p-a", "Vertrieb", null, 0, "", Collections.<String>emptyList()),
-                new ChatProjectItem("p-a1", "Nord", "p-a", 1, "", Collections.<String>emptyList()));
+                new ChatProjectItem("p-a", "Vertrieb", null, 0, ""),
+                new ChatProjectItem("p-a1", "Nord", "p-a", 1, ""));
         boolean streaming;
 
         @Override
