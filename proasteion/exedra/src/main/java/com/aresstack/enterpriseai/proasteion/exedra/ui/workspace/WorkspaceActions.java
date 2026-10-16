@@ -136,6 +136,24 @@ public interface WorkspaceActions {
         return false;
     }
 
+    /** The shared files of the project (#143); empty without any. */
+    default List<ChatProjectFileItem> projectFiles(String projectId) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Copies the files into the project.
+     *
+     * @return {@code null} on success, otherwise a message for the user
+     */
+    default String addProjectFilesRequested(String projectId, List<File> files) {
+        return "Projektdateien sind nicht verfügbar.";
+    }
+
+    /** Removes one shared file from the project. */
+    default void removeProjectFileRequested(String projectId, String fileId) {
+    }
+
     // ------------------------------------------------------------------ memories (#144)
 
     /**

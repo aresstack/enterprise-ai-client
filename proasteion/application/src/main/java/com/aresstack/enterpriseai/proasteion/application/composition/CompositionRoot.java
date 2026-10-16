@@ -124,6 +124,7 @@ public final class CompositionRoot {
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
     static final String ORIGIN_BROWSER = "Browser des Chats (BrowserMcpTools)";
+    static final String ORIGIN_PROJECT_FILES = "Gemeinsame Projektdateien je Chat-Projekt (ProjectFileTools)";
     static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
@@ -159,6 +160,7 @@ public final class CompositionRoot {
     private final com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement;
     /** Current project of a chat for the memories (#143), set by the shell; {@code null}: no chat has a project. */
     private volatile com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver memoryProjects;
+    private volatile com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore projectFiles;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
     private final Object attachmentImagesLock = new Object();
@@ -397,6 +399,10 @@ public final class CompositionRoot {
                     () -> McpChatTool.definitions(
                             MemoryTools.forChat(null, "")));
         }
+        // Project files (#143): chat only, bound to the turn's chat; each call resolves the chat's current project and
+        // fails closed. They never enter the knowledge index, and the agent endpoint gets no project file tools.
+        toolCatalog.registerDefinitions(ORIGIN_PROJECT_FILES, EnumSet.of(ToolChannel.CHAT),
+                com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileTools::definitions);
         registerHelpTools(toolCatalog, config.agent().toolSettings());
         // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
@@ -766,6 +772,45 @@ public final class CompositionRoot {
     /** List and delete memories of one chat, project or the user (#144 management view); {@code null} without store. */
     public com.aresstack.enterpriseai.proasteion.application.memory.MemoryManagement memoryManagement() {
         return memoryManagement;
+    }
+
+    /** Where the shared project files live (#143); {@code null}: no project file tools. */
+    public void storeProjectFilesIn(com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore store) {
+        this.projectFiles = store;
+    }
+
+    /**
+     * The active project file tools bound to the chat {@code chatId}, plus its memory tools: everything the chat path
+     * offers per turn with the trusted chat id. Project file tools are offered only while the chat belongs to a
+     * project; each call checks the assignment again.
+     */
+    public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> chatBoundTools(String chatId) {
+        List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
+                new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(memoryChatTools(chatId));
+        com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileStore store = projectFiles;
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.ProjectContextResolver projects = memoryProjects;
+        if (store == null || projects == null || chatId == null || chatId.trim().isEmpty()) {
+            return tools;
+        }
+        com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation =
+                new com.aresstack.enterpriseai.astu.chat.ChatConversationId(chatId);
+        com.aresstack.enterpriseai.astu.acropolis.chat.project.EffectiveProjectContext context;
+        try {
+            context = projects.resolve(conversation);
+        } catch (RuntimeException e) {
+            return tools;
+        }
+        if (context == null || !context.isResolved() || context.projectId() == null) {
+            return tools;
+        }
+        for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool
+                : new com.aresstack.enterpriseai.astu.acropolis.projectfile.ProjectFileTools(store, attachmentText,
+                projects, conversation).tools()) {
+            if (toolCatalog.isEnabled(tool.name())) {
+                tools.add(tool);
+            }
+        }
+        return tools;
     }
 
     /** Removes the memories of a finally deleted chat (project and global memories stay). */

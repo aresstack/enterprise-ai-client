@@ -30,6 +30,9 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatExport;
 import com.aresstack.enterpriseai.proasteion.exedra.document.ExportGraphics;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatExportFormat;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatProjectStore;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.FileProjectFileStore;
+import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatProjectFileItem;
+import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
@@ -89,6 +92,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -111,6 +115,7 @@ public final class ShellAssembly {
     static final String CHATS_DIRECTORY = "chats";
     /** The chat projects (#143), next to the chats directory. */
     static final String CHAT_PROJECTS_FILE = "chat-projects.json";
+    static final String PROJECT_FILES_DIRECTORY = "project-files";
     /** Drawer-Reiter des Konzeptpapiers im Agent-Modus (askai: Artefakt-Ansicht „Concept“). */
     static final String CONCEPT_TAB = "Konzept";
     /** Die Favoriten des Lesebereichs, neben der Konfigurationsdatei. */
@@ -158,11 +163,11 @@ public final class ShellAssembly {
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
                     .withDiagnostics(root.turnDiagnostics())
-                    // Tools bound to the turn's chat: memories (#144) and the chat's own browser (#141).
+                    // Tools bound to the turn's chat: memories (#144), project files (#143), browser (#141).
                     .withChatTools(chatId -> {
                         List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
                                 new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(
-                                        root.memoryChatTools(chatId));
+                                        root.chatBoundTools(chatId));
                         tools.addAll(root.conversationChatTools(new ChatConversationId(chatId)));
                         return tools;
                     }));
@@ -175,6 +180,11 @@ public final class ShellAssembly {
         root.ragChat().withProjectContext(chatProjects);
         // Memories (#144): scope=project follows the chat's current project; an unresolved assignment has none.
         root.resolveMemoryProjectsWith(chatProjects);
+        // Shared project files (#143): outside the knowledge index, read only through the chat-bound project file
+        // tools, which check the chat's current project on every call.
+        final FileProjectFileStore projectFiles =
+                new FileProjectFileStore(chatsDirectory.resolveSibling(PROJECT_FILES_DIRECTORY));
+        root.storeProjectFilesIn(projectFiles);
         final ChatHistoryBinding history = new ChatHistoryBinding(chatStore, chatService, chatActions, chatModel,
                 systemPrompt, root.clock());
         // „Chat exportieren …“: aus der Chat-Datei und dem Research-Projekt des Chats, nur lesend.
@@ -518,7 +528,57 @@ public final class ShellAssembly {
 
             @Override
             public void deleteProjectRequested(String projectId) {
+                List<String> removed = new ArrayList<String>();
+                for (ChatProjectRecord project : chatProjects.projects()) {
+                    for (String at = project.getId(); at != null; at = chatProjects.project(at) == null ? null
+                            : chatProjects.project(at).getParentId()) {
+                        if (at.equals(projectId)) {
+                            removed.add(project.getId());
+                            break;
+                        }
+                    }
+                }
                 chatProjects.delete(projectId);
+                for (String id : removed) {
+                    try {
+                        projectFiles.deleteProject(id);
+                    } catch (RuntimeException e) {
+                        LOG.log(Level.WARNING, "Projektdateien von " + id + " nicht gelöscht: " + e.getMessage(), e);
+                    }
+                }
+            }
+
+            @Override
+            public List<ChatProjectFileItem> projectFiles(String projectId) {
+                List<ChatProjectFileItem> items = new ArrayList<ChatProjectFileItem>();
+                if (chatProjects.project(projectId) == null) {
+                    return items;
+                }
+                for (Attachment file : projectFiles.list(projectId)) {
+                    items.add(new ChatProjectFileItem(file.id(), file.fileName(), file.sizeBytes()));
+                }
+                return items;
+            }
+
+            @Override
+            public String addProjectFilesRequested(String projectId, List<File> files) {
+                if (chatProjects.project(projectId) == null) {
+                    return "Das Projekt gibt es nicht mehr.";
+                }
+                StringBuilder problems = new StringBuilder();
+                for (File file : files) {
+                    try {
+                        projectFiles.add(projectId, file.toPath());
+                    } catch (RuntimeException e) {
+                        problems.append(problems.length() == 0 ? "" : "\n").append(e.getMessage());
+                    }
+                }
+                return problems.length() == 0 ? null : problems.toString();
+            }
+
+            @Override
+            public void removeProjectFileRequested(String projectId, String fileId) {
+                projectFiles.remove(projectId, fileId);
             }
 
             @Override
