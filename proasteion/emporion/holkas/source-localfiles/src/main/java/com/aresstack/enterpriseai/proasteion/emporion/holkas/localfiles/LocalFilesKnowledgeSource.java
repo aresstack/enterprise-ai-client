@@ -20,11 +20,21 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
+import com.aresstack.enterpriseai.source.api.PartitionListingSource;
+import com.aresstack.enterpriseai.source.api.PartitionResources;
+import com.aresstack.enterpriseai.source.api.ResourceMetadataSource;
+import com.aresstack.enterpriseai.source.api.ResponseTooLargeException;
+import com.aresstack.enterpriseai.source.api.SourcePartition;
+import com.aresstack.enterpriseai.source.api.StoredContent;
+import com.aresstack.enterpriseai.source.api.StoredContentSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Base64;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -57,14 +67,27 @@ import java.util.function.Supplier;
  *   <li>Inhalt: Erkennung per {@link ContentDetector}, Extraktion über das erste passende
  *       {@link ResourceExtractor} der {@link ExtractionRegistry}; Überschriften und Code werden als Markdown
  *       ausgegeben.</li>
+ *   <li>Für Harvester, die Originale ablegen: genau eine Partition (Schlüssel = Quell-ID, wie
+ *       {@link KnowledgeResource#scope()}), darin alle lesbaren Dateien nach relativem Pfad sortiert
+ *       ({@link PartitionListingSource}); Metadaten einer Datei ({@link ResourceMetadataSource}) und ihre Bytes
+ *       unverändert ({@link StoredContentSource}, Format {@value #STORED_FORMAT}). Die lokale ID ist der relative
+ *       Pfad als Base64url ohne Auffüllung, damit sie als ein URL-Pfadsegment taugt.</li>
  * </ul>
  */
-public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
+public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort, PartitionListingSource,
+        ResourceMetadataSource, StoredContentSource {
 
     static final String SCHEME = "file";
     /** Standardobergrenze je Datei. */
     public static final long DEFAULT_MAX_FILE_BYTES = 50L * 1024 * 1024;
     private static final int PREFIX_BYTES = 8192;
+    /** {@link StoredContent#nativeFormat()}: die Datei Byte für Byte. */
+    static final String STORED_FORMAT = "file";
+    /** Höchstens so viele Dateien liefert ein Stapel von {@link #resources}. */
+    static final int MAX_BATCH = 500;
+    /** Verzeichnistiefe der Partition, wie der Standard des Providers. */
+    static final int PARTITION_DEPTH = 20;
+    private static final String CURSOR_PREFIX = "f1.";
     private static final Set<ContentCategory> INDEXABLE = Collections.unmodifiableSet(EnumSet.of(
             ContentCategory.PLAIN_TEXT, ContentCategory.MARKDOWN, ContentCategory.HTML, ContentCategory.PDF,
             ContentCategory.OFFICE_DOCUMENT, ContentCategory.SOURCE_CODE, ContentCategory.STRUCTURED_DATA));
@@ -125,6 +148,9 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
     public List<KnowledgeResource> discover(SourceScope scope) throws KnowledgeSourceException {
         if (!Files.isDirectory(root)) {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Verzeichnis nicht gefunden: " + root);
+        }
+        if (scope.selectionApplies() && scope.excludedPartitions().contains(sourceId.value())) {
+            return Collections.emptyList();
         }
         final LocalFileAccessPolicy policy = policy();
         Set<Path> files = new LinkedHashSet<Path>();
@@ -217,6 +243,135 @@ public final class LocalFilesKnowledgeSource implements KnowledgeSourcePort {
             throw new KnowledgeSourceException(Kind.UNAVAILABLE, resourceId + " nicht lesbar", e);
         }
         return KnowledgeDocument.of(resource, text(resource.title(), result.document()));
+    }
+
+    /** Genau eine Partition: das Verzeichnis, Schlüssel = Quell-ID. */
+    @Override
+    public List<SourcePartition> partitions() throws KnowledgeSourceException {
+        if (!Files.isDirectory(root)) {
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE, "Verzeichnis nicht gefunden: " + root);
+        }
+        Path name = root.getFileName();
+        return Collections.singletonList(new SourcePartition(sourceId.value(), name == null ? root.toString()
+                : name.toString()));
+    }
+
+    /**
+     * Die Dateien der Partition nach relativem Pfad sortiert, so wie {@link #discover} sie mit Startpunkt {@code .}
+     * und Tiefe {@value #PARTITION_DEPTH} findet, aber ohne Gesamtgrenze. Der Cursor nennt die letzte gelieferte
+     * Datei: Neue oder gelöschte Dateien verschieben keinen Stapel.
+     */
+    @Override
+    public PartitionResources resources(String partitionKey, String cursor, int limit)
+            throws KnowledgeSourceException {
+        if (!sourceId.value().equals(partitionKey)) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Keine Partition dieser Quelle: " + partitionKey);
+        }
+        String after = null;
+        if (cursor != null && !cursor.isEmpty()) {
+            after = cursor.startsWith(CURSOR_PREFIX) ? decode(cursor.substring(CURSOR_PREFIX.length())) : null;
+            if (after == null) {
+                throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Cursor gehört nicht zu dieser Partition");
+            }
+        }
+        List<KnowledgeResource> all = discover(SourceScope.builder().startPoints(".").maxDepth(PARTITION_DEPTH)
+                .maxResources(Integer.MAX_VALUE).ignoringSelection().build());
+        List<String> paths = new ArrayList<String>();
+        Map<String, KnowledgeResource> byPath = new LinkedHashMap<String, KnowledgeResource>();
+        for (KnowledgeResource resource : all) {
+            String path = resource.metadata().get("file.path").orElse(null);
+            if (path != null && (after == null || path.compareTo(after) > 0)) {
+                paths.add(path);
+                byPath.put(path, resource);
+            }
+        }
+        Collections.sort(paths);
+        int size = Math.min(paths.size(), Math.max(1, Math.min(limit, MAX_BATCH)));
+        List<KnowledgeResource> batch = new ArrayList<KnowledgeResource>();
+        for (int i = 0; i < size; i++) {
+            batch.add(byPath.get(paths.get(i)));
+        }
+        String next = size < paths.size() ? CURSOR_PREFIX + encode(paths.get(size - 1)) : null;
+        return new PartitionResources(batch, next);
+    }
+
+    /** Der relative Pfad als Base64url ohne Auffüllung, oder {@code null} für fremde IDs. */
+    @Override
+    public String localId(KnowledgeResourceId resourceId) {
+        String prefix = SCHEME + ":" + locator + "/";
+        String value = resourceId == null ? null : resourceId.value();
+        return value != null && value.startsWith(prefix) && value.length() > prefix.length()
+                ? encode(value.substring(prefix.length())) : null;
+    }
+
+    @Override
+    public KnowledgeResource resourceMetadata(String localId) throws KnowledgeSourceException {
+        Path file = readable(localId);
+        try {
+            return resource(file, typeByName(file));
+        } catch (IOException e) {
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE, localId + " nicht lesbar", e);
+        }
+    }
+
+    /**
+     * Die Datei Byte für Byte mit den Metadaten von vor dem Lesen; hat sie sich beim Lesen in der Größe geändert,
+     * scheitert der Aufruf ({@code UNAVAILABLE}) statt Revision und Inhalt zu mischen.
+     */
+    @Override
+    public StoredContent storedContent(String localId) throws KnowledgeSourceException {
+        Path file = readable(localId);
+        KnowledgeResource resource;
+        byte[] bytes;
+        try {
+            long size = Files.size(file);
+            if (size > maxFileBytes) {
+                throw new ResponseTooLargeException(localId + ": Datei größer als " + maxFileBytes + " Bytes",
+                        maxFileBytes);
+            }
+            resource = resource(file, typeByName(file));
+            bytes = Files.readAllBytes(file);
+            if (bytes.length != size) {
+                throw new KnowledgeSourceException(Kind.UNAVAILABLE, localId + " hat sich beim Lesen geändert");
+            }
+        } catch (IOException e) {
+            throw new KnowledgeSourceException(Kind.UNAVAILABLE, localId + " nicht lesbar", e);
+        }
+        String name = file.getFileName().toString();
+        String mediaType = detector.detect(name, null, Arrays.copyOf(bytes, Math.min(bytes.length, PREFIX_BYTES)))
+                .mimeType();
+        return new StoredContent(resource, bytes, mediaType == null || mediaType.isEmpty()
+                ? "application/octet-stream" : mediaType, STORED_FORMAT, Instant.now());
+    }
+
+    /** Eine Datei, die {@link #discover} liefern würde; sonst NOT_FOUND oder UNSUPPORTED. */
+    private Path readable(String localId) throws KnowledgeSourceException {
+        String relative = localId == null ? null : decode(localId);
+        if (relative == null || relative.isEmpty()) {
+            throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Keine Datei-ID dieser Quelle: " + localId);
+        }
+        Path file = fileOf(idOf(relative));
+        if (!candidate(file) || !relative(file).equals(relative)) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, localId + " nicht gefunden");
+        }
+        return file;
+    }
+
+    private static String encode(String relative) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(relative.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Dekodiert eine lokale ID; {@code null}, wenn sie kein Base64url ohne Auffüllung ist. */
+    private static String decode(String localId) {
+        if (localId.isEmpty() || localId.indexOf('=') >= 0) {
+            return null;
+        }
+        try {
+            String relative = new String(Base64.getUrlDecoder().decode(localId), StandardCharsets.UTF_8);
+            return encode(relative).equals(localId) ? relative : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     @Override
