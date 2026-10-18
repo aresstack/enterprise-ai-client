@@ -73,10 +73,8 @@ public class ComposerButton extends JButton {
 
     @Override
     protected void paintComponent(Graphics graphics) {
-        ComposerButtonStyle.paintBackground(this, graphics, accent, primary || emphasized);
-        if (glyphTint != null && isEnabled() && !primary && !emphasized) {
-            setForeground(glyphTint);
-        }
+        // The tint goes into the single foreground decision, so painting never flips the color back and forth.
+        ComposerButtonStyle.paintBackground(this, graphics, accent, primary || emphasized, glyphTint);
         super.paintComponent(graphics);
     }
 
