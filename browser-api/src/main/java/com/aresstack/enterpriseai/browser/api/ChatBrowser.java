@@ -47,6 +47,22 @@ public interface ChatBrowser {
     BrowserPage back(String tabId) throws BrowserException;
 
     /**
+     * The controls of {@code tabId} (or the current tab if {@code null}) as a new snapshot: search and text fields,
+     * buttons, select boxes, menu entries, tabs and toggles that are visible and enabled; search fields first. When
+     * {@code filter} is not {@code null} only controls whose label, kind or value contains it (ignoring case), at most
+     * {@code maxControls}. Replaces the previous control snapshot of the tab.
+     */
+    BrowserControls controls(String tabId, int maxControls, String filter) throws BrowserException;
+
+    /**
+     * Performs {@code action} on the control {@code controlId} of the tab's control snapshot and returns the page once
+     * it settled. A form's declared target passes the access guard before submitting, and the address reached
+     * afterwards passes it again. Fails with {@code INVALID_REQUEST} when the id is unknown, a new document was loaded
+     * since the snapshot, or the element is gone.
+     */
+    BrowserActResult act(String tabId, String controlId, BrowserAction action, String value) throws BrowserException;
+
+    /**
      * Ends this chat's browser process and connection; the profile stays. The next operation starts the browser
      * again with the same profile. Does nothing when no browser runs.
      */

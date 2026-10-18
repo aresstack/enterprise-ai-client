@@ -1,6 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
+import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserControl;
+import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -139,6 +143,47 @@ public class BrowserMcpToolsTest {
         throw new AssertionError("no tool " + name);
     }
 
+    @Test
+    public void controlsAndSiteSearchAreRecordedAsSteps() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        List<String> steps = new ArrayList<String>();
+        tools.beginTurn(a, progress -> {
+            if (!progress.steps().isEmpty()) {
+                steps.add(progress.steps().get(progress.steps().size() - 1).label());
+            }
+        });
+        List<McpToolContribution> bound = tools.contributionsFor(a);
+
+        McpToolResult listed = invoke(bound, BrowserMcpTools.CONTROLS);
+        assertTrue(listed.getText(), listed.getText().contains("ctl-1 | search | Suche"));
+        assertTrue(listed.getText(), listed.getText().contains("Optionen: Deutsch | English"));
+
+        McpToolResult searched = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-1", "action", "submit",
+                "value", "Reisekosten");
+        assertFalse(searched.getText(), searched.isError());
+        assertTrue(searched.getText(), searched.getText().startsWith("Gesucht: „Reisekosten“. Neue Seite geladen."));
+
+        invoke(bound, BrowserMcpTools.CONTROLS);
+        McpToolResult chosen = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-2", "action", "select",
+                "value", "English");
+        assertTrue(chosen.getText(), chosen.getText().contains("Die Seite hat sich geändert"));
+
+        assertEquals(java.util.Arrays.asList("controls 60 null", "act ctl-1 SUBMIT Reisekosten",
+                "controls 60 null", "act ctl-2 SELECT English"), port.browser(a).calls);
+        assertTrue(steps.toString(), steps.contains("Gesucht: „Reisekosten“"));
+        assertTrue(steps.toString(), steps.contains("„English“ in „Sprache“ gewählt"));
+        assertEquals(1, tools.endTurn(a).visited());
+    }
+
+    @Test
+    public void actRejectsUnknownActionsWithoutTouchingTheBrowser() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        McpToolResult result = invoke(tools.contributionsFor(a), BrowserMcpTools.ACT, "control", "ctl-1",
+                "action", "hover");
+        assertTrue(result.isError());
+        assertTrue(port.browser(a).calls.isEmpty());
+    }
+
     private static final class RecordingPort implements ChatBrowserPort {
 
         private final Map<ChatConversationId, RecordingBrowser> browsers =
@@ -246,6 +291,25 @@ public class BrowserMcpToolsTest {
             check();
             calls.add("back " + tabId);
             return new BrowserPage("tab-1", "https://intranet.example/", "Intranet", "text");
+        }
+
+        @Override
+        public BrowserControls controls(String tabId, int maxControls, String filter) throws BrowserException {
+            check();
+            calls.add("controls " + maxControls + " " + filter);
+            return new BrowserControls("tab-1", "https://intranet.example/", "Intranet", java.util.Arrays.asList(
+                    new BrowserControl("ctl-1", "search", "Suche", "", "", "https://intranet.example/suche"),
+                    new BrowserControl("ctl-2", "select", "Sprache", "Deutsch", "Deutsch | English", "")), 2);
+        }
+
+        @Override
+        public BrowserActResult act(String tabId, String controlId, BrowserAction action, String value)
+                throws BrowserException {
+            check();
+            calls.add("act " + controlId + " " + action + " " + value);
+            boolean submit = action == BrowserAction.SUBMIT;
+            return new BrowserActResult(new BrowserPage("tab-1", submit ? "https://intranet.example/suche?q=" + value
+                    : "https://intranet.example/", submit ? "Treffer" : "Intranet", "text"), submit, !submit);
         }
 
         @Override

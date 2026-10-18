@@ -1,9 +1,12 @@
 package com.aresstack.enterpriseai.browser.runtime;
 
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
+import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
+import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
@@ -28,6 +31,13 @@ final class FakeEngine implements BrowserEngine {
     final List<String> navigations = new CopyOnWriteArrayList<String>();
     /** Page url to the anchors the fake page shows. */
     final Map<String, List<RawLink>> anchors = new java.util.concurrent.ConcurrentHashMap<String, List<RawLink>>();
+
+    /** Page url to the controls the fake page shows. */
+    final Map<String, List<RawControl>> controls = new java.util.concurrent.ConcurrentHashMap<String, List<RawControl>>();
+    /** Control ref to the url its action loads (a form submit); refs without entry change the page in place. */
+    final Map<String, String> actionTargets = new java.util.concurrent.ConcurrentHashMap<String, String>();
+    /** Every action as "ref action value", in order. */
+    final List<String> actions = new CopyOnWriteArrayList<String>();
 
     @Override
     public BrowserInstance start(Path profileDirectory) throws BrowserException {
@@ -173,6 +183,28 @@ final class FakeEngine implements BrowserEngine {
                 List<RawLink> links = process.engine.anchors.get(process.tabs.get(contextId)[0]);
                 return links == null ? new ArrayList<RawLink>() : links;
             }
+        }
+
+        @Override
+        public List<RawControl> controls(String contextId) throws BrowserException {
+            check();
+            synchronized (process) {
+                List<RawControl> list = process.engine.controls.get(process.tabs.get(contextId)[0]);
+                return list == null ? new ArrayList<RawControl>() : list;
+            }
+        }
+
+        @Override
+        public RawActOutcome act(String contextId, String ref, BrowserAction action, String value)
+                throws BrowserException {
+            check();
+            process.engine.actions.add(ref + " " + action + " " + value);
+            String target = process.engine.actionTargets.get(ref);
+            if (target == null) {
+                return new RawActOutcome(false, true);
+            }
+            navigate(contextId, target);
+            return new RawActOutcome(true, false);
         }
 
         @Override

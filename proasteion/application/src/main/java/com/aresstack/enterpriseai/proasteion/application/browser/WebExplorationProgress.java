@@ -20,7 +20,7 @@ public final class WebExplorationProgress {
 
     /** What happened in one step of the exploration. */
     public enum StepKind {
-        OPENED, LINKS, BACK, SKIPPED, FAILED, MARKED_RELEVANT, MARKED_IRRELEVANT, CLOSED
+        OPENED, LINKS, BACK, ACTED, SKIPPED, FAILED, MARKED_RELEVANT, MARKED_IRRELEVANT, CLOSED
     }
 
     /** One event: kind, a label (page title, host, filter word or error) and a count where the kind has one. */

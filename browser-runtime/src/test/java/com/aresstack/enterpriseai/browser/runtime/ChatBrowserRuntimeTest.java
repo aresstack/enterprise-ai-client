@@ -2,11 +2,15 @@ package com.aresstack.enterpriseai.browser.runtime;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
+import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
+import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import org.junit.Before;
 import org.junit.Rule;
@@ -508,5 +512,124 @@ public class ChatBrowserRuntimeTest {
         } catch (BrowserException expected) {
             assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
         }
+    }
+
+    private static final String PORTAL = "https://intranet.example/portal";
+
+    private void portalWithControls() {
+        engine.controls.put(PORTAL, Arrays.asList(
+                new RawControl("r-menu", "toggle", "Menü", "zu", "", ""),
+                new RawControl("r-search", "search", "Suche", "", "", "https://intranet.example/suche"),
+                new RawControl("r-lang", "select", "Sprache", "Deutsch", "Deutsch | English", ""),
+                new RawControl("r-ext", "button", "Extern senden", "", "", "https://blocked.example/post")));
+        engine.actionTargets.put("r-search", "https://intranet.example/suche?q=Reise");
+    }
+
+    @Test
+    public void controlsListSearchFieldsFirstAndFilter() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+
+        BrowserControls all = browser.controls(null, 100, null);
+        assertEquals(4, all.total());
+        assertEquals("ctl-1", all.controls().get(0).id());
+        assertEquals("search", all.controls().get(0).kind());
+        assertEquals("https://intranet.example/suche", all.controls().get(0).target());
+        assertEquals("toggle", all.controls().get(1).kind());
+
+        BrowserControls filtered = browser.controls(null, 100, "sprache");
+        assertEquals(1, filtered.controls().size());
+        assertEquals("Deutsch | English", filtered.controls().get(0).options());
+    }
+
+    @Test
+    public void submitLoadsTheResultPageAndBackReturns() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        browser.controls(null, 100, null);
+
+        BrowserActResult result = browser.act(null, "ctl-1", BrowserAction.SUBMIT, "Reise");
+
+        assertTrue(result.navigated());
+        assertEquals("https://intranet.example/suche?q=Reise", result.page().url());
+        assertEquals(Arrays.asList("r-search SUBMIT Reise"), engine.actions);
+        try {
+            browser.act(null, "ctl-1", BrowserAction.SUBMIT, "Reise");
+            fail("expected INVALID_REQUEST after the new document");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        assertEquals(PORTAL, browser.back(null).url());
+    }
+
+    @Test
+    public void inPlaceChangeKeepsTheControlIds() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        browser.controls(null, 100, null);
+
+        BrowserActResult opened = browser.act(null, "ctl-2", BrowserAction.CLICK, null);
+        assertFalse(opened.navigated());
+        assertTrue(opened.changed());
+        browser.act(null, "ctl-3", BrowserAction.SELECT, "English");
+
+        assertEquals(Arrays.asList("r-menu CLICK null", "r-lang SELECT English"), engine.actions);
+    }
+
+    @Test
+    public void declaredFormTargetPassesTheGuardBeforeSubmitting() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        browser.controls(null, 100, null);
+
+        try {
+            browser.act(null, "ctl-4", BrowserAction.CLICK, null);
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertTrue(engine.actions.isEmpty());
+    }
+
+    @Test
+    public void actionLandingOnABlockedHostEndsOnAboutBlank() throws Exception {
+        portalWithControls();
+        engine.actionTargets.put("r-menu", "https://blocked.example/landing");
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        browser.controls(null, 100, null);
+
+        try {
+            browser.act(null, "ctl-2", BrowserAction.CLICK, null);
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals("about:blank", browser.read(null).url());
+    }
+
+    @Test
+    public void actWithoutSnapshotOrValueIsRefused() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        try {
+            browser.act(null, "ctl-1", BrowserAction.CLICK, null);
+            fail("expected INVALID_REQUEST without snapshot");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        browser.controls(null, 100, null);
+        try {
+            browser.act(null, "ctl-1", BrowserAction.FILL, null);
+            fail("expected INVALID_REQUEST without value");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        assertTrue(engine.actions.isEmpty());
     }
 }

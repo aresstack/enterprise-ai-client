@@ -106,6 +106,8 @@ final class ChatBrowserCard {
                 return "„" + label + "“ geöffnet";
             case BACK:
                 return "Zurück zu „" + label + "“";
+            case ACTED:
+                return label;
             case LINKS:
                 return step.count() + (step.count() == 1 ? " Link" : " Links")
                         + (label.isEmpty() ? " erkannt" : " passend zu „" + label + "“");

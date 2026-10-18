@@ -1,6 +1,10 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
+import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserControl;
+import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -30,7 +34,7 @@ import java.util.function.Consumer;
 
 /**
  * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}, {@value #LINKS},
- * {@value #FOLLOW}, {@value #BACK}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
+ * {@value #FOLLOW}, {@value #BACK}, {@value #CONTROLS}, {@value #ACT}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
  * {@link WebExplorationRun}, the state behind the progress display. Links are followed by their snapshot id, never by a guessed
  * address; the ids of a page become invalid with the next navigation. The chat is bound when the
  * tools are built ({@link #contributionsFor}), by the host, never by a model argument: the schemas have no chat id,
@@ -47,6 +51,13 @@ public final class BrowserMcpTools {
     public static final String BACK = "browser_back";
     public static final String CLOSE = "browser_close";
     public static final String MARK = "browser_mark";
+    public static final String CONTROLS = "browser_controls";
+    public static final String ACT = "browser_act";
+    static final String PARAM_CONTROL = "control";
+    static final String PARAM_VALUE = "value";
+    static final String PARAM_MAX_CONTROLS = "max_controls";
+    static final int DEFAULT_MAX_CONTROLS = 60;
+    private static final List<String> ACT_ACTIONS = Arrays.asList("click", "fill", "submit", "select");
     static final String PARAM_RELEVANT = "relevant";
     static final String PARAM_LINK = "link";
     static final String PARAM_FILTER = "filter";
@@ -84,6 +95,8 @@ public final class BrowserMcpTools {
                 links(tracked(run, call -> links(browser, run, call))),
                 follow(tracked(run, call -> follow(browser, run, call))),
                 back(tracked(run, call -> back(browser, run, call))),
+                controls(tracked(run, call -> controls(browser, run, call))),
+                act(tracked(run, call -> act(browser, run, call))),
                 mark(tracked(run, call -> mark(run, call))),
                 close(tracked(run, call -> close(browser, run)))));
     }
@@ -129,7 +142,8 @@ public final class BrowserMcpTools {
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
-                links(refuse), follow(refuse), back(refuse), mark(refuse), close(refuse)));
+                links(refuse), follow(refuse), back(refuse), controls(refuse), act(refuse), mark(refuse),
+                close(refuse)));
     }
 
     private static McpToolContribution tabs(McpToolHandler handler) {
@@ -191,6 +205,35 @@ public final class BrowserMcpTools {
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
     }
 
+    private static McpToolContribution controls(McpToolHandler handler) {
+        return McpToolContribution.of(CONTROLS,
+                "List the controls of the page in a tab of this chat's browser that are not plain links: search and "
+                        + "text fields, buttons, select boxes, menu entries, tabs and toggles (id | kind | label | "
+                        + "value). Search fields come first: when the site has its own search, prefer it over clicking "
+                        + "through menus. Operate a control with " + ACT + ". The ids stay valid until a new page is "
+                        + "loaded; after an action that only changed the page (menu opened), call " + CONTROLS
+                        + " again to see new entries.",
+                handler,
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."),
+                McpToolParameter.string(PARAM_FILTER, false, "Optional word to keep matching controls only."),
+                McpToolParameter.integer(PARAM_MAX_CONTROLS, false, "Maximum controls (default "
+                        + DEFAULT_MAX_CONTROLS + ", at most " + BrowserControls.MAX_CONTROLS + ")."));
+    }
+
+    private static McpToolContribution act(McpToolHandler handler) {
+        return McpToolContribution.of(ACT,
+                "Operate a control of the last " + CONTROLS + " list and return the page once it settled (new page "
+                        + "loaded or content changed). action: click (button, menu entry, tab, toggle, checkbox), "
+                        + "fill (type value into a field), submit (type value into a search field and send it like "
+                        + "Enter), select (choose the option named in value). Example: control=\"ctl-1\", "
+                        + "action=\"submit\", value=\"Reisekostenabrechnung\".",
+                handler,
+                McpToolParameter.string(PARAM_CONTROL, true, "Control id from " + CONTROLS + "."),
+                McpToolParameter.enumeration(PARAM_ACTION, true, "click, fill, submit or select.", ACT_ACTIONS),
+                McpToolParameter.string(PARAM_VALUE, false, "Text for fill and submit, option for select."),
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
     private static McpToolContribution close(McpToolHandler handler) {
         return McpToolContribution.of(CLOSE,
                 "Close this chat's browser when the browsing task is done. Cookies and logins of the chat stay; "
@@ -244,6 +287,72 @@ public final class BrowserMcpTools {
             return opened(run, browser.back(blankToNull(call.getString(PARAM_TAB))), true);
         } catch (BrowserException e) {
             return refused(run, null, e);
+        }
+    }
+
+    static McpToolResult controls(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
+        int max = (int) Math.min(BrowserControls.MAX_CONTROLS,
+                Math.max(1L, call.getInteger(PARAM_MAX_CONTROLS, DEFAULT_MAX_CONTROLS)));
+        String filter = blankToNull(call.getString(PARAM_FILTER));
+        try {
+            BrowserControls controls = browser.controls(blankToNull(call.getString(PARAM_TAB)), max, filter);
+            Map<String, String> labels = new LinkedHashMap<String, String>();
+            for (BrowserControl control : controls.controls()) {
+                labels.put(control.id(), control.label());
+            }
+            run.controlsListed(labels);
+            return McpToolResult.ok(render(controls, filter));
+        } catch (BrowserException e) {
+            run.failed(null, e.getMessage());
+            return McpToolResult.error(e.getMessage());
+        }
+    }
+
+    static McpToolResult act(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
+        String control = blankToNull(call.getString(PARAM_CONTROL));
+        if (control == null) {
+            return McpToolResult.error("control fehlt; Ids liefert " + CONTROLS);
+        }
+        String name = call.getString(PARAM_ACTION);
+        name = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (!ACT_ACTIONS.contains(name)) {
+            return McpToolResult.error("Unbekannte action " + name + "; erlaubt: " + ACT_ACTIONS);
+        }
+        BrowserAction action = BrowserAction.valueOf(name.toUpperCase(Locale.ROOT));
+        String value = call.getString(PARAM_VALUE);
+        if (value != null && value.trim().isEmpty() && action != BrowserAction.FILL) {
+            value = null;
+        }
+        String label = run.controlLabel(control);
+        String description = describe(action, label == null ? control : label, value);
+        try {
+            BrowserActResult result = browser.act(blankToNull(call.getString(PARAM_TAB)), control, action, value);
+            run.acted(description);
+            BrowserPage page = result.page();
+            if (result.navigated()) {
+                run.opened(page.url(), page.title(), false);
+            }
+            String outcome = result.navigated() ? "Neue Seite geladen."
+                    : result.changed() ? "Die Seite hat sich geändert (gleiche Seite). Neue Einträge zeigt "
+                    + CONTROLS + " bzw. " + LINKS + "."
+                    : "Keine sichtbare Änderung der Seite.";
+            return McpToolResult.ok(description + ". " + outcome + "\n\n" + render(page, DEFAULT_MAX_CHARS));
+        } catch (BrowserException e) {
+            return refused(run, null, e);
+        }
+    }
+
+    /** What the action did, for the progress display and the model ("Gesucht: „Reise“"). */
+    static String describe(BrowserAction action, String label, String value) {
+        switch (action) {
+            case SUBMIT:
+                return value == null ? "„" + label + "“ abgeschickt" : "Gesucht: „" + value + "“";
+            case FILL:
+                return "„" + label + "“ ausgefüllt";
+            case SELECT:
+                return "„" + value + "“ in „" + label + "“ gewählt";
+            default:
+                return "„" + label + "“ angeklickt";
         }
     }
 
@@ -395,6 +504,33 @@ public final class BrowserMcpTools {
         }
         if (shown.isEmpty()) {
             out.append("Keine Links gefunden.\n");
+        }
+        return out.toString().trim();
+    }
+
+    private static String render(BrowserControls controls, String filter) {
+        List<BrowserControl> shown = controls.controls();
+        StringBuilder out = new StringBuilder();
+        out.append("Tab: ").append(controls.tabId()).append('\n')
+                .append("Seite: ").append(controls.pageTitle()).append(" | ").append(controls.pageUrl()).append('\n')
+                .append(shown.size()).append(" von ").append(controls.total()).append(" Bedienelementen");
+        if (filter != null) {
+            out.append(" passend zu \"").append(filter).append('"');
+        }
+        out.append(" · Ids gelten bis zum Laden einer neuen Seite\n\n");
+        for (BrowserControl control : shown) {
+            out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
+                    .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
+            if (!control.value().isEmpty()) {
+                out.append(" | Wert: ").append(control.value());
+            }
+            if (!control.options().isEmpty()) {
+                out.append(" | Optionen: ").append(control.options());
+            }
+            out.append('\n');
+        }
+        if (shown.isEmpty()) {
+            out.append("Keine Bedienelemente gefunden.\n");
         }
         return out.toString().trim();
     }
