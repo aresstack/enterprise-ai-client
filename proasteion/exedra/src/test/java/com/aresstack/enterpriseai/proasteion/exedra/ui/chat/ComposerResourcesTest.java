@@ -36,7 +36,7 @@ public class ComposerResourcesTest {
             ResourceActions actions = new ResourceActions(Arrays.asList(FILE, PAGE, SOURCE));
             ChatComposerPanel composer = composer(actions);
             composer.refreshResources();
-            assertEquals("Ressourcen 3", composer.resourcesButton().getText());
+            assertEquals("Ressourcen 3", composer.resourcesButton().getAccessibleContext().getAccessibleName());
             assertTrue(composer.resourcesButton().isEnabled());
             java.awt.Container row = composer.reasoningButton().getParent();
             assertEquals("rechts neben Denken", indexOf(row, composer.reasoningButton()) + 1,
@@ -44,7 +44,7 @@ public class ComposerResourcesTest {
 
             ChatComposerPanel empty = composer(new ResourceActions(new ArrayList<ChatResource>()));
             empty.refreshResources();
-            assertEquals("Ressourcen 0", empty.resourcesButton().getText());
+            assertEquals("Ressourcen 0", empty.resourcesButton().getAccessibleContext().getAccessibleName());
             assertFalse(empty.resourcesButton().isEnabled());
         });
     }
