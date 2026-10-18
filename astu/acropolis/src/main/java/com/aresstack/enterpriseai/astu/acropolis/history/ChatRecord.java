@@ -18,6 +18,10 @@ public final class ChatRecord {
     private List<ChatMessageRecord> messages = new ArrayList<ChatMessageRecord>();
     /** Der zuletzt verwendete Wissenskontext (nur Kennungen); {@code null} ohne oder bei älteren Chats. */
     private KnowledgeContextRecord knowledgeContext;
+    /** Composer switch "Browser" (#141); {@code null} in older chats means off. */
+    private Boolean browserAllowed;
+    /** Composer switch "Wissensquellen" (#141); {@code null} in older chats means on. */
+    private Boolean knowledgeAllowed;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -90,5 +94,23 @@ public final class ChatRecord {
 
     public void setKnowledgeContext(KnowledgeContextRecord knowledgeContext) {
         this.knowledgeContext = knowledgeContext;
+    }
+
+    /** The chat's browser switch (#141): off unless saved as on. */
+    public boolean isBrowserAllowed() {
+        return Boolean.TRUE.equals(browserAllowed);
+    }
+
+    public void setBrowserAllowed(boolean browserAllowed) {
+        this.browserAllowed = browserAllowed;
+    }
+
+    /** The chat's knowledge switch (#141): on unless saved as off. */
+    public boolean isKnowledgeAllowed() {
+        return !Boolean.FALSE.equals(knowledgeAllowed);
+    }
+
+    public void setKnowledgeAllowed(boolean knowledgeAllowed) {
+        this.knowledgeAllowed = knowledgeAllowed;
     }
 }

@@ -428,4 +428,25 @@ public class SettingsMapperTest {
             assertFalse(problem, problem.matches("(?s).*\\b(chat|embedding)\\.[a-zA-Z]+.*"));
         }
     }
+
+    @Test
+    public void browserPolicyDefaultsToBlockAndRoundTrips() throws Exception {
+        Properties current = valid();
+        SettingsForm form = SettingsMapper.fromProperties(current);
+        assertFalse(form.browserAllowByDefault());
+        assertTrue(form.browserAllow().isEmpty());
+        assertNull("block stays out of the file", SettingsMapper.merge(current, form)
+                .getProperty(com.aresstack.enterpriseai.proasteion.application.config.BrowserAccessConfig.MODE_KEY));
+        Properties merged = SettingsMapper.merge(current, form.toBuilder().browserAllowByDefault(true)
+                .browserAllow(java.util.Arrays.asList("example.org", "*.example.net"))
+                .browserBlock(java.util.Arrays.asList("bad.example")).build());
+        assertEquals("allow", merged.getProperty("browser.access.mode"));
+        assertEquals("example.org,*.example.net", merged.getProperty("browser.access.allow"));
+        AppConfig config = AppConfigLoader.fromProperties(merged);
+        assertTrue(config.browserAccess().allowByDefault());
+        assertEquals(java.util.Arrays.asList("bad.example"), config.browserAccess().block());
+        for (String warning : config.warnings()) {
+            assertFalse(warning, warning.contains("browser.access"));
+        }
+    }
 }

@@ -176,6 +176,7 @@ public final class ToolApprovalGate {
         }
         switch (decision.outcome()) {
             case REJECTED:
+            case REJECTED_ALWAYS:
                 return "vom Benutzer abgelehnt";
             case TIMEOUT:
                 return "keine Antwort auf die Rückfrage";

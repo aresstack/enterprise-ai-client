@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.browser.runtime;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
@@ -32,20 +33,30 @@ import java.util.concurrent.ConcurrentMap;
  *     <li>All operations of a chat are serialized, so concurrent first calls start exactly one browser;
  *         different chats never share a lock, a process or a tab.</li>
  *     <li>Reading operations are retried once after recovery; tab creation and closing are not.</li>
+ *     <li>Every navigation passes the {@link BrowserAccessGuard} before it reaches the engine, and the final
+ *         address after redirects passes it again; a blocked redirect target leaves the tab on about:blank.
+ *         The guard is called while holding only the per-chat slot monitor (it may wait for the user), so
+ *         other chats and the UI are never blocked by it. Blocked calls are never retried.</li>
  * </ul>
  */
 public final class ChatBrowserRuntime implements ChatBrowserPort {
 
     private final BrowserEngine engine;
     private final BrowserProfileStore profiles;
+    private final BrowserAccessGuard guard;
     private final ConcurrentMap<ChatConversationId, Slot> slots = new ConcurrentHashMap<ChatConversationId, Slot>();
 
     public ChatBrowserRuntime(BrowserEngine engine, BrowserProfileStore profiles) {
-        if (engine == null || profiles == null) {
-            throw new IllegalArgumentException("engine and profiles must not be null");
+        this(engine, profiles, BrowserAccessGuard.allowAll());
+    }
+
+    public ChatBrowserRuntime(BrowserEngine engine, BrowserProfileStore profiles, BrowserAccessGuard guard) {
+        if (engine == null || profiles == null || guard == null) {
+            throw new IllegalArgumentException("engine, profiles and guard must not be null");
         }
         this.engine = engine;
         this.profiles = profiles;
+        this.guard = guard;
     }
 
     @Override
@@ -122,12 +133,16 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
 
         @Override
         public synchronized BrowserTab newTab(final String url) throws BrowserException {
+            if (url != null) {
+                guard.admit(conversation, url);
+            }
             return call(connection -> {
                 String raw = connection.createTab();
                 idOf(raw);
                 currentRaw = raw;
                 if (url != null) {
                     connection.navigate(raw, url);
+                    checkFinal(connection, raw, connection.read(raw).url());
                 }
                 return tabOf(connection, raw);
             }, false);
@@ -148,10 +163,13 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
 
         @Override
         public synchronized BrowserPage navigate(final String tabId, final String url) throws BrowserException {
+            guard.admit(conversation, url);
             return call(connection -> {
                 String raw = tabId == null ? currentOrNew(connection) : rawOf(connection, tabId);
                 connection.navigate(raw, url);
-                return page(connection, raw);
+                BrowserPage page = page(connection, raw);
+                checkFinal(connection, raw, page.url());
+                return page;
             }, true);
         }
 
@@ -161,6 +179,18 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
                 return page(connection, raw);
             }, true);
+        }
+
+        /** Admits the address reached after redirects; a refused one leaves the tab on about:blank. */
+        private void checkFinal(BrowserConnection connection, String raw, String finalUrl) throws BrowserException {
+            try {
+                guard.admit(conversation, finalUrl);
+            } catch (BrowserException e) {
+                if (e.kind() == BrowserException.Kind.BLOCKED) {
+                    connection.navigate(raw, "about:blank");
+                }
+                throw e;
+            }
         }
 
         synchronized void shutdown() {

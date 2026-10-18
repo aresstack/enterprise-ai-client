@@ -8,14 +8,29 @@ public final class ApprovalRequest {
     private final String id;
     private final String toolName;
     private final ApprovalTarget target;
+    private final boolean offersAlways;
 
     public ApprovalRequest(String toolName, ApprovalTarget target) {
+        this(toolName, target, false);
+    }
+
+    /**
+     * @param offersAlways whether the prompt may offer "always allow" / "always forbid" answers
+     *                     ({@link ApprovalDecision.Outcome#APPROVED_ALWAYS}, {@link ApprovalDecision.Outcome#REJECTED_ALWAYS})
+     */
+    public ApprovalRequest(String toolName, ApprovalTarget target, boolean offersAlways) {
         if (toolName == null || toolName.trim().isEmpty() || target == null) {
             throw new IllegalArgumentException("toolName and target must not be empty");
         }
         this.id = UUID.randomUUID().toString();
         this.toolName = toolName.trim();
         this.target = target;
+        this.offersAlways = offersAlways;
+    }
+
+    /** Whether the prompt may offer remembered answers in addition to once/cancel. */
+    public boolean offersAlways() {
+        return offersAlways;
     }
 
     /** Unique id; a decision counts only for the request with this id. */

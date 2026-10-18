@@ -37,6 +37,8 @@ public final class ToolSupport {
     private final IntSupplier maxRounds;
     private final ToolActivityListener diagnostics;
     private final Function<String, List<AiTool>> chatTools;
+    private Function<String, List<AiTool>> browserTools = chatId -> Collections.<AiTool>emptyList();
+    private java.util.function.BooleanSupplier browserReady = () -> false;
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -88,6 +90,8 @@ public final class ToolSupport {
         this.maxRounds = maxRounds;
         this.diagnostics = diagnostics;
         this.chatTools = chatTools;
+        this.browserTools = base.browserTools;
+        this.browserReady = base.browserReady;
     }
 
     /**
@@ -102,16 +106,29 @@ public final class ToolSupport {
     }
 
     /**
-     * Copy whose turns also take the tool path while {@code alsoWhen} holds, asked per turn (#141: a browser is
-     * available and its tools are switched on, so an empty chat can use it without {@code chat.tools.enabled}).
+     * Copy that knows the chat's browser tools (#141). They are offered only in a turn of a chat whose browser switch
+     * is on, and such a turn takes the tool path while {@code ready} holds (Firefox found, tools on in "Tools").
      */
-    public ToolSupport withToolPathWhen(final java.util.function.BooleanSupplier alsoWhen) {
-        if (alsoWhen == null) {
-            throw new IllegalArgumentException("alsoWhen must not be null");
+    public ToolSupport withBrowserTools(Function<String, List<AiTool>> browserTools,
+                                        java.util.function.BooleanSupplier ready) {
+        if (browserTools == null || ready == null) {
+            throw new IllegalArgumentException("browserTools and ready must not be null");
         }
-        final java.util.function.BooleanSupplier base = alwaysOn;
-        return new ToolSupport(this, maxRounds, diagnostics, chatTools,
-                () -> base.getAsBoolean() || alsoWhen.getAsBoolean());
+        ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
+        copy.browserTools = browserTools;
+        copy.browserReady = ready;
+        return copy;
+    }
+
+    /** Whether the browser can be used now (global switches); per chat the composer switch decides. */
+    public boolean browserReady() {
+        return browserReady.getAsBoolean();
+    }
+
+    /** The browser tools bound to the chat {@code chatId}, empty without a browser. */
+    public List<AiTool> browserTools(String chatId) {
+        List<AiTool> tools = browserTools.apply(chatId);
+        return tools == null ? Collections.<AiTool>emptyList() : tools;
     }
 
     /** The active tools bound to the chat {@code chatId}, empty without any. */

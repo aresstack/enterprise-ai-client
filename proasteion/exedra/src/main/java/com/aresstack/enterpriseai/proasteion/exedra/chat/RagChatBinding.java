@@ -186,6 +186,11 @@ public final class RagChatBinding implements ChatShellActions {
     private Request retrieving; // die Anfrage, deren Suche gerade läuft (nur UI-Thread)
     private ToolSupport tools;
     private boolean conversationHasAttachments; // nur UI-Thread
+    /** Composer switch "Browser" of the current chat (#141): off by default; UI thread only. */
+    private boolean browserAllowed;
+    /** Composer switch "Wissensquellen" of the current chat (#141): on by default; UI thread only. */
+    private boolean knowledgeAllowed = true;
+    private final List<Runnable> capabilityListeners = new java.util.concurrent.CopyOnWriteArrayList<Runnable>();
     private final List<ChatBookmark> bookmarks = new ArrayList<ChatBookmark>(); // Seiten des Chats, nur UI-Thread
     private ChatHistoryBinding history; // nur UI-Thread
     private String reasoningEffort; // nur UI-Thread; null = Standard des Modells
@@ -261,6 +266,8 @@ public final class RagChatBinding implements ChatShellActions {
         }
         this.conversationId = conversation;
         this.conversationHasAttachments = hasAttachments;
+        // A new or opened chat starts with the defaults; an opened chat then sets its saved switches.
+        setCapabilities(false, true);
         this.bookmarks.clear();
         if (pages != null) {
             for (ChatBookmark page : pages) {
@@ -269,6 +276,50 @@ public final class RagChatBinding implements ChatShellActions {
                 }
             }
         }
+    }
+
+    /**
+     * Sets the composer switches of the current chat (#141). They apply from the next turn on; a running answer keeps
+     * the capabilities it started with.
+     */
+    public void setCapabilities(boolean browser, boolean knowledge) {
+        if (browserAllowed == browser && knowledgeAllowed == knowledge) {
+            return;
+        }
+        browserAllowed = browser;
+        knowledgeAllowed = knowledge;
+        for (Runnable listener : capabilityListeners) {
+            listener.run();
+        }
+    }
+
+    /** Whether the current chat may use its browser (composer switch, #141). */
+    public boolean browserAllowed() {
+        return browserAllowed;
+    }
+
+    /** Whether the current chat may use the knowledge sources (composer switch, #141). */
+    public boolean knowledgeAllowed() {
+        return knowledgeAllowed;
+    }
+
+    /** Called on the UI thread after the switches of the current chat changed. */
+    public void addCapabilityListener(Runnable listener) {
+        if (listener != null) {
+            capabilityListeners.add(listener);
+        }
+    }
+
+    private static boolean isKnowledgeTool(ToolSupport support, String name) {
+        if (isHelpTool(name)) {
+            return false;
+        }
+        for (AiTool tool : support.knowledgeTools()) {
+            if (tool.name().equals(name)) {
+                return true;
+            }
+        }
+        return name.startsWith("knowledge_");
     }
 
     /** Die Seiten (Bookmarks) der aktuellen Unterhaltung (nur UI-Thread). */
@@ -408,8 +459,11 @@ public final class RagChatBinding implements ChatShellActions {
         final List<ChatBookmark> chatPages = new ArrayList<ChatBookmark>(bookmarks);
         final TranscriptEntry answer = model.beginAssistantMessage();
         final TurnListener listener = new TurnListener();
+        // The composer switches of this turn (#141); toggling later does not change a running answer.
+        final boolean knowledgeOn = knowledgeAllowed;
+        final boolean browserOn = browserAllowed && tools != null && tools.browserReady();
         RagOptions ragOptions = RagOptions.disabled();
-        if (ragEnabled) {
+        if (ragEnabled && knowledgeOn) {
             if (!sources.isRestricted()) {
                 ragOptions = RagOptions.enabled();
             } else if (!sources.allowedSources().isEmpty()) {
@@ -425,9 +479,9 @@ public final class RagChatBinding implements ChatShellActions {
         }
         // Wissens-Werkzeuge, sobald es etwas zu suchen (angehakte Quelle) oder zu lesen (Seite) gibt; ein Bookmark
         // ist keine Voraussetzung für die Suche. Keine Quelle angehakt und keine Seite: normaler Chat.
-        final boolean knowledgeTools = tools != null && !tools.knowledgeTools().isEmpty()
+        final boolean knowledgeTools = knowledgeOn && tools != null && !tools.knowledgeTools().isEmpty()
                 && (ragOptions.isEnabled() || !chatPages.isEmpty() || ChatReferences.needsKnowledge(references));
-        final boolean toolPath = tools != null && (tools.alwaysOn() || conversationHasAttachments
+        final boolean toolPath = tools != null && (tools.alwaysOn() || browserOn || conversationHasAttachments
                 || !newFiles.isEmpty() || !chatPages.isEmpty() || knowledgeTools || !references.isEmpty());
         // Eine Frage nach dem Assistenten selbst beantwortet der Client aus dem, was dieser Turn tatsächlich anbietet;
         // das Modell schreibt diese Antwort nicht (kein Selbstbild wie Modellname oder Wissensstand), gesucht wird
@@ -515,7 +569,17 @@ public final class RagChatBinding implements ChatShellActions {
                             // Tools bound to this chat (memories #144, browser #141, the project's knowledge tools
                             // #143), offered on every tool turn. A chat tool replaces a general tool of the same name:
                             // in a project chat, knowledge_search/knowledge_read also see that project's files.
+                            List<AiTool> boundTools = new ArrayList<AiTool>();
                             for (AiTool bound : support.chatTools(conversation.value())) {
+                                // Knowledge switch off (#141): no knowledge tool, also not the project's own.
+                                if (knowledgeOn || !isKnowledgeTool(support, bound.name())) {
+                                    boundTools.add(bound);
+                                }
+                            }
+                            if (browserOn) {
+                                boundTools.addAll(support.browserTools(conversation.value()));
+                            }
+                            for (AiTool bound : boundTools) {
                                 boolean replaced = false;
                                 for (int i = 0; i < available.size(); i++) {
                                     if (available.get(i).name().equals(bound.name())) {

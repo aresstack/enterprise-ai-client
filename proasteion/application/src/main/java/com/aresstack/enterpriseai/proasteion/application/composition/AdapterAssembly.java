@@ -119,11 +119,15 @@ public final class AdapterAssembly {
         if (firefox == null) {
             return;
         }
+        // Access policy: the composition root completes this guard with settings and the approval prompt.
+        com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard guard =
+                new com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard();
         final com.aresstack.enterpriseai.browser.runtime.ChatBrowserRuntime browsers =
                 new com.aresstack.enterpriseai.browser.runtime.ChatBrowserRuntime(
                         new com.aresstack.enterpriseai.browser.firefox.FirefoxEngine(firefox, FIREFOX_START_TIMEOUT_MILLIS),
                         new com.aresstack.enterpriseai.browser.runtime.BrowserProfileStore(
-                                AppPaths.appDirectory().resolve(BROWSER_PROFILES_DIRECTORY)));
+                                AppPaths.appDirectory().resolve(BROWSER_PROFILES_DIRECTORY)), guard);
+        ports.browserGuard(guard);
         ports.browsers(browsers);
         ports.closing("chat-browsers", browsers::releaseAll);
     }

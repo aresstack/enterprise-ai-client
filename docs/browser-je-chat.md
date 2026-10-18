@@ -41,6 +41,20 @@ Persistente Cookies, Consent-Entscheidungen, Site-Storage und Einstellungen lieg
 Prozess- und App-Neustarts erhalten. Session-Cookies und offene Tabs bleiben nur, soweit Firefox selbst sie
 wiederherstellt.
 
+## Schalter im Composer
+
+Unten im Composer hat jeder Chat zwei Schalter, gespeichert mit dem Chat:
+
+- **Browser** (Globus, Standard aus): nur wenn er an ist, bekommen der Chat und sein Agent `browser_tabs`,
+  `browser_navigate` und `browser_read`. Ausschalten beendet nichts und löscht kein Profil; Firefox startet erst
+  beim ersten Aufruf. Ohne Firefox oder mit abgeschalteten Browser-Werkzeugen im Reiter „Tools“ ist der Schalter grau.
+- **Wissensquellen** (Buch, Standard an): aus heißt für den Turn keine automatische Wissenssuche und keine
+  `knowledge_*`-Werkzeuge, auch nicht die des Projekts. Anhänge und Erinnerungen bleiben.
+
+Sind beide an, sind beide Schalter orange markiert: Inhalte aus Wissensquellen können in Browseraufrufe einfließen.
+Ein Umschalten gilt ab dem nächsten Turn. Eine Rückfrage vor Seitenaufrufen gibt es nicht; die Freigaben aus #146
+bleiben für spätere schreibende Browseraktionen vorgesehen.
+
 ## Sicherheit
 
 - Die Chat-Identität kommt aus dem Chat (die Werkzeuge werden je Unterhaltung gebunden), nie aus Modellargumenten.
@@ -50,6 +64,31 @@ wiederherstellt.
 - Profilordner nur mit einfachen Chat-IDs (`[A-Za-z0-9_-]`) unterhalb des Profilwurzelordners.
 - Der Debugging-Port bindet nur an Loopback und wird dem Modell nie genannt; Cookies und Tokens werden nicht
   protokolliert.
+
+## Zugriffsrichtlinie
+
+Eine globale Richtlinie (Einstellungen → Browser, Schlüssel `browser.access.*`) gilt für alle Chat-Browser. Sie
+wird in der Browser-Anwendungsschicht durchgesetzt (`ChatBrowserRuntime` ruft vor jeder Navigation den
+`BrowserAccessGuard`, umgesetzt von `BrowserAccessService`), nicht im Modell-Prompt.
+
+- **Modi:** `browser.access.mode=block` (Standard) – nur Hosts der Whitelist sind ohne Rückfrage erreichbar;
+  `allow` – alles ist erreichbar außer den Hosts der Blacklist. Mit leerer Whitelist und Modus `block` wird
+  also jede Website erst nach Rückfrage geöffnet.
+- **Regeln** (`browser.access.allow`, `browser.access.block`, durch Komma getrennt): `example.org` = genau
+  dieser Host, `*.example.org` = alle Subdomains (nicht `example.org` selbst). Hosts werden kleingeschrieben,
+  ohne abschließenden Punkt verglichen; Umlaut-Domains nur in Punycode-Schreibweise (`xn--…`), Adressen mit Nicht-ASCII-Host werden gesperrt; Einträge mit Schema, Pfad, Port oder Leerzeichen
+  werden ignoriert. `evil-example.org` passt weder auf `example.org` noch auf `*.example.org`.
+- **Die Blacklist gewinnt immer**, auch im Modus `allow` und auch gegen einen Whitelist-Eintrag.
+- Nur `http`/`https` wird geprüft; `about:blank` und ähnliche interne Seiten sind immer erlaubt.
+- **Weiterleitungen:** Nach dem Laden wird die endgültige Adresse erneut geprüft. Ist sie gesperrt, landet der
+  Tab auf `about:blank` und das Werkzeug meldet die Sperre (Fehlerart `BLOCKED`, wird nie wiederholt).
+- **Rückfrage bei unbekannten Hosts** (Modus `block`): Im Verlauf erscheint eine Blase mit vier Antworten:
+  *Einmal erlauben* (nur diese Navigation), *Immer erlauben* (Host wird exakt, ohne Platzhalter, in die
+  Whitelist geschrieben), *Immer verbieten* (Host kommt in die Blacklist) und *Abbrechen*. Keine Antwort
+  (Zeitüberschreitung), ein abgebrochener Turn oder fehlende Oberfläche gelten als nicht freigegeben.
+
+Noch nicht gefiltert werden Anfragen, die eine erlaubte Seite selbst an Drittanbieter stellt (Skripte, Bilder,
+XHR). Das folgt später über das Abfangen von Netzwerkanfragen per WebDriver BiDi (`network.addIntercept`).
 
 ## Firefox finden und starten
 

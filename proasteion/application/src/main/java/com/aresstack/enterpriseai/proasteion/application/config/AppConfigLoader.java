@@ -211,6 +211,7 @@ public final class AppConfigLoader {
 
         FileAccessConfig fileAccess = new FileAccessConfig(reader.bool(FileAccessConfig.ALLOW_ALL_KEY, false),
                 FileAccessConfig.splitRoots(reader.text(FileAccessConfig.ROOTS_KEY, null)));
+        BrowserAccessConfig browserAccess = browserAccess(reader);
 
         for (String unread : reader.unreadKeys()) {
             warnings.add("Unbekannter Konfigurationsschlüssel wird ignoriert: " + unread);
@@ -238,7 +239,7 @@ public final class AppConfigLoader {
             throw new AppConfigException(reader.problems());
         }
         return new AppConfig(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models,
-                disabledTools, bubbleColors, facts, textMining, fileAccess, toolApprovals, warnings);
+                disabledTools, bubbleColors, facts, textMining, fileAccess, toolApprovals, browserAccess, warnings);
     }
 
     /**
@@ -295,6 +296,14 @@ public final class AppConfigLoader {
     }
 
     // ------------------------------------------------------------------ Abschnitte
+
+    private static BrowserAccessConfig browserAccess(ConfigReader r) {
+        // Anything but "allow" fails safe to "block".
+        String mode = r.text(BrowserAccessConfig.MODE_KEY, BrowserAccessConfig.MODE_BLOCK);
+        return new BrowserAccessConfig(BrowserAccessConfig.isAllowMode(mode),
+                BrowserAccessConfig.split(r.text(BrowserAccessConfig.ALLOW_KEY, null)),
+                BrowserAccessConfig.split(r.text(BrowserAccessConfig.BLOCK_KEY, null)));
+    }
 
     private static ChatConfig chat(ConfigReader r) {
         SecretRef apiKeyRef = r.secretRef("chat.apiKeyRef");

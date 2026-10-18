@@ -18,7 +18,9 @@ public class BrowserException extends Exception {
         /** The request itself is invalid (unknown tab, forbidden url); retrying does not help. */
         INVALID_REQUEST,
         /** Anything else reported by the browser. */
-        FAILED
+        FAILED,
+        /** The browser access policy (or the user) refused the address; retrying does not help. */
+        BLOCKED
     }
 
     private final Kind kind;

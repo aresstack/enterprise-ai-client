@@ -24,10 +24,10 @@ public class ChatApprovalPromptTest {
         return new ApprovalRequest("memory_delete", new ApprovalTarget("delete", "project", "m2", "3", ""));
     }
 
-    private ChatApprovalPrompt prompt(final Boolean... clicks) {
-        return new ChatApprovalPrompt((title, description, answer) -> {
+    private ChatApprovalPrompt prompt(final ApprovalDecision.Outcome... clicks) {
+        return new ChatApprovalPrompt((title, description, offersAlways, answer) -> {
             shownTexts.add(title + " | " + description);
-            for (Boolean click : clicks) {
+            for (ApprovalDecision.Outcome click : clicks) {
                 answer.accept(click);
             }
             return (approved, outcome) -> closed.add(approved + ":" + outcome);
@@ -37,7 +37,7 @@ public class ChatApprovalPromptTest {
     @Test
     public void approveRunsTheCallAndTheBubbleShowsIt() {
         ApprovalRequest request = request();
-        ApprovalDecision decision = prompt(Boolean.TRUE).ask(request, 1000);
+        ApprovalDecision decision = prompt(ApprovalDecision.Outcome.APPROVED).ask(request, 1000);
         assertTrue(decision.approves(request));
         assertEquals("true:" + ChatApprovalPrompt.APPROVED, closed.get(0));
         assertTrue(shownTexts.get(0), shownTexts.get(0).contains("memory_delete"));
@@ -47,29 +47,30 @@ public class ChatApprovalPromptTest {
     @Test
     public void firstClickWins() {
         ApprovalRequest request = request();
-        ApprovalDecision decision = prompt(Boolean.FALSE, Boolean.TRUE, Boolean.TRUE).ask(request, 1000);
+        ApprovalDecision decision = prompt(ApprovalDecision.Outcome.REJECTED, ApprovalDecision.Outcome.APPROVED,
+                ApprovalDecision.Outcome.APPROVED).ask(request, 1000);
         assertEquals(ApprovalDecision.Outcome.REJECTED, decision.outcome());
         assertEquals(1, closed.size());
     }
 
     @Test
     public void noAnswerTimesOutAndALateClickChangesNothing() {
-        final List<Consumer<Boolean>> later = new ArrayList<Consumer<Boolean>>();
-        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, answer) -> {
+        final List<Consumer<ApprovalDecision.Outcome>> later = new ArrayList<Consumer<ApprovalDecision.Outcome>>();
+        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, offersAlways, answer) -> {
             later.add(answer);
             return (approved, outcome) -> closed.add(approved + ":" + outcome);
         }, direct);
         ApprovalRequest request = request();
         ApprovalDecision decision = prompt.ask(request, 20);
         assertEquals(ApprovalDecision.Outcome.TIMEOUT, decision.outcome());
-        later.get(0).accept(Boolean.TRUE);
+        later.get(0).accept(ApprovalDecision.Outcome.APPROVED);
         assertFalse(decision.approves(request));
         assertEquals("false:" + ChatApprovalPrompt.TIMED_OUT, closed.get(0));
     }
 
     @Test
     public void missingSurfaceMeansUnavailable() {
-        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, answer) -> {
+        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, offersAlways, answer) -> {
             throw new IllegalStateException("no transcript");
         }, direct);
         assertEquals(ApprovalDecision.Outcome.UNAVAILABLE, prompt.ask(request(), 1000).outcome());
@@ -77,7 +78,7 @@ public class ChatApprovalPromptTest {
 
     @Test
     public void interruptedTurnCancels() {
-        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, answer) ->
+        ChatApprovalPrompt prompt = new ChatApprovalPrompt((title, description, offersAlways, answer) ->
                 (approved, outcome) -> closed.add(approved + ":" + outcome), direct);
         Thread.currentThread().interrupt();
         try {
@@ -86,5 +87,19 @@ public class ChatApprovalPromptTest {
             assertTrue(Thread.interrupted());
         }
         assertEquals("false:" + ChatApprovalPrompt.CANCELLED, closed.get(0));
+    }
+
+    @Test
+    public void alwaysAnswersCountOnlyWhenOffered() {
+        ApprovalRequest plain = request();
+        assertEquals(ApprovalDecision.Outcome.REJECTED,
+                prompt(ApprovalDecision.Outcome.APPROVED_ALWAYS).ask(plain, 1000).outcome());
+        ApprovalRequest offering = new ApprovalRequest("browser_navigate",
+                new ApprovalTarget("open", null, "example.org", null, ""), true);
+        ApprovalDecision decision = prompt(ApprovalDecision.Outcome.APPROVED_ALWAYS).ask(offering, 1000);
+        assertEquals(ApprovalDecision.Outcome.APPROVED_ALWAYS, decision.outcome());
+        assertTrue(decision.approves(offering));
+        assertEquals(ApprovalDecision.Outcome.REJECTED_ALWAYS,
+                prompt(ApprovalDecision.Outcome.REJECTED_ALWAYS).ask(offering, 1000).outcome());
     }
 }

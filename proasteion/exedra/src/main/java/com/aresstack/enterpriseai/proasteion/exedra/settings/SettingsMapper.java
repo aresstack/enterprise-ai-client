@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserAccessConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.FileAccessConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TextMiningConfig;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
@@ -206,6 +207,9 @@ public final class SettingsMapper {
         b.acronymsHighlight(bool(p, TextMiningConfig.READER_HIGHLIGHT_KEY, true));
         b.fileAccessAllowAll(bool(p, FileAccessConfig.ALLOW_ALL_KEY, false));
         b.fileAccessRoots(FileAccessConfig.splitRoots(text(p, FileAccessConfig.ROOTS_KEY, "")));
+        b.browserAllowByDefault(BrowserAccessConfig.isAllowMode(text(p, BrowserAccessConfig.MODE_KEY, "")));
+        b.browserAllow(BrowserAccessConfig.split(text(p, BrowserAccessConfig.ALLOW_KEY, "")));
+        b.browserBlock(BrowserAccessConfig.split(text(p, BrowserAccessConfig.BLOCK_KEY, "")));
         b.acronymMaxLetters(text(p, TextMiningConfig.MAX_LETTERS_KEY,
                 String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS)));
         b.acronymShoutingPercent(text(p, TextMiningConfig.SHOUTING_PERCENT_KEY,
@@ -377,6 +381,10 @@ public final class SettingsMapper {
         // Folder grants (#120): no access is the default and stays out of the file.
         put(set, FileAccessConfig.ALLOW_ALL_KEY, form.fileAccessAllowAll() ? "true" : "");
         put(set, FileAccessConfig.ROOTS_KEY, FileAccessConfig.joinRoots(form.fileAccessRoots()));
+        // Browser policy (#141): block is the default and stays out of the file.
+        put(set, BrowserAccessConfig.MODE_KEY, form.browserAllowByDefault() ? BrowserAccessConfig.MODE_ALLOW : "");
+        put(set, BrowserAccessConfig.ALLOW_KEY, BrowserAccessConfig.join(form.browserAllow()));
+        put(set, BrowserAccessConfig.BLOCK_KEY, BrowserAccessConfig.join(form.browserBlock()));
         putUnlessDefault(set, TextMiningConfig.MAX_LETTERS_KEY, form.acronymMaxLetters(),
                 AcronymSettings.DEFAULT_MAX_LETTERS);
         putUnlessDefault(set, TextMiningConfig.SHOUTING_PERCENT_KEY, form.acronymShoutingPercent(),

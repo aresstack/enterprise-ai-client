@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.browser.runtime;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
@@ -206,5 +207,56 @@ public class ChatBrowserRuntimeTest {
             assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
         }
         assertTrue(engine.starts.isEmpty());
+    }
+
+    private ChatBrowserRuntime guarded() {
+        BrowserAccessGuard guard = (chat, url) -> {
+            if (url != null && url.contains("blocked.example")) {
+                throw new BrowserException(BrowserException.Kind.BLOCKED, "gesperrt");
+            }
+        };
+        return new ChatBrowserRuntime(engine, new BrowserProfileStore(folder.getRoot().toPath()), guard);
+    }
+
+    @Test
+    public void blockedUrlNeverReachesTheEngine() throws Exception {
+        ChatBrowser browser = guarded().browserOf(chatA);
+        try {
+            browser.navigate(null, "https://blocked.example/");
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+            assertFalse(expected.isRecoverable());
+        }
+        try {
+            browser.newTab("https://blocked.example/");
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertTrue(engine.navigations.isEmpty());
+    }
+
+    @Test
+    public void redirectToBlockedHostEndsOnAboutBlank() throws Exception {
+        engine.redirects.put("https://ok.example/", "https://blocked.example/landing");
+        ChatBrowser browser = guarded().browserOf(chatA);
+        try {
+            browser.navigate(null, "https://ok.example/");
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals("about:blank", browser.read(null).url());
+        assertEquals(2, engine.navigations.size());
+    }
+
+    @Test
+    public void allowedUrlPassesTheGuard() throws Exception {
+        ChatBrowser browser = guarded().browserOf(chatA);
+
+        BrowserPage page = browser.navigate(null, "https://ok.example/");
+
+        assertEquals("https://ok.example/", page.url());
     }
 }

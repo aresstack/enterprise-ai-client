@@ -512,7 +512,7 @@ public class SettingsPanelTest {
             public void run() {
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, palette);
-                assertEquals(10, SettingsPanel.tabCount());
+                assertEquals(11, SettingsPanel.tabCount());
                 for (int i = 0; i < SettingsPanel.tabCount(); i++) {
                     panel.tabButton(i).doClick();
                     assertTrue(panel.tabButton(i).isSelected());
@@ -535,7 +535,9 @@ public class SettingsPanelTest {
             @Override
             public void run() {
                 assertEquals("Tools", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB));
-                assertEquals("Darstellung", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB + 1));
+                assertEquals("Browser", SettingsPanel.tabLabel(SettingsPanel.TOOLS_TAB + 1));
+                assertEquals("Browser", SettingsPanel.tabLabel(SettingsPanel.BROWSER_TAB));
+                assertEquals("Darstellung", SettingsPanel.tabLabel(SettingsPanel.BROWSER_TAB + 1));
                 assertEquals("Technische Details", SettingsPanel.tabLabel(SettingsPanel.TECHNICAL_TAB));
                 SettingsPanel panel = new SettingsPanel(sample(), Collections.<String>emptyList(),
                         SettingsPanel.Mode.EDIT, actions, new ToolOverview() {
@@ -696,6 +698,28 @@ public class SettingsPanelTest {
                 assertEquals("D:/neu", panel.toForm().indexDirectory());
                 panel.indexTab().indexDirectory().setText("");
                 assertEquals("", panel.toForm().indexDirectory());
+            }
+        });
+    }
+
+    @Test
+    public void browserTabRoundTripsPolicy() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample().toBuilder().browserAllowByDefault(false)
+                        .browserAllow(java.util.Arrays.asList("example.org", "*.intern.example")).build(),
+                        Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
+                BrowserTab tab = panel.browserTab();
+                assertTrue(tab.blockByDefault().isSelected());
+                assertEquals("example.org\n*.intern.example", tab.whitelist().getText());
+                tab.allowByDefault().setSelected(true);
+                tab.blacklist().setText(" bad.example \n\nworse.example");
+                SettingsForm form = panel.toForm();
+                assertTrue(form.browserAllowByDefault());
+                assertEquals(java.util.Arrays.asList("bad.example", "worse.example"), form.browserBlock());
+                assertEquals(java.util.Arrays.asList("example.org", "*.intern.example"), form.browserAllow());
             }
         });
     }

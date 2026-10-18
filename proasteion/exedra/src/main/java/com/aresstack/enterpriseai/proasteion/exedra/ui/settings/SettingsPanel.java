@@ -82,7 +82,7 @@ public final class SettingsPanel extends JPanel {
             "Packt alle installierten lokalen KI- und Sprachmodelle in ein ZIP für eine Offline-Installation.";
     public static final String QUIT_LABEL = "Beenden";
     private static final String[] TAB_LABELS = {"KI-Dienst", "KeePass", "Netzwerk & Agent", "Modelle",
-            "Sprachausgabe", "Index", "Tools", "Darstellung", "Technische Details", "Merlins Kristallhöhle"};
+            "Sprachausgabe", "Index", "Tools", "Browser", "Darstellung", "Technische Details", "Merlins Kristallhöhle"};
     /** Index des Reiters „Modelle“ (Auswahl je Kategorie). */
     static final int MODELS_TAB = 3;
     /** Index der Kategorie „Sprachausgabe“. */
@@ -91,14 +91,16 @@ public final class SettingsPanel extends JPanel {
     static final int INDEX_TAB = 5;
     /** Index der Kategorie „Tools“ (Werkzeuge der zentralen Registry mit Häkchen „aktiv“). */
     static final int TOOLS_TAB = 6;
+    /** Index of the "Browser" category (global browser access policy). */
+    static final int BROWSER_TAB = 7;
     /** Index der Kategorie „Darstellung“ (Farben der Sprechblasen). */
-    static final int APPEARANCE_TAB = 7;
+    static final int APPEARANCE_TAB = 8;
     /** Index der Kategorie „Technische Details“ (Protokoll). */
-    static final int TECHNICAL_TAB = 8;
+    static final int TECHNICAL_TAB = 9;
 
     /**
      * Die Kategorien in Reihenfolge: KI-Dienst, KeePass, Netzwerk &amp; Agent, Modelle, Sprachausgabe, Index, Tools,
-     * Darstellung, Technische Details.
+     * Browser, Darstellung, Technische Details.
      */
     public static int tabCount() {
         return TAB_LABELS.length;
@@ -124,6 +126,7 @@ public final class SettingsPanel extends JPanel {
     private final SpeechTab speechTab;
     private final IndexEditor indexTab;
     private final ToolsTab toolsTab;
+    private final BrowserTab browserTab;
     private final AppearanceTab appearanceTab;
     private final JTextArea technicalText = new JTextArea();
     private final JTextArea technicalStatus = new JTextArea();
@@ -190,6 +193,7 @@ public final class SettingsPanel extends JPanel {
         this.speechTab = new SpeechTab(modelsTab, actions, current, palette);
         this.indexTab = new IndexEditor(palette);
         this.toolsTab = new ToolsTab(tools, palette);
+        this.browserTab = new BrowserTab(palette);
         this.appearanceTab = new AppearanceTab(palette);
         this.merlin = SetupWizardMascot.corner(palette);
         // Der Name unter „Sprachausgabe“ steht sofort auch über der Antwort-Vorschau unter „Darstellung“.
@@ -233,7 +237,7 @@ public final class SettingsPanel extends JPanel {
         tabs.setOpaque(false);
         ButtonGroup group = new ButtonGroup();
         JPanel[] pages = {serviceTab.panel(), securityTab.panel(), systemTab.panel(), modelsTab.panel(),
-                speechTab.panel(), indexTab.panel(), toolsTab.panel(), appearanceTab.panel(), technicalPage(), new MerlinCavePanel(palette)};
+                speechTab.panel(), indexTab.panel(), toolsTab.panel(), browserTab.panel(), appearanceTab.panel(), technicalPage(), new MerlinCavePanel(palette)};
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final String name = TAB_LABELS[i];
             ComposerToggleButton button = new ComposerToggleButton(null, name, null);
@@ -637,6 +641,7 @@ public final class SettingsPanel extends JPanel {
         speechTab.load(form);
         indexTab.load(form);
         toolsTab.load(form);
+        browserTab.load(form);
         appearanceTab.load(form);
     }
 
@@ -650,6 +655,7 @@ public final class SettingsPanel extends JPanel {
         speechTab.store(b);
         indexTab.store(b);
         toolsTab.store(b);
+        browserTab.store(b);
         appearanceTab.store(b);
         return b.build();
     }
@@ -802,6 +808,11 @@ public final class SettingsPanel extends JPanel {
 
     ToolsTab toolsTab() {
         return toolsTab;
+    }
+
+    /** The "Browser" category (for tests). */
+    BrowserTab browserTab() {
+        return browserTab;
     }
 
     /** Die Kategorie „Index“ (für Tests). */

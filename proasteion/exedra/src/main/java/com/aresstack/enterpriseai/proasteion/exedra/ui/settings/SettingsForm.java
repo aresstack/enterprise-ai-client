@@ -131,6 +131,9 @@ public final class SettingsForm {
     private final boolean acronymsHighlight;
     private final boolean fileAccessAllowAll;
     private final java.util.List<String> fileAccessRoots;
+    private final boolean browserAllowByDefault;
+    private final java.util.List<String> browserAllow;
+    private final java.util.List<String> browserBlock;
     private final String acronymMaxLetters;
     private final String acronymShoutingPercent;
     private final String acronymShoutingMinWords;
@@ -236,6 +239,9 @@ public final class SettingsForm {
         this.fileAccessAllowAll = b.fileAccessAllowAll;
         this.fileAccessRoots = java.util.Collections.unmodifiableList(
                 new java.util.ArrayList<String>(b.fileAccessRoots));
+        this.browserAllowByDefault = b.browserAllowByDefault;
+        this.browserAllow = java.util.Collections.unmodifiableList(new java.util.ArrayList<String>(b.browserAllow));
+        this.browserBlock = java.util.Collections.unmodifiableList(new java.util.ArrayList<String>(b.browserBlock));
         this.acronymMaxLetters = b.acronymMaxLetters;
         this.acronymShoutingPercent = b.acronymShoutingPercent;
         this.acronymShoutingMinWords = b.acronymShoutingMinWords;
@@ -328,6 +334,9 @@ public final class SettingsForm {
                 .acronymsHighlight(acronymsHighlight)
                 .fileAccessAllowAll(fileAccessAllowAll)
                 .fileAccessRoots(fileAccessRoots)
+                .browserAllowByDefault(browserAllowByDefault)
+                .browserAllow(browserAllow)
+                .browserBlock(browserBlock)
                 .acronymMaxLetters(acronymMaxLetters)
                 .acronymShoutingPercent(acronymShoutingPercent)
                 .acronymShoutingMinWords(acronymShoutingMinWords)
@@ -770,6 +779,21 @@ public final class SettingsForm {
         return fileAccessRoots;
     }
 
+    /** Browser policy mode ({@code browser.access.mode}): {@code true} = allow by default, default block. */
+    public boolean browserAllowByDefault() {
+        return browserAllowByDefault;
+    }
+
+    /** Browser whitelist rules ({@code browser.access.allow}). */
+    public java.util.List<String> browserAllow() {
+        return browserAllow;
+    }
+
+    /** Browser blacklist rules ({@code browser.access.block}); the blacklist always wins. */
+    public java.util.List<String> browserBlock() {
+        return browserBlock;
+    }
+
     /** Longest acronym in letters ({@code textMining.acronyms.maxLetters}, 2–20). */
     public String acronymMaxLetters() {
         return acronymMaxLetters;
@@ -953,6 +977,9 @@ public final class SettingsForm {
         private boolean acronymsHighlight = true;
         private boolean fileAccessAllowAll;
         private java.util.List<String> fileAccessRoots = java.util.Collections.emptyList();
+        private boolean browserAllowByDefault;
+        private java.util.List<String> browserAllow = java.util.Collections.emptyList();
+        private java.util.List<String> browserBlock = java.util.Collections.emptyList();
         private String acronymMaxLetters = String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS);
         private String acronymShoutingPercent = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT);
         private String acronymShoutingMinWords = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
@@ -1405,6 +1432,21 @@ public final class SettingsForm {
 
         public Builder fileAccessRoots(java.util.List<String> value) {
             this.fileAccessRoots = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserAllowByDefault(boolean value) {
+            this.browserAllowByDefault = value;
+            return this;
+        }
+
+        public Builder browserAllow(java.util.List<String> value) {
+            this.browserAllow = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserBlock(java.util.List<String> value) {
+            this.browserBlock = value == null ? java.util.Collections.<String>emptyList() : value;
             return this;
         }
 

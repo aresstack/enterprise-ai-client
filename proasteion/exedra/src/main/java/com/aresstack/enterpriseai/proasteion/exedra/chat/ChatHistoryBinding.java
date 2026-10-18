@@ -182,11 +182,17 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             // Only under the project scope it was saved with: a chat moved since then gets nothing back (#143).
             chat.restoreKnowledgeContext(target, openedKnowledge.getQueries(), ids, openedKnowledge.getScope());
         }
+        chat.setCapabilities(record.isBrowserAllowed(), record.isKnowledgeAllowed());
         recordedConversation = target;
         createdAt = record.getCreatedAt();
         renamedTitle = record.isTitleEdited() ? record.getTitle() : null;
         chatService.closeConversation(previous);
         return true;
+    }
+
+    /** Saves the current chat after its composer switches changed (#141); a chat without messages is not saved. */
+    public void capabilitiesChanged() {
+        save();
     }
 
     /** Löscht einen gespeicherten Chat samt Anhängen (der aktuelle Chat wechselt vorher der Aufrufer). */
@@ -444,6 +450,8 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             return; // ohne Nutzernachricht gibt es nichts zu speichern
         }
         record.setKnowledgeContext(knowledgeOf(conversation));
+        record.setBrowserAllowed(chat.browserAllowed());
+        record.setKnowledgeAllowed(chat.knowledgeAllowed());
         if (renamedTitle != null) {
             record.rename(renamedTitle);
         } else {
