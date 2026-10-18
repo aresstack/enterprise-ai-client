@@ -672,6 +672,27 @@ public final class CompositionRoot {
         }
     }
 
+    /**
+     * Starts recording the web exploration of {@code conversation} for a new turn (#141); {@code listener} gets every
+     * change on the browser tool's thread. Without Firefox nothing is recorded.
+     */
+    public com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress beginBrowserTurn(
+            com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation,
+            java.util.function.Consumer<com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress>
+                    listener) {
+        return browserTools == null || conversation == null
+                ? com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress.none()
+                : browserTools.beginTurn(conversation, listener);
+    }
+
+    /** Ends the turn's web exploration recording of {@code conversation} and returns its final state. */
+    public com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress endBrowserTurn(
+            com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        return browserTools == null || conversation == null
+                ? com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress.none()
+                : browserTools.endTurn(conversation);
+    }
+
     /** Whether Firefox was found at start (#141); without it the chats have no browser tools. */
     public boolean browserAvailable() {
         return browserTools != null;

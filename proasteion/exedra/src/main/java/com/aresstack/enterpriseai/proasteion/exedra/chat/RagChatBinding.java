@@ -508,6 +508,11 @@ public final class RagChatBinding implements ChatShellActions {
         if (support != null && browserOn) {
             request.browserSupport = support;
             request.browserConversation = conversation;
+            // One card for the turn's browser work, fed by the exploration run, updated in place (#141).
+            final ChatBrowserCard card = new ChatBrowserCard(model, "chat-browser-" + request.series);
+            request.browserCard = card;
+            support.browserExploration().begin(conversation.value(),
+                    progress -> listener.onUi(() -> card.update(progress)));
         }
         // Arbeit des Clients steht in Wolken, nie in der Antwortblase: zuerst das Ablegen neuer Anhänge, dann die
         // Recherchekarte der Wissenssuche.
@@ -771,6 +776,9 @@ public final class RagChatBinding implements ChatShellActions {
                 if (support.diagnostics() != null) {
                     support.diagnostics().onToolCall(toolName, arguments);
                 }
+                if (request.browserCard != null && isBrowserTool(toolName)) {
+                    return; // the browser card shows these calls
+                }
                 final String key = "chat-tool-" + request.series + "-" + calls.incrementAndGet();
                 runningKey = key;
                 final String title = toolTitle(toolName);
@@ -783,6 +791,9 @@ public final class RagChatBinding implements ChatShellActions {
             public void onToolResult(String toolName, final boolean succeeded) {
                 if (support.diagnostics() != null) {
                     support.diagnostics().onToolResult(toolName, succeeded);
+                }
+                if (request.browserCard != null && isBrowserTool(toolName)) {
+                    return;
                 }
                 if (KnowledgeAcquisition.isResearch(toolName)) {
                     if (!succeeded) {
@@ -859,6 +870,11 @@ public final class RagChatBinding implements ChatShellActions {
         } catch (RuntimeException rejected) {
             // Ohne Arbeits-Thread sucht die nächste Frage eben neu.
         }
+    }
+
+    /** Tell whether {@code toolName} is one of the chat's browser tools (#141), shown by the browser card. */
+    static boolean isBrowserTool(String toolName) {
+        return toolName != null && toolName.startsWith("browser_");
     }
 
     /** Tell whether {@code toolName} belongs to the built-in product help. */
@@ -1265,6 +1281,8 @@ public final class RagChatBinding implements ChatShellActions {
         RagChatTurn ragTurn;
         boolean ended;
         boolean noticed;
+        /** The turn's browser card, {@code null} without browser tools (UI thread only). */
+        ChatBrowserCard browserCard;
         /** Set when this turn offered the chat's browser: the browser is closed again when the turn ends. */
         ToolSupport browserSupport;
         ChatConversationId browserConversation;
@@ -1368,6 +1386,11 @@ public final class RagChatBinding implements ChatShellActions {
                     if (request != null && request.toolPath) {
                         request.ended = true;
                         addNotice(request);
+                    }
+                    if (request != null && request.browserCard != null) {
+                        request.browserCard.finish(request.browserSupport == null ? null
+                                : request.browserSupport.browserExploration().end(request.browserConversation.value()),
+                                request.cancelRequested);
                     }
                     if (request != null && request.browserSupport != null) {
                         closeBrowserAfter(request);

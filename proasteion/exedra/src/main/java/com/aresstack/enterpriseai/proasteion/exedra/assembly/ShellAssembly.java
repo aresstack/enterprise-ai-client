@@ -35,6 +35,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.ui.workspace.ChatProjectFile
 import com.aresstack.enterpriseai.astu.acropolis.attachment.Attachment;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.FileChatHistoryStore;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
+import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
@@ -170,7 +171,20 @@ public final class ShellAssembly {
                     .withBrowserTools(chatId -> root.conversationChatTools(new ChatConversationId(chatId)),
                             root::browserReady)
                     // Like askai: a finished turn does not leave the chat's Firefox open; the profile stays.
-                    .withBrowserTurnEnd(chatId -> root.closeChatBrowser(new ChatConversationId(chatId))));
+                    .withBrowserTurnEnd(chatId -> root.closeChatBrowser(new ChatConversationId(chatId)))
+                    // The exploration state behind the browser card in the chat.
+                    .withBrowserExploration(new ToolSupport.BrowserExploration() {
+                        @Override
+                        public WebExplorationProgress begin(String chatId,
+                                                            java.util.function.Consumer<WebExplorationProgress> l) {
+                            return root.beginBrowserTurn(new ChatConversationId(chatId), l);
+                        }
+
+                        @Override
+                        public WebExplorationProgress end(String chatId) {
+                            return root.endBrowserTurn(new ChatConversationId(chatId));
+                        }
+                    }));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.

@@ -106,6 +106,26 @@ public class BrowserMcpToolsTest {
         assertEquals(java.util.Arrays.asList("follow link-2", "back null", "closeBrowser"), port.browser(a).calls);
     }
 
+    @Test
+    public void callsRecordTheTurnsExplorationAndMarkCountsRelevantPages() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        java.util.List<com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress> seen =
+                new java.util.ArrayList<com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress>();
+        tools.beginTurn(a, seen::add);
+        assertTrue(invoke(tools.contributionsFor(a), BrowserMcpTools.MARK).isError());
+        invoke(tools.contributionsFor(a), BrowserMcpTools.LINKS);
+        invoke(tools.contributionsFor(a), BrowserMcpTools.FOLLOW, "link", "link-2");
+        invoke(tools.contributionsFor(a), BrowserMcpTools.MARK);
+        McpToolResult again = invoke(tools.contributionsFor(a), BrowserMcpTools.LINKS);
+
+        com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress last = tools.endTurn(a);
+        assertEquals(1, last.visited());
+        assertEquals(2, last.examined());
+        assertEquals(1, last.relevant());
+        assertTrue(again.getText(), again.getText().contains("https://intranet.example/ki (schon besucht)"));
+        assertTrue(seen.get(0).isRunning());
+    }
+
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
         Map<String, Object> values = new HashMap<String, Object>();
         for (int i = 0; i + 1 < args.length; i += 2) {
