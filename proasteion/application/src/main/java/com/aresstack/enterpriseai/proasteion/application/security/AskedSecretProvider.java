@@ -135,9 +135,8 @@ public final class AskedSecretProvider implements SecretProvider, com.aresstack.
             throw new SecretUnavailableException(Reason.CANCELLED, ref, "Eingabe der Zugangsdaten abgebrochen");
         }
         try {
-            if (answer.secret().length > 0) {
-                credentials.remember(key, answer.user(), answer.secret());
-            }
+            // Also an empty answer: a source without login must not ask again on every request of this session.
+            credentials.remember(key, answer.user(), answer.secret());
             return new SecretMaterial(ref, answer.user(), answer.secret());
         } finally {
             Arrays.fill(answer.secret(), '\0');
