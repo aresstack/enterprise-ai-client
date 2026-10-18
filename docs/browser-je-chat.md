@@ -9,7 +9,7 @@ dem Chat; Browserprozess und Automatisierungsverbindung sind austauschbare Laufz
 |---|---|
 | `browser-api` | Port `ChatBrowserPort` / `ChatBrowser` (Tabs, Navigation, Lesen) und Engine-SPI (`BrowserEngine`, `BrowserInstance`, `BrowserConnection`) |
 | `browser-runtime` | `ChatBrowserRuntime`: Profil je Chat (`BrowserProfileStore`), Lazy-Start, ein Start/Reconnect je Chat, Recovery, chatlokale Tab-IDs |
-| `proasteion:application` | `BrowserMcpTools` (`browser_tabs`, `browser_navigate`, `browser_read`), im `ToolCatalog` gelistet und abschaltbar, je Chat gebunden |
+| `proasteion:application` | `BrowserMcpTools` (`browser_tabs`, `browser_navigate`, `browser_read`, `browser_links`, `browser_follow`, `browser_back`, `browser_close`), im `ToolCatalog` gelistet und abschaltbar, je Chat gebunden |
 | `browser-firefox` | `FirefoxEngine`: sichtbarer Firefox auf dem Chat-Profil, freier Loopback-Port, Warten auf die BiDi-Bereitschaftszeile; Verbindung über WD4J (unverändert übernommen, siehe `browser-firefox/VENDORED.md`), direkter WebSocket ohne Geckodriver |
 
 ## Begriffe
@@ -34,6 +34,23 @@ dem Chat; Browserprozess und Automatisierungsverbindung sind austauschbare Laufz
    Tab anlegen und schließen (und später Klicks, Formulare) **nicht**, weil sie vor dem Abbruch schon gewirkt haben
    können.
 7. Chat schließen beendet Prozess und Verbindung, das Profil bleibt; Chat löschen löscht auch das Profil.
+8. Wie in askai bleibt Firefox nach getaner Arbeit nicht offen: jede Antwort, der die Browser-Werkzeuge angeboten
+   wurden, beendet am Ende (fertig, Fehler oder Abbruch) den Browser des Chats. `browser_close` beendet ihn sofort.
+   Das Profil bleibt, der nächste Werkzeugaufruf startet ihn neu (Cookies, Logins, Consent bleiben erhalten).
+   `follow` und `back` werden nach einer Recovery nicht wiederholt (Linkliste und Verlauf gelten dann nicht mehr).
+
+## Linknavigation
+
+`browser_links` liefert die echten Anker der gerenderten Seite (`a[href]`, `area[href]`) als Snapshot:
+`link-N | Text [title/aria-label] | absolute Adresse`, nur http(s), ohne `mailto:`/`javascript:` und ohne reine
+Sprungmarken auf derselben Seite, je Adresse einmal, höchstens `max_links` (Standard 100, höchstens 300), optional
+mit `filter` (vor der Begrenzung angewendet). `browser_follow(link)` öffnet einen Link dieses Snapshots im selben
+Tab, `browser_back` öffnet die Seite, die der Tab vor der letzten Navigation über die Werkzeuge zeigte. Die Ids
+gelten nur für dieses Dokument: jede Navigation des Tabs, auch ein Klick oder Neuladen des Benutzers im sichtbaren
+Firefox, macht sie ungültig (Adresse plus Dokumentkennung), das Modell ruft dann `browser_links` erneut auf. Das
+Ziel von `follow` und `back` geht **vor** dem Laden durch die Zugriffsrichtlinie, die erreichte Adresse nach
+Weiterleitungen erneut; ein gesperrtes Ziel wird nie geladen bzw. endet auf `about:blank`. Den eigenen Verlauf des
+Browsers (der vom Benutzer geöffnete Seiten enthalten kann) spielt `back` bewusst nicht ab.
 
 ## Persistenz
 

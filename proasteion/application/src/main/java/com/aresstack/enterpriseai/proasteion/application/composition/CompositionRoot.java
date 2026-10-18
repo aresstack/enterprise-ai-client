@@ -662,6 +662,16 @@ public final class CompositionRoot {
         return false;
     }
 
+    /**
+     * Ends the browser of {@code conversation} after a finished turn (#141); its profile stays and the next browser
+     * tool starts it again. Does nothing without Firefox or when the chat's browser is not running.
+     */
+    public void closeChatBrowser(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        if (ports.browsers() != null && conversation != null) {
+            ports.browsers().browserOf(conversation).closeBrowser();
+        }
+    }
+
     /** Whether Firefox was found at start (#141); without it the chats have no browser tools. */
     public boolean browserAvailable() {
         return browserTools != null;

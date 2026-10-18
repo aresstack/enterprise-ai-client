@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserLink;
+import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
@@ -76,6 +78,32 @@ public class BrowserMcpToolsTest {
         McpToolResult result = invoke(tools.contributionsFor(a), BrowserMcpTools.READ);
         assertTrue(result.isError());
         assertEquals("kaputt", result.getText());
+    }
+
+    @Test
+    public void linksListIdsTextAndAddressAndFilterKeepsMatchesOnly() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        McpToolResult all = invoke(tools.contributionsFor(a), BrowserMcpTools.LINKS);
+        assertTrue(all.getText(), all.getText().contains("link-1 | Reisekosten | https://intranet.example/reise"));
+        assertTrue(all.getText(), all.getText().contains("link-2 | KI [KI-Portal] | https://intranet.example/ki"));
+        assertTrue(all.getText(), all.getText().contains("2 von 2 Links"));
+
+        McpToolResult filtered = invoke(tools.contributionsFor(a), BrowserMcpTools.LINKS, "filter", "portal");
+        assertTrue(filtered.getText(), filtered.getText().contains("link-1 | KI [KI-Portal]"));
+        assertTrue(filtered.getText(), filtered.getText().contains("1 Links passend zu \"portal\""));
+        assertEquals("links null " + BrowserMcpTools.DEFAULT_MAX_LINKS + " portal", port.browser(a).calls.get(1));
+    }
+
+    @Test
+    public void followTakesALinkIdBackAndCloseReachTheBrowser() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        assertTrue(invoke(tools.contributionsFor(a), BrowserMcpTools.FOLLOW).isError());
+        McpToolResult followed = invoke(tools.contributionsFor(a), BrowserMcpTools.FOLLOW, "link", "link-2");
+        assertTrue(followed.getText(), followed.getText().contains("Adresse: https://intranet.example/ki"));
+        invoke(tools.contributionsFor(a), BrowserMcpTools.BACK);
+        invoke(tools.contributionsFor(a), BrowserMcpTools.CLOSE);
+
+        assertEquals(java.util.Arrays.asList("follow link-2", "back null", "closeBrowser"), port.browser(a).calls);
     }
 
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
@@ -172,6 +200,42 @@ public class BrowserMcpToolsTest {
             check();
             calls.add("read " + tabId);
             return new BrowserPage("tab-1", "https://start.example/", "Start", "Lorem ipsum");
+        }
+
+        @Override
+        public BrowserLinks links(String tabId, int maxLinks, String filter) throws BrowserException {
+            check();
+            calls.add("links " + tabId + " " + maxLinks + " " + filter);
+            BrowserLink ki = new BrowserLink("link-2", "KI", "https://intranet.example/ki", "KI-Portal");
+            return filter == null ? new BrowserLinks("tab-1", "https://intranet.example/", "Intranet",
+                    java.util.Arrays.asList(new BrowserLink("link-1", "Reisekosten", "https://intranet.example/reise",
+                            ""), ki), 2)
+                    : new BrowserLinks("tab-1", "https://intranet.example/", "Intranet",
+                    java.util.Collections.singletonList(new BrowserLink("link-1", "KI", ki.url(), ki.label())), 1);
+        }
+
+        @Override
+        public BrowserPage follow(String tabId, String linkId) throws BrowserException {
+            check();
+            calls.add("follow " + linkId);
+            return new BrowserPage("tab-1", "https://intranet.example/ki", "KI", "text");
+        }
+
+        @Override
+        public BrowserPage back(String tabId) throws BrowserException {
+            check();
+            calls.add("back " + tabId);
+            return new BrowserPage("tab-1", "https://intranet.example/", "Intranet", "text");
+        }
+
+        @Override
+        public void closeBrowser() {
+            calls.add("closeBrowser");
+        }
+
+        @Override
+        public boolean isRunning() {
+            return false;
         }
     }
 }

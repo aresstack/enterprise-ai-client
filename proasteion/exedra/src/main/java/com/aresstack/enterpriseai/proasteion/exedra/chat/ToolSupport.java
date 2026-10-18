@@ -39,6 +39,7 @@ public final class ToolSupport {
     private final Function<String, List<AiTool>> chatTools;
     private Function<String, List<AiTool>> browserTools = chatId -> Collections.<AiTool>emptyList();
     private java.util.function.BooleanSupplier browserReady = () -> false;
+    private java.util.function.Consumer<String> browserTurnEnd = chatId -> { };
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -92,6 +93,7 @@ public final class ToolSupport {
         this.chatTools = chatTools;
         this.browserTools = base.browserTools;
         this.browserReady = base.browserReady;
+        this.browserTurnEnd = base.browserTurnEnd;
     }
 
     /**
@@ -118,6 +120,24 @@ public final class ToolSupport {
         copy.browserTools = browserTools;
         copy.browserReady = ready;
         return copy;
+    }
+
+    /**
+     * Copy that ends the chat's browser after every turn that offered the browser tools: like askai, a finished
+     * browsing turn does not leave Firefox open. The profile (cookies, logins) stays.
+     */
+    public ToolSupport withBrowserTurnEnd(java.util.function.Consumer<String> browserTurnEnd) {
+        if (browserTurnEnd == null) {
+            throw new IllegalArgumentException("browserTurnEnd must not be null");
+        }
+        ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
+        copy.browserTurnEnd = browserTurnEnd;
+        return copy;
+    }
+
+    /** Called off the UI thread when a turn with browser tools of chat {@code chatId} ended in any way. */
+    public void browserTurnEnded(String chatId) {
+        browserTurnEnd.accept(chatId);
     }
 
     /** Whether the browser can be used now (global switches); per chat the composer switch decides. */

@@ -2,9 +2,11 @@ package com.aresstack.enterpriseai.browser.firefox;
 
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
+import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import de.bund.zrb.WDWebSocketImpl;
 import de.bund.zrb.WebDriver;
@@ -31,6 +33,19 @@ final class BidiBrowserConnection implements BrowserConnection {
     /** Url, title and visible text in one evaluation, as a JSON array. */
     static final String READ_SCRIPT = "JSON.stringify([location.href, document.title, "
             + "document.body ? document.body.innerText : ''])";
+    static final int MAX_RAW_LINKS = 2000;
+    /**
+     * The anchors of the rendered page (document order, at most {@value #MAX_RAW_LINKS}) as a JSON array of
+     * [text, resolved href, title, aria-label]; {@code a.href} is already absolute. Only plain values leave the page.
+     */
+    static final String LINKS_SCRIPT = "JSON.stringify(Array.prototype.slice.call("
+            + "document.querySelectorAll('a[href], area[href]'), 0, " + MAX_RAW_LINKS + ").map(function (a) {"
+            + " var t = (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim();"
+            + " if (!t) { var img = a.querySelector('img[alt]'); t = img ? img.getAttribute('alt') : ''; }"
+            + " return [t, String(a.href || ''), a.getAttribute('title') || '', a.getAttribute('aria-label') || '']; }))";
+    /** A random id stored on the window: it lives exactly as long as the document. */
+    static final String DOCUMENT_TOKEN_SCRIPT = "window.__enterpriseAiDocument || (window.__enterpriseAiDocument = "
+            + "String(Date.now()) + '-' + Math.random().toString(36).slice(2))";
     private static final double CONNECT_TIMEOUT_MILLIS = 30000.0;
 
     private final WDWebSocketImpl socket;
@@ -136,6 +151,37 @@ final class BidiBrowserConnection implements BrowserConnection {
         try {
             JsonArray values = JsonParser.parseString(evaluate(contextId, READ_SCRIPT)).getAsJsonArray();
             return new RawPage(values.get(0).getAsString(), values.get(1).getAsString(), values.get(2).getAsString());
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+    }
+
+    @Override
+    public List<RawLink> links(String contextId) throws BrowserException {
+        check();
+        try {
+            JsonArray values = JsonParser.parseString(evaluate(contextId, LINKS_SCRIPT)).getAsJsonArray();
+            List<RawLink> links = new ArrayList<RawLink>(values.size());
+            for (JsonElement value : values) {
+                JsonArray link = value.getAsJsonArray();
+                links.add(new RawLink(link.get(0).getAsString(), link.get(1).getAsString(), link.get(2).getAsString(),
+                        link.get(3).getAsString()));
+            }
+            return links;
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+    }
+
+    @Override
+    public String documentToken(String contextId) throws BrowserException {
+        check();
+        try {
+            return evaluate(contextId, DOCUMENT_TOKEN_SCRIPT);
         } catch (BrowserException e) {
             throw e;
         } catch (RuntimeException e) {

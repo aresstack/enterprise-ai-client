@@ -2,6 +2,8 @@ package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserLink;
+import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
@@ -20,7 +22,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}. The chat is bound when the
+ * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}, {@value #LINKS},
+ * {@value #FOLLOW}, {@value #BACK} and {@value #CLOSE}. Links are followed by their snapshot id, never by a guessed
+ * address; the ids of a page become invalid with the next navigation. The chat is bound when the
  * tools are built ({@link #contributionsFor}), by the host, never by a model argument: the schemas have no chat id,
  * port, profile path or user context, so a call can only reach the browser of its own chat. Tab ids are the chat-local
  * ids of {@link ChatBrowser}.
@@ -30,6 +34,14 @@ public final class BrowserMcpTools {
     public static final String TABS = "browser_tabs";
     public static final String NAVIGATE = "browser_navigate";
     public static final String READ = "browser_read";
+    public static final String LINKS = "browser_links";
+    public static final String FOLLOW = "browser_follow";
+    public static final String BACK = "browser_back";
+    public static final String CLOSE = "browser_close";
+    static final String PARAM_LINK = "link";
+    static final String PARAM_FILTER = "filter";
+    static final String PARAM_MAX_LINKS = "max_links";
+    static final int DEFAULT_MAX_LINKS = 100;
     static final String PARAM_ACTION = "action";
     static final String PARAM_TAB = "tab";
     static final String PARAM_URL = "url";
@@ -46,7 +58,7 @@ public final class BrowserMcpTools {
         this.browsers = browsers;
     }
 
-    /** The three tools bound to {@code conversation}. */
+    /** The browser tools bound to {@code conversation}. */
     public List<McpToolContribution> contributionsFor(final ChatConversationId conversation) {
         if (conversation == null) {
             throw new IllegalArgumentException("conversation must not be null");
@@ -55,13 +67,18 @@ public final class BrowserMcpTools {
         return Collections.unmodifiableList(Arrays.asList(
                 tabs(call -> tabs(browser, call)),
                 navigate(call -> navigate(browser, call)),
-                read(call -> read(browser, call))));
+                read(call -> read(browser, call)),
+                links(call -> links(browser, call)),
+                follow(call -> follow(browser, call)),
+                back(call -> back(browser, call)),
+                close(call -> close(browser))));
     }
 
     /** The tools with handlers that refuse every call: for listing names, descriptions and schemas only. */
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
-        return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse)));
+        return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
+                links(refuse), follow(refuse), back(refuse), close(refuse)));
     }
 
     private static McpToolContribution tabs(McpToolHandler handler) {
@@ -91,6 +108,80 @@ public final class BrowserMcpTools {
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."),
                 McpToolParameter.integer(PARAM_MAX_CHARS, false, "Maximum characters of text (default "
                         + DEFAULT_MAX_CHARS + ")."));
+    }
+
+    private static McpToolContribution links(McpToolHandler handler) {
+        return McpToolContribution.of(LINKS,
+                "List the real links of the page in a tab of this chat's browser (current tab unless tab is given): "
+                        + "id | text | address. Use it before visiting subpages instead of guessing addresses, then "
+                        + "open a link with " + FOLLOW + ". The ids are valid only for this page: after any "
+                        + "navigation call " + LINKS + " again. filter keeps only links whose text, label or "
+                        + "address contains the word.",
+                handler,
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."),
+                McpToolParameter.string(PARAM_FILTER, false, "Optional word to keep matching links only."),
+                McpToolParameter.integer(PARAM_MAX_LINKS, false, "Maximum links (default " + DEFAULT_MAX_LINKS
+                        + ", at most " + BrowserLinks.MAX_LINKS + ")."));
+    }
+
+    private static McpToolContribution follow(McpToolHandler handler) {
+        return McpToolContribution.of(FOLLOW,
+                "Open a link of the last " + LINKS + " list by its id (e.g. link=\"link-7\") in the same tab and "
+                        + "return the page title and the beginning of its text. Use " + BACK + " to return.",
+                handler,
+                McpToolParameter.string(PARAM_LINK, true, "Link id from " + LINKS + "."),
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
+    private static McpToolContribution back(McpToolHandler handler) {
+        return McpToolContribution.of(BACK,
+                "Go one page back in the history of a tab of this chat's browser and return that page.",
+                handler,
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
+    private static McpToolContribution close(McpToolHandler handler) {
+        return McpToolContribution.of(CLOSE,
+                "Close this chat's browser when the browsing task is done. Cookies and logins of the chat stay; "
+                        + "the next browser tool starts it again.",
+                handler);
+    }
+
+    static McpToolResult links(ChatBrowser browser, McpToolCall call) {
+        int max = (int) Math.min(BrowserLinks.MAX_LINKS,
+                Math.max(1L, call.getInteger(PARAM_MAX_LINKS, DEFAULT_MAX_LINKS)));
+        String filter = blankToNull(call.getString(PARAM_FILTER));
+        try {
+            return McpToolResult.ok(render(browser.links(blankToNull(call.getString(PARAM_TAB)), max, filter), filter));
+        } catch (BrowserException e) {
+            return McpToolResult.error(e.getMessage());
+        }
+    }
+
+    static McpToolResult follow(ChatBrowser browser, McpToolCall call) {
+        String link = blankToNull(call.getString(PARAM_LINK));
+        if (link == null) {
+            return McpToolResult.error("link fehlt; Link-Ids liefert " + LINKS);
+        }
+        try {
+            return McpToolResult.ok(render(browser.follow(blankToNull(call.getString(PARAM_TAB)), link),
+                    DEFAULT_MAX_CHARS));
+        } catch (BrowserException e) {
+            return McpToolResult.error(e.getMessage());
+        }
+    }
+
+    static McpToolResult back(ChatBrowser browser, McpToolCall call) {
+        try {
+            return McpToolResult.ok(render(browser.back(blankToNull(call.getString(PARAM_TAB))), DEFAULT_MAX_CHARS));
+        } catch (BrowserException e) {
+            return McpToolResult.error(e.getMessage());
+        }
+    }
+
+    static McpToolResult close(ChatBrowser browser) {
+        browser.closeBrowser();
+        return McpToolResult.ok("Browser geschlossen. Das Profil des Chats bleibt erhalten.");
     }
 
     static McpToolResult tabs(ChatBrowser browser, McpToolCall call) {
@@ -183,6 +274,31 @@ public final class BrowserMcpTools {
                     .append('\n');
         }
         return out.append("(* = aktueller Tab)").toString();
+    }
+
+    private static String render(BrowserLinks links, String filter) {
+        List<BrowserLink> shown = links.links();
+        StringBuilder out = new StringBuilder();
+        out.append("Tab: ").append(links.tabId()).append('\n')
+                .append("Seite: ").append(links.pageTitle()).append(" | ").append(links.pageUrl()).append('\n');
+        if (filter == null) {
+            out.append(shown.size()).append(" von ").append(links.total()).append(" Links");
+        } else {
+            out.append(shown.size()).append(" Links passend zu \"").append(filter).append("\" (von ")
+                    .append(links.total()).append(" Links)");
+        }
+        out.append(" · Ids gelten nur für diese Seite\n\n");
+        for (BrowserLink link : shown) {
+            out.append(link.id()).append(" | ").append(link.text().isEmpty() ? "(ohne Text)" : link.text());
+            if (!link.label().isEmpty()) {
+                out.append(" [").append(link.label()).append(']');
+            }
+            out.append(" | ").append(link.url()).append('\n');
+        }
+        if (shown.isEmpty()) {
+            out.append("Keine Links gefunden.\n");
+        }
+        return out.toString().trim();
     }
 
     private static String render(BrowserPage page, int maxChars) {
