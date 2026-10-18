@@ -46,6 +46,9 @@ public class BrowserMcpToolsTest {
         }
     }
 
+    /** The control snapshot the tools take after every load to look for the site's search. */
+    private static final String SEARCH_HINT = "controls " + BrowserMcpTools.SEARCH_HINT_CONTROLS + " null";
+
     @Test
     public void callsReachOnlyTheBrowserOfTheBoundChat() {
         ChatConversationId a = new ChatConversationId("chat-a");
@@ -53,8 +56,22 @@ public class BrowserMcpToolsTest {
         invoke(tools.contributionsFor(a), BrowserMcpTools.NAVIGATE, "url", "https://a.example/");
         invoke(tools.contributionsFor(b), BrowserMcpTools.READ);
 
-        assertEquals(Collections.singletonList("navigate https://a.example/"), port.browser(a).calls);
+        assertEquals(java.util.Arrays.asList("navigate https://a.example/", SEARCH_HINT), port.browser(a).calls);
         assertEquals(Collections.singletonList("read null"), port.browser(b).calls);
+    }
+
+    @Test
+    public void aLoadedPageWithItsOwnSearchPointsTheModelToTheSearchField() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        List<McpToolContribution> bound = tools.contributionsFor(a);
+        McpToolResult opened = invoke(bound, BrowserMcpTools.NAVIGATE, "url", "https://intranet.example/");
+        assertTrue(opened.getText(), opened.getText().contains("eigenes Suchfeld ctl-1 „Suche“"));
+        assertTrue(opened.getText(), opened.getText().contains("statt eine Such-Adresse zu raten"));
+
+        // The hint's snapshot is the one the model acts on, so the action is described by the field's label.
+        McpToolResult searched = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-1", "action", "submit",
+                "value", "Reisekosten");
+        assertTrue(searched.getText(), searched.getText().startsWith("Gesucht: „Reisekosten“"));
     }
 
     @Test
@@ -109,7 +126,8 @@ public class BrowserMcpToolsTest {
         invoke(tools.contributionsFor(a), BrowserMcpTools.BACK);
         invoke(tools.contributionsFor(a), BrowserMcpTools.CLOSE);
 
-        assertEquals(java.util.Arrays.asList("follow link-2", "back null", "closeBrowser"), port.browser(a).calls);
+        assertEquals(java.util.Arrays.asList("follow link-2", SEARCH_HINT, "back null", SEARCH_HINT,
+                "closeBrowser"), port.browser(a).calls);
     }
 
     @Test
@@ -171,7 +189,7 @@ public class BrowserMcpToolsTest {
         assertTrue(chosen.getText(), chosen.getText().contains("Die Seite hat sich geändert"));
 
         assertEquals(java.util.Arrays.asList("controls 60 null", "act ctl-1 SUBMIT Reisekosten",
-                "controls 60 null", "act ctl-2 SELECT English"), port.browser(a).calls);
+                SEARCH_HINT, "controls 60 null", "act ctl-2 SELECT English"), port.browser(a).calls);
         assertTrue(steps.toString(), steps.contains("Gesucht: „Reisekosten“"));
         assertTrue(steps.toString(), steps.contains("„English“ in „Sprache“ gewählt"));
         assertEquals(1, tools.endTurn(a).visited());
