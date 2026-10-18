@@ -80,7 +80,7 @@ public final class BrowserMcpTools {
         return Collections.unmodifiableList(Arrays.asList(
                 tabs(tracked(run, call -> tabs(browser, call))),
                 navigate(tracked(run, call -> navigate(browser, run, call))),
-                read(tracked(run, call -> read(browser, call))),
+                read(tracked(run, call -> read(browser, run, call))),
                 links(tracked(run, call -> links(browser, run, call))),
                 follow(tracked(run, call -> follow(browser, run, call))),
                 back(tracked(run, call -> back(browser, run, call))),
@@ -331,11 +331,14 @@ public final class BrowserMcpTools {
         }
     }
 
-    static McpToolResult read(ChatBrowser browser, McpToolCall call) {
+    static McpToolResult read(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         int maxChars = (int) Math.min(Integer.MAX_VALUE, Math.max(1L, call.getInteger(PARAM_MAX_CHARS, DEFAULT_MAX_CHARS)));
         try {
-            return McpToolResult.ok(render(browser.read(blankToNull(call.getString(PARAM_TAB))), maxChars));
+            BrowserPage page = browser.read(blankToNull(call.getString(PARAM_TAB)));
+            run.opened(page.url(), page.title(), false);
+            return McpToolResult.ok(render(page, maxChars));
         } catch (BrowserException e) {
+            run.failed(null, e.getMessage());
             return McpToolResult.error(e.getMessage());
         }
     }

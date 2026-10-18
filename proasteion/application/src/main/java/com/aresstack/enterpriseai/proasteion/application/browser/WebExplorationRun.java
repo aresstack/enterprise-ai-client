@@ -48,6 +48,9 @@ public final class WebExplorationRun {
             failed.clear();
             relevant.clear();
             steps.clear();
+            lastLinks.clear();
+            currentPage = null;
+            currentTitle = "";
             active = false;
             running = 0;
             this.listener = listener;

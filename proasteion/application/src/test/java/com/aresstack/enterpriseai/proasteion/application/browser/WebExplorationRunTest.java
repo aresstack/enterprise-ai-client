@@ -89,4 +89,14 @@ public class WebExplorationRunTest {
         assertEquals("http://a.example:8080/", WebExplorationRun.canonical("http://a.example:8080"));
         assertNull(WebExplorationRun.canonical("mailto:x@a.example"));
     }
+
+    @Test
+    public void aNewTurnForgetsTheOpenPageOfThePreviousTurn() {
+        WebExplorationRun run = new WebExplorationRun();
+        run.opened("https://a.example/", "A", false);
+        run.begin(null);
+
+        assertFalse(run.markCurrent(true));
+        assertEquals(0, run.progress().relevant());
+    }
 }
