@@ -754,7 +754,8 @@ final class BidiBrowserConnection implements BrowserConnection {
     /** Margin around a control when only its region is taken, in CSS pixels. */
     static final int SHOT_CLIP_MARGIN = 120;
     /** JPEG qualities tried in turn until the picture fits. */
-    static final float[] SHOT_QUALITIES = {0.75f, 0.55f, 0.35f, 0.2f};
+    private static final java.util.List<Float> SHOT_QUALITIES =
+            java.util.Collections.unmodifiableList(java.util.Arrays.asList(0.75f, 0.55f, 0.35f, 0.2f));
     /**
      * Prepares a screenshot; arguments are (marks: ref to label, clipRef or null, margin). Draws a fixed layer that
      * covers visible password fields and labels every marked control inside the picture, scrolls a clip control into
