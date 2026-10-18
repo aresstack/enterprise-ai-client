@@ -9,7 +9,7 @@ dem Chat; Browserprozess und Automatisierungsverbindung sind austauschbare Laufz
 |---|---|
 | `browser-api` | Port `ChatBrowserPort` / `ChatBrowser` (Tabs, Navigation, Lesen) und Engine-SPI (`BrowserEngine`, `BrowserInstance`, `BrowserConnection`) |
 | `browser-runtime` | `ChatBrowserRuntime`: Profil je Chat (`BrowserProfileStore`), Lazy-Start, ein Start/Reconnect je Chat, Recovery, chatlokale Tab-IDs |
-| `proasteion:application` | `BrowserMcpTools` (`browser_tabs`, `browser_navigate`, `browser_read`, `browser_links`, `browser_follow`, `browser_back`, `browser_close`), im `ToolCatalog` gelistet und abschaltbar, je Chat gebunden |
+| `proasteion:application` | `BrowserMcpTools` (`browser_tabs`, `browser_navigate`, `browser_read`, `browser_links`, `browser_follow`, `browser_back`, `browser_mark`, `browser_close`), im `ToolCatalog` gelistet und abschaltbar, je Chat gebunden |
 | `browser-firefox` | `FirefoxEngine`: sichtbarer Firefox auf dem Chat-Profil, freier Loopback-Port, Warten auf die BiDi-Bereitschaftszeile; Verbindung über WD4J (unverändert übernommen, siehe `browser-firefox/VENDORED.md`), direkter WebSocket ohne Geckodriver |
 
 ## Begriffe
@@ -38,6 +38,15 @@ dem Chat; Browserprozess und Automatisierungsverbindung sind austauschbare Laufz
    wurden, beendet am Ende (fertig, Fehler oder Abbruch) den Browser des Chats. `browser_close` beendet ihn sofort.
    Das Profil bleibt, der nächste Werkzeugaufruf startet ihn neu (Cookies, Logins, Consent bleiben erhalten).
    `follow` und `back` werden nach einer Recovery nicht wiederholt (Linkliste und Verlauf gelten dann nicht mehr).
+
+## Fortschritt im Chat
+
+Jede Antwort mit Browser-Werkzeugen zeichnet ihre Web-Exploration in einem `WebExplorationRun` auf (application,
+je Chat, je Antwort neu): entdeckt, geprüft (dem Modell gezeigte Links), besucht, übersprungen (Richtlinie/Benutzer),
+fehlgeschlagen, relevant (`browser_mark`, gilt als verwendet), nach kanonischer Adresse. Die Browserkarte
+(`ChatBrowserCard`) zeigt diesen Zustand in einer Wolke, die sich in place aktualisiert, statt einer Wolke je
+Aufruf, und platzt am Ende zu „Browserrecherche abgeschlossen · 14 Seiten besucht · 37 Links geprüft · 6 relevante
+Seiten verwendet“. `browser_links` markiert schon besuchte Ziele mit „(schon besucht)“.
 
 ## Linknavigation
 

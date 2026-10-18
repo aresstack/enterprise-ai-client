@@ -8,6 +8,8 @@ import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
+import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress;
+import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationRun;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolContribution;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolHandler;
@@ -17,13 +19,19 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Consumer;
 
 /**
  * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}, {@value #LINKS},
- * {@value #FOLLOW}, {@value #BACK} and {@value #CLOSE}. Links are followed by their snapshot id, never by a guessed
+ * {@value #FOLLOW}, {@value #BACK}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
+ * {@link WebExplorationRun}, the state behind the progress display. Links are followed by their snapshot id, never by a guessed
  * address; the ids of a page become invalid with the next navigation. The chat is bound when the
  * tools are built ({@link #contributionsFor}), by the host, never by a model argument: the schemas have no chat id,
  * port, profile path or user context, so a call can only reach the browser of its own chat. Tab ids are the chat-local
@@ -38,6 +46,8 @@ public final class BrowserMcpTools {
     public static final String FOLLOW = "browser_follow";
     public static final String BACK = "browser_back";
     public static final String CLOSE = "browser_close";
+    public static final String MARK = "browser_mark";
+    static final String PARAM_RELEVANT = "relevant";
     static final String PARAM_LINK = "link";
     static final String PARAM_FILTER = "filter";
     static final String PARAM_MAX_LINKS = "max_links";
@@ -50,6 +60,8 @@ public final class BrowserMcpTools {
     private static final List<String> ACTIONS = Arrays.asList("list", "select", "new", "close");
 
     private final ChatBrowserPort browsers;
+    private final ConcurrentMap<ChatConversationId, WebExplorationRun> runs =
+            new ConcurrentHashMap<ChatConversationId, WebExplorationRun>();
 
     public BrowserMcpTools(ChatBrowserPort browsers) {
         if (browsers == null) {
@@ -64,21 +76,60 @@ public final class BrowserMcpTools {
             throw new IllegalArgumentException("conversation must not be null");
         }
         final ChatBrowser browser = browsers.browserOf(conversation);
+        final WebExplorationRun run = runOf(conversation);
         return Collections.unmodifiableList(Arrays.asList(
-                tabs(call -> tabs(browser, call)),
-                navigate(call -> navigate(browser, call)),
-                read(call -> read(browser, call)),
-                links(call -> links(browser, call)),
-                follow(call -> follow(browser, call)),
-                back(call -> back(browser, call)),
-                close(call -> close(browser))));
+                tabs(tracked(run, call -> tabs(browser, call))),
+                navigate(tracked(run, call -> navigate(browser, run, call))),
+                read(tracked(run, call -> read(browser, run, call))),
+                links(tracked(run, call -> links(browser, run, call))),
+                follow(tracked(run, call -> follow(browser, run, call))),
+                back(tracked(run, call -> back(browser, run, call))),
+                mark(tracked(run, call -> mark(run, call))),
+                close(tracked(run, call -> close(browser, run)))));
+    }
+
+    /**
+     * Starts recording the exploration of {@code conversation} for a new turn; {@code listener} (may be null) gets
+     * every change, on the calling tool's thread.
+     */
+    public WebExplorationProgress beginTurn(ChatConversationId conversation,
+                                            Consumer<WebExplorationProgress> listener) {
+        return runOf(conversation).begin(listener);
+    }
+
+    /** Ends the turn's recording and returns its final state. */
+    public WebExplorationProgress endTurn(ChatConversationId conversation) {
+        return runOf(conversation).end();
+    }
+
+    private WebExplorationRun runOf(ChatConversationId conversation) {
+        WebExplorationRun run = runs.get(conversation);
+        if (run == null) {
+            WebExplorationRun created = new WebExplorationRun();
+            run = runs.putIfAbsent(conversation, created);
+            if (run == null) {
+                run = created;
+            }
+        }
+        return run;
+    }
+
+    private static McpToolHandler tracked(final WebExplorationRun run, final McpToolHandler handler) {
+        return call -> {
+            run.started();
+            try {
+                return handler.invoke(call);
+            } finally {
+                run.finished();
+            }
+        };
     }
 
     /** The tools with handlers that refuse every call: for listing names, descriptions and schemas only. */
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
-                links(refuse), follow(refuse), back(refuse), close(refuse)));
+                links(refuse), follow(refuse), back(refuse), mark(refuse), close(refuse)));
     }
 
     private static McpToolContribution tabs(McpToolHandler handler) {
@@ -147,41 +198,82 @@ public final class BrowserMcpTools {
                 handler);
     }
 
-    static McpToolResult links(ChatBrowser browser, McpToolCall call) {
+    private static McpToolContribution mark(McpToolHandler handler) {
+        return McpToolContribution.of(MARK,
+                "Mark the page currently open in this chat's browser as relevant for the answer (relevant=true, "
+                        + "default) or as not relevant (relevant=false). Mark every page whose content you use; "
+                        + "the user sees how many relevant pages were used.",
+                handler,
+                McpToolParameter.bool(PARAM_RELEVANT, false, "true (default) or false."));
+    }
+
+    static McpToolResult links(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         int max = (int) Math.min(BrowserLinks.MAX_LINKS,
                 Math.max(1L, call.getInteger(PARAM_MAX_LINKS, DEFAULT_MAX_LINKS)));
         String filter = blankToNull(call.getString(PARAM_FILTER));
         try {
-            return McpToolResult.ok(render(browser.links(blankToNull(call.getString(PARAM_TAB)), max, filter), filter));
+            BrowserLinks links = browser.links(blankToNull(call.getString(PARAM_TAB)), max, filter);
+            Map<String, String> shown = new LinkedHashMap<String, String>();
+            for (BrowserLink link : links.links()) {
+                shown.put(link.id(), link.url());
+            }
+            String text = render(links, filter, run);
+            run.linksListed(shown, links.total(), filter);
+            return McpToolResult.ok(text);
         } catch (BrowserException e) {
+            run.failed(null, e.getMessage());
             return McpToolResult.error(e.getMessage());
         }
     }
 
-    static McpToolResult follow(ChatBrowser browser, McpToolCall call) {
+    static McpToolResult follow(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         String link = blankToNull(call.getString(PARAM_LINK));
         if (link == null) {
             return McpToolResult.error("link fehlt; Link-Ids liefert " + LINKS);
         }
+        String target = run.linkTarget(link);
         try {
-            return McpToolResult.ok(render(browser.follow(blankToNull(call.getString(PARAM_TAB)), link),
-                    DEFAULT_MAX_CHARS));
+            return opened(run, browser.follow(blankToNull(call.getString(PARAM_TAB)), link), false);
         } catch (BrowserException e) {
-            return McpToolResult.error(e.getMessage());
+            return refused(run, target, e);
         }
     }
 
-    static McpToolResult back(ChatBrowser browser, McpToolCall call) {
+    static McpToolResult back(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         try {
-            return McpToolResult.ok(render(browser.back(blankToNull(call.getString(PARAM_TAB))), DEFAULT_MAX_CHARS));
+            return opened(run, browser.back(blankToNull(call.getString(PARAM_TAB))), true);
         } catch (BrowserException e) {
-            return McpToolResult.error(e.getMessage());
+            return refused(run, null, e);
         }
     }
 
-    static McpToolResult close(ChatBrowser browser) {
+    static McpToolResult mark(WebExplorationRun run, McpToolCall call) {
+        boolean relevant = call.getBoolean(PARAM_RELEVANT, true);
+        if (!run.markCurrent(relevant)) {
+            return McpToolResult.error("Keine Seite geöffnet; zuerst eine Seite öffnen");
+        }
+        return McpToolResult.ok(relevant ? "Seite als relevant markiert." : "Seite als nicht relevant markiert.");
+    }
+
+    static McpToolResult close(ChatBrowser browser, WebExplorationRun run) {
         browser.closeBrowser();
+        run.closed();
         return McpToolResult.ok("Browser geschlossen. Das Profil des Chats bleibt erhalten.");
+    }
+
+    private static McpToolResult opened(WebExplorationRun run, BrowserPage page, boolean back) {
+        run.opened(page.url(), page.title(), back);
+        return McpToolResult.ok(render(page, DEFAULT_MAX_CHARS));
+    }
+
+    /** A refused target is skipped, any other failure failed; the model gets the reason either way. */
+    private static McpToolResult refused(WebExplorationRun run, String target, BrowserException e) {
+        if (e.kind() == BrowserException.Kind.BLOCKED) {
+            run.skipped(target == null ? e.getMessage() : target);
+        } else {
+            run.failed(target, e.getMessage());
+        }
+        return McpToolResult.error(e.getMessage());
     }
 
     static McpToolResult tabs(ChatBrowser browser, McpToolCall call) {
@@ -223,7 +315,7 @@ public final class BrowserMcpTools {
         }
     }
 
-    static McpToolResult navigate(ChatBrowser browser, McpToolCall call) {
+    static McpToolResult navigate(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         String url = blankToNull(call.getString(PARAM_URL));
         if (url == null) {
             return McpToolResult.error("url fehlt");
@@ -233,18 +325,20 @@ public final class BrowserMcpTools {
             return McpToolResult.error(invalid);
         }
         try {
-            return McpToolResult.ok(render(browser.navigate(blankToNull(call.getString(PARAM_TAB)), url),
-                    DEFAULT_MAX_CHARS));
+            return opened(run, browser.navigate(blankToNull(call.getString(PARAM_TAB)), url), false);
         } catch (BrowserException e) {
-            return McpToolResult.error(e.getMessage());
+            return refused(run, url, e);
         }
     }
 
-    static McpToolResult read(ChatBrowser browser, McpToolCall call) {
+    static McpToolResult read(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         int maxChars = (int) Math.min(Integer.MAX_VALUE, Math.max(1L, call.getInteger(PARAM_MAX_CHARS, DEFAULT_MAX_CHARS)));
         try {
-            return McpToolResult.ok(render(browser.read(blankToNull(call.getString(PARAM_TAB))), maxChars));
+            BrowserPage page = browser.read(blankToNull(call.getString(PARAM_TAB)));
+            run.opened(page.url(), page.title(), false);
+            return McpToolResult.ok(render(page, maxChars));
         } catch (BrowserException e) {
+            run.failed(null, e.getMessage());
             return McpToolResult.error(e.getMessage());
         }
     }
@@ -276,7 +370,7 @@ public final class BrowserMcpTools {
         return out.append("(* = aktueller Tab)").toString();
     }
 
-    private static String render(BrowserLinks links, String filter) {
+    private static String render(BrowserLinks links, String filter, WebExplorationRun run) {
         List<BrowserLink> shown = links.links();
         StringBuilder out = new StringBuilder();
         out.append("Tab: ").append(links.tabId()).append('\n')
@@ -293,7 +387,11 @@ public final class BrowserMcpTools {
             if (!link.label().isEmpty()) {
                 out.append(" [").append(link.label()).append(']');
             }
-            out.append(" | ").append(link.url()).append('\n');
+            out.append(" | ").append(link.url());
+            if (run.wasVisited(link.url())) {
+                out.append(" (schon besucht)");
+            }
+            out.append('\n');
         }
         if (shown.isEmpty()) {
             out.append("Keine Links gefunden.\n");

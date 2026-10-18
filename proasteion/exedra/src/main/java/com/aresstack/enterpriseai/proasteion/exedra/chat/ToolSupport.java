@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ChatCompletionsToolLoop;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolActivityListener;
 import com.aresstack.enterpriseai.chat.api.ChatCompletionPort;
+import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,6 +41,33 @@ public final class ToolSupport {
     private Function<String, List<AiTool>> browserTools = chatId -> Collections.<AiTool>emptyList();
     private java.util.function.BooleanSupplier browserReady = () -> false;
     private java.util.function.Consumer<String> browserTurnEnd = chatId -> { };
+    private BrowserExploration browserExploration = BrowserExploration.none();
+
+    /** Where a turn's web exploration is recorded (#141); the display only reads it. */
+    public interface BrowserExploration {
+
+        /** A recording that records nothing (no browser). */
+        static BrowserExploration none() {
+            return new BrowserExploration() {
+                @Override
+                public WebExplorationProgress begin(String chatId,
+                                                    java.util.function.Consumer<WebExplorationProgress> l) {
+                    return WebExplorationProgress.none();
+                }
+
+                @Override
+                public WebExplorationProgress end(String chatId) {
+                    return WebExplorationProgress.none();
+                }
+            };
+        }
+
+        /** Starts a turn's recording; {@code listener} gets every change on the tool's thread. */
+        WebExplorationProgress begin(String chatId, java.util.function.Consumer<WebExplorationProgress> listener);
+
+        /** Ends the turn's recording and returns the final state. */
+        WebExplorationProgress end(String chatId);
+    }
 
     /**
      * @param knowledgeTools der Wissens-Werkzeugsatz des Chats (Suche in den angehakten Quellen, Lesen von Treffern
@@ -94,6 +122,7 @@ public final class ToolSupport {
         this.browserTools = base.browserTools;
         this.browserReady = base.browserReady;
         this.browserTurnEnd = base.browserTurnEnd;
+        this.browserExploration = base.browserExploration;
     }
 
     /**
@@ -133,6 +162,21 @@ public final class ToolSupport {
         ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
         copy.browserTurnEnd = browserTurnEnd;
         return copy;
+    }
+
+    /** Copy that records each browser turn's exploration in {@code exploration} (#141). */
+    public ToolSupport withBrowserExploration(BrowserExploration exploration) {
+        if (exploration == null) {
+            throw new IllegalArgumentException("exploration must not be null");
+        }
+        ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
+        copy.browserExploration = exploration;
+        return copy;
+    }
+
+    /** The recording of the browser turns. */
+    public BrowserExploration browserExploration() {
+        return browserExploration;
     }
 
     /** Called off the UI thread when a turn with browser tools of chat {@code chatId} ended in any way. */
