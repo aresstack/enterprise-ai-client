@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.browser.api.engine;
 
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 
 import java.util.List;
@@ -30,6 +31,19 @@ public interface BrowserConnection {
 
     /** The anchors of the rendered page in document order, hrefs resolved against the document. */
     List<RawLink> links(String contextId) throws BrowserException;
+
+    /**
+     * The visible, enabled controls of the rendered page in document order (fields, buttons, select boxes, menu
+     * entries, tabs, toggles; no password fields, no plain links), each tagged so {@link #act} can find it again.
+     */
+    List<RawControl> controls(String contextId) throws BrowserException;
+
+    /**
+     * Performs {@code action} on the control {@code ref} and waits until the page settled: a new document is
+     * complete, or the document stopped changing. Fails with {@code INVALID_REQUEST} when the control is gone,
+     * disabled or does not fit the action (no such option, not a field).
+     */
+    RawActOutcome act(String contextId, String ref, BrowserAction action, String value) throws BrowserException;
 
     /**
      * An identity of the tab's current document: the same value while the document lives, a new one after any load

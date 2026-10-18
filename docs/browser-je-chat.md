@@ -61,6 +61,22 @@ Ziel von `follow` und `back` geht **vor** dem Laden durch die Zugriffsrichtlinie
 Weiterleitungen erneut; ein gesperrtes Ziel wird nie geladen bzw. endet auf `about:blank`. Den eigenen Verlauf des
 Browsers (der vom Benutzer geöffnete Seiten enthalten kann) spielt `back` bewusst nicht ab.
 
+## Bedienelemente und Seitensuche
+
+`browser_controls` liefert die sichtbaren, aktivierten Bedienelemente der Seite, die keine reinen Links sind:
+`ctl-N | Art | Beschriftung | Wert | Optionen`, Art `search`, `input`, `button`, `select`, `checkbox`, `radio`,
+`menu`, `tab` oder `toggle`; Suchfelder stehen vorne, damit das Modell die Suche der Website nutzt, statt sich durch
+Menüs zu klicken. Passwort- und versteckte Felder werden nie geliefert. `browser_act(control, action, value)`
+führt `click`, `fill`, `submit` (Wert eintragen und wie Enter absenden) oder `select` aus und wartet, bis die Seite
+zur Ruhe gekommen ist: ein neues Dokument ist vollständig geladen, oder das alte hat sich 600 ms nicht mehr
+verändert (DOM-Beobachtung für Single-Page-Apps), höchstens 10 s. Das Ergebnis sagt, ob eine neue Seite geladen
+wurde oder sich die Seite nur geändert hat (z. B. Menü aufgeklappt, Treffer nachgeladen). Die Ids gelten, bis ein
+neues Dokument geladen wird; ein inzwischen entferntes Element meldet sich als nicht mehr vorhanden. Ein
+deklariertes Formularziel geht **vor** dem Absenden durch die Zugriffsrichtlinie, die danach erreichte Adresse
+erneut (gesperrt → `about:blank`); Ziele, die erst ein Skript der Seite bestimmt, sind nur nachträglich prüfbar.
+Eine Aktion, die eine neue Seite lädt, zählt für `browser_back` wie eine Navigation. In der Browserrecherche-Karte
+erscheinen die Schritte als „Gesucht: „…““, „„Menü“ angeklickt“ usw.
+
 ## Persistenz
 
 Persistente Cookies, Consent-Entscheidungen, Site-Storage und Einstellungen liegen im Profil und bleiben über

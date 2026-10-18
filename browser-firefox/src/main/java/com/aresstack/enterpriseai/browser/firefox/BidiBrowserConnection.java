@@ -1,11 +1,15 @@
 package com.aresstack.enterpriseai.browser.firefox;
 
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
+import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
+import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 import com.google.gson.JsonArray;
+import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import de.bund.zrb.WDWebSocketImpl;
@@ -46,6 +50,110 @@ final class BidiBrowserConnection implements BrowserConnection {
     /** A random id stored on the window: it lives exactly as long as the document. */
     static final String DOCUMENT_TOKEN_SCRIPT = "window.__enterpriseAiDocument || (window.__enterpriseAiDocument = "
             + "String(Date.now()) + '-' + Math.random().toString(36).slice(2))";
+    static final int MAX_RAW_CONTROLS = 400;
+    /**
+     * The visible, enabled controls (document order, at most {@value #MAX_RAW_CONTROLS}) as a JSON array of
+     * [ref, kind, label, value, options, form target]. Each element gets a {@code data-eai-control} attribute with a
+     * fresh ref, so {@link #ACT_FUNCTION} finds it again while it is on the page. Password and hidden fields and real
+     * links (those belong to the link list) are left out; only plain values leave the page.
+     */
+    static final String CONTROLS_SCRIPT = "(function () {"
+            + " var gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 6), out = [];"
+            + " var els = document.querySelectorAll('input, textarea, select, button, summary, [contenteditable=\"true\"],"
+            + " [role=button], [role=menuitem], [role=tab], [role=searchbox], [role=combobox], [role=switch],"
+            + " [role=checkbox], [aria-expanded], [onclick]');"
+            + " function flat(t) { return (t || '').replace(/\\s+/g, ' ').trim(); }"
+            + " for (var i = 0; i < els.length && out.length < " + MAX_RAW_CONTROLS + "; i++) {"
+            + "  var e = els[i], tag = e.tagName.toLowerCase(), type = (e.getAttribute('type') || '').toLowerCase();"
+            + "  var role = (e.getAttribute('role') || '').toLowerCase();"
+            + "  if (tag === 'input' && (type === 'hidden' || type === 'password')) continue;"
+            + "  if (tag === 'a' && !/^\\s*(javascript:|#|$)/i.test(e.getAttribute('href') || '')) continue;"
+            + "  if (e.disabled || e.getAttribute('aria-disabled') === 'true') continue;"
+            + "  var r = e.getBoundingClientRect(); if (r.width === 0 && r.height === 0) continue;"
+            + "  var hint = ((e.getAttribute('name') || '') + ' ' + (e.id || '') + ' ' + (e.getAttribute('placeholder') || '')"
+            + "   + ' ' + (e.getAttribute('aria-label') || '')).toLowerCase();"
+            + "  var kind;"
+            + "  if (tag === 'select') kind = 'select';"
+            + "  else if (tag === 'input' && (type === 'checkbox' || type === 'radio')) kind = type;"
+            + "  else if (e.hasAttribute('aria-expanded') || tag === 'summary') kind = 'toggle';"
+            + "  else if (tag === 'button' || (tag === 'input' && /^(submit|button|reset|image)$/.test(type))) kind = 'button';"
+            + "  else if (type === 'search' || role === 'searchbox' || ((tag === 'input' || tag === 'textarea' || role === 'combobox')"
+            + "   && /such|search|query|recherch|^q\\b|\\bq$/.test(hint))) kind = 'search';"
+            + "  else if (tag === 'input' || tag === 'textarea' || e.isContentEditable || role === 'combobox') kind = 'input';"
+            + "  else if (role === 'menuitem') kind = 'menu';"
+            + "  else if (role === 'tab') kind = 'tab';"
+            + "  else if (role === 'checkbox' || role === 'switch') kind = 'checkbox';"
+            + "  else kind = 'button';"
+            + "  var label = e.getAttribute('aria-label') || '';"
+            + "  if (!label && e.labels && e.labels.length) label = e.labels[0].innerText;"
+            + "  if (!label) label = e.getAttribute('placeholder') || e.getAttribute('title') || '';"
+            + "  if (!label && (kind === 'button' || kind === 'menu' || kind === 'tab' || kind === 'toggle' || kind === 'checkbox'))"
+            + "   label = e.innerText || e.value || e.getAttribute('alt') || '';"
+            + "  if (!label) label = e.getAttribute('name') || e.id || '';"
+            + "  var value = '';"
+            + "  if (kind === 'checkbox' || kind === 'radio') value = (e.checked || e.getAttribute('aria-checked') === 'true') ? 'an' : 'aus';"
+            + "  else if (kind === 'toggle') value = e.getAttribute('aria-expanded') === 'true' || e.parentElement && e.parentElement.open ? 'offen' : 'zu';"
+            + "  else if (kind === 'select') value = e.selectedIndex >= 0 ? e.options[e.selectedIndex].text : '';"
+            + "  else if (kind === 'search' || kind === 'input') value = e.isContentEditable ? e.innerText : (e.value || '');"
+            + "  var options = kind === 'select' ? Array.prototype.slice.call(e.options, 0, 30)"
+            + "   .map(function (o) { return flat(o.text); }).join(' | ') : '';"
+            + "  var form = e.form || (e.closest ? e.closest('form') : null);"
+            + "  var target = form && (kind === 'search' || kind === 'input' || kind === 'button') ? String(form.action || '') : '';"
+            + "  var ref = gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
+            + "  out.push([ref, kind, flat(label), flat(value).slice(0, 200), options, target]); }"
+            + " return JSON.stringify(out); })()";
+    /**
+     * Performs an action on a tagged control; arguments are (ref, action, value). Before acting it starts counting
+     * DOM mutations, so {@link #STATE_SCRIPT} can tell when a single page app has settled. Returns ok, missing,
+     * disabled, nofield or nooption.
+     */
+    static final String ACT_FUNCTION = "(function (ref, action, value) {"
+            + " var e = document.querySelector('[data-eai-control=\"' + ref + '\"]');"
+            + " if (!e) return 'missing';"
+            + " if (e.disabled || e.getAttribute('aria-disabled') === 'true') return 'disabled';"
+            + " window.__enterpriseAiMutations = 0;"
+            + " if (!window.__enterpriseAiObserver && window.MutationObserver) {"
+            + "  window.__enterpriseAiObserver = new MutationObserver(function (m) { window.__enterpriseAiMutations += m.length; });"
+            + "  window.__enterpriseAiObserver.observe(document.documentElement,"
+            + "   {subtree: true, childList: true, attributes: true, characterData: true}); }"
+            + " try { e.scrollIntoView({block: 'center'}); } catch (x) { }"
+            + " function fire(type) { e.dispatchEvent(new Event(type, {bubbles: true})); }"
+            + " if (action === 'fill' || action === 'submit') {"
+            + "  var field = e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' || e.isContentEditable;"
+            + "  if (!field) { if (action === 'fill') return 'nofield'; e.click(); return 'ok'; }"
+            + "  e.focus();"
+            + "  if (value !== null) {"
+            + "   if (e.isContentEditable) { e.textContent = value; } else {"
+            + "    var proto = e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;"
+            + "    var d = Object.getOwnPropertyDescriptor(proto, 'value');"
+            + "    if (d && d.set) { d.set.call(e, value); } else { e.value = value; } }"
+            + "   fire('input'); fire('change'); }"
+            + "  if (action === 'submit') {"
+            + "   var init = {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true};"
+            + "   var go = e.dispatchEvent(new KeyboardEvent('keydown', init));"
+            + "   e.dispatchEvent(new KeyboardEvent('keypress', init));"
+            + "   e.dispatchEvent(new KeyboardEvent('keyup', init));"
+            + "   if (go && e.form) { if (e.form.requestSubmit) { e.form.requestSubmit(); } else { e.form.submit(); } } }"
+            + "  return 'ok'; }"
+            + " if (action === 'select') {"
+            + "  if (e.tagName !== 'SELECT') return 'nofield';"
+            + "  var wanted = String(value || '').toLowerCase().trim(), hit = null;"
+            + "  for (var i = 0; i < e.options.length && !hit; i++) {"
+            + "   var o = e.options[i]; if (o.text.trim().toLowerCase() === wanted || o.value.toLowerCase() === wanted) hit = o; }"
+            + "  for (var j = 0; j < e.options.length && !hit; j++) {"
+            + "   if (e.options[j].text.toLowerCase().indexOf(wanted) >= 0) hit = e.options[j]; }"
+            + "  if (!hit) return 'nooption';"
+            + "  e.value = hit.value; fire('input'); fire('change'); return 'ok'; }"
+            + " e.click(); return 'ok'; })";
+    /** Document token, readiness and the mutation count since the last action, as a JSON array. */
+    static final String STATE_SCRIPT = "JSON.stringify([" + "(" + DOCUMENT_TOKEN_SCRIPT + ")" + ", document.readyState,"
+            + " window.__enterpriseAiMutations || 0])";
+    /** Upper bound for waiting until the page settled after an action. */
+    static final long SETTLE_TIMEOUT_MILLIS = 10000L;
+    /** The document counts as settled after this long without a DOM change. */
+    static final long QUIET_MILLIS = 600L;
+    private static final long POLL_MILLIS = 100L;
+    private static final Gson GSON = new Gson();
     private static final double CONNECT_TIMEOUT_MILLIS = 30000.0;
 
     private final WDWebSocketImpl socket;
@@ -174,6 +282,103 @@ final class BidiBrowserConnection implements BrowserConnection {
             throw e;
         } catch (RuntimeException e) {
             throw classify(e);
+        }
+    }
+
+    @Override
+    public List<RawControl> controls(String contextId) throws BrowserException {
+        check();
+        try {
+            JsonArray values = JsonParser.parseString(evaluate(contextId, CONTROLS_SCRIPT)).getAsJsonArray();
+            List<RawControl> controls = new ArrayList<RawControl>(values.size());
+            for (JsonElement value : values) {
+                JsonArray c = value.getAsJsonArray();
+                controls.add(new RawControl(c.get(0).getAsString(), c.get(1).getAsString(), c.get(2).getAsString(),
+                        c.get(3).getAsString(), c.get(4).getAsString(), c.get(5).getAsString()));
+            }
+            return controls;
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+    }
+
+    @Override
+    public RawActOutcome act(String contextId, String ref, BrowserAction action, String value)
+            throws BrowserException {
+        check();
+        String before = documentToken(contextId);
+        String script = ACT_FUNCTION + "(" + GSON.toJson(ref) + ", "
+                + GSON.toJson(action.name().toLowerCase(Locale.ROOT)) + ", " + GSON.toJson(value) + ")";
+        String answer;
+        try {
+            answer = evaluate(contextId, script);
+        } catch (BrowserException | RuntimeException e) {
+            // A submit can replace the document before the evaluation answers; whether the action worked shows in
+            // the settled state below. A browser or connection that is gone still fails there.
+            check();
+            answer = "ok";
+        }
+        if ("missing".equals(answer)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Das Bedienelement ist nicht mehr auf der Seite; browser_controls erneut aufrufen");
+        }
+        if ("disabled".equals(answer)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Das Bedienelement ist deaktiviert");
+        }
+        if ("nofield".equals(answer)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Diese Aktion passt nicht zum Bedienelement (fill nur für Eingabefelder, select nur für Auswahllisten)");
+        }
+        if ("nooption".equals(answer)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Keine passende Option: " + value);
+        }
+        return settle(contextId, before);
+    }
+
+    /**
+     * Waits until a new document is complete and quiet, or the old one had no DOM change for {@link #QUIET_MILLIS};
+     * at most {@link #SETTLE_TIMEOUT_MILLIS}, after which the page is taken as it is.
+     */
+    private RawActOutcome settle(String contextId, String before) throws BrowserException {
+        long deadline = System.currentTimeMillis() + SETTLE_TIMEOUT_MILLIS;
+        String last = null;
+        long quietSince = System.currentTimeMillis();
+        boolean navigated = false;
+        boolean changed = false;
+        while (System.currentTimeMillis() < deadline) {
+            pause();
+            JsonArray state;
+            try {
+                state = JsonParser.parseString(evaluate(contextId, STATE_SCRIPT)).getAsJsonArray();
+            } catch (BrowserException | RuntimeException e) {
+                // Between two documents there is nothing to evaluate in; only a gone browser ends the wait.
+                check();
+                continue;
+            }
+            String token = state.get(0).getAsString();
+            boolean complete = "complete".equals(state.get(1).getAsString());
+            navigated |= !token.equals(before);
+            changed |= state.get(2).getAsLong() > 0;
+            String now = state.toString();
+            if (!now.equals(last)) {
+                last = now;
+                quietSince = System.currentTimeMillis();
+            } else if (complete && System.currentTimeMillis() - quietSince >= QUIET_MILLIS) {
+                break;
+            }
+        }
+        return new RawActOutcome(navigated, changed);
+    }
+
+    private static void pause() throws BrowserException {
+        try {
+            Thread.sleep(POLL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BrowserException(BrowserException.Kind.FAILED, "Warten auf die Seite unterbrochen", e);
         }
     }
 

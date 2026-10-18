@@ -2,6 +2,10 @@ package com.aresstack.enterpriseai.browser.runtime;
 
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
+import com.aresstack.enterpriseai.browser.api.BrowserAction;
+import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserControl;
+import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -12,6 +16,8 @@ import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
+import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
+import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
@@ -49,6 +55,10 @@ import java.util.concurrent.ConcurrentMap;
  *         invalidates them. {@link ChatBrowser#follow} only opens addresses of that snapshot, through the guard.</li>
  *     <li>{@link ChatBrowser#back} opens the page the tab showed before the last navigation through this runtime,
  *         through the guard before loading; the browser's own history is not replayed.</li>
+ *     <li>Controls are snapshots per tab as well: {@link ChatBrowser#controls} numbers fields, buttons and menus of
+ *         the current document; loading a new document invalidates them, a single page app may keep them as long as
+ *         the element stays. {@link ChatBrowser#act} admits a form's declared target before submitting and the
+ *         address reached afterwards again; an action that loads a new page counts as a navigation for back.</li>
  *     <li>{@link ChatBrowser#closeBrowser} ends process and connection but keeps the slot: the next operation starts
  *         the browser again on the same profile.</li>
  * </ul>
@@ -130,6 +140,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         private boolean closed;
         /** Raw context id to the tab's current link snapshot. */
         private final Map<String, LinkSnapshot> snapshots = new HashMap<String, LinkSnapshot>();
+        /** Raw context id to the tab's current control snapshot. */
+        private final Map<String, ControlSnapshot> controlSnapshots = new HashMap<String, ControlSnapshot>();
         /** Raw context id to the pages the tab showed before, newest first (targets of back). */
         private final Map<String, java.util.Deque<String>> history = new HashMap<String, java.util.Deque<String>>();
 
@@ -176,6 +188,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 connection.close(raw);
                 tabIds.remove(raw);
                 snapshots.remove(raw);
+                controlSnapshots.remove(raw);
                 history.remove(raw);
                 if (raw.equals(currentRaw)) {
                     currentRaw = null;
@@ -305,6 +318,96 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         }
 
         @Override
+        public synchronized BrowserControls controls(final String tabId, final int maxControls, final String filter)
+                throws BrowserException {
+            final String needle = filter == null || filter.trim().isEmpty() ? null
+                    : filter.trim().toLowerCase(Locale.ROOT);
+            final int limit = Math.max(1, Math.min(BrowserControls.MAX_CONTROLS, maxControls));
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                RawTab tab = rawTab(connection, raw);
+                String document = connection.documentToken(raw);
+                List<RawControl> search = new ArrayList<RawControl>();
+                List<RawControl> rest = new ArrayList<RawControl>();
+                for (RawControl control : connection.controls(raw)) {
+                    String label = clip(control.label());
+                    if (needle != null && !(label + " " + control.kind() + " " + control.value())
+                            .toLowerCase(Locale.ROOT).contains(needle)) {
+                        continue;
+                    }
+                    ("search".equals(control.kind()) ? search : rest).add(control);
+                }
+                search.addAll(rest);
+                ControlSnapshot snapshot = new ControlSnapshot(document);
+                List<BrowserControl> controls = new ArrayList<BrowserControl>(Math.min(limit, search.size()));
+                for (RawControl control : search) {
+                    if (controls.size() >= limit) {
+                        break;
+                    }
+                    String id = "ctl-" + (controls.size() + 1);
+                    String target = usableUrl(control.target());
+                    snapshot.controls.put(id, new RawControl(control.ref(), control.kind(), control.label(),
+                            control.value(), control.options(), target == null ? "" : target));
+                    controls.add(new BrowserControl(id, control.kind(), clip(control.label()), clip(control.value()),
+                            control.options(), target));
+                }
+                controlSnapshots.put(raw, snapshot);
+                return new BrowserControls(idOf(raw), tab.url(), tab.title(), controls, search.size());
+            }, true);
+        }
+
+        @Override
+        public synchronized BrowserActResult act(final String tabId, final String controlId,
+                                                 final BrowserAction action, final String value)
+                throws BrowserException {
+            if (action == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Aktion fehlt");
+            }
+            if ((action == BrowserAction.FILL || action == BrowserAction.SELECT) && value == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        action == BrowserAction.FILL ? "fill braucht einen Wert" : "select braucht eine Option");
+            }
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                ControlSnapshot snapshot = controlSnapshots.get(raw);
+                if (snapshot == null) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                            "Keine gültige Liste der Bedienelemente für diesen Tab; zuerst browser_controls aufrufen");
+                }
+                if (!connection.documentToken(raw).equals(snapshot.document)) {
+                    controlSnapshots.remove(raw);
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                            "Seit browser_controls wurde eine neue Seite geladen; die Ids gelten nicht mehr. "
+                                    + "browser_controls erneut aufrufen");
+                }
+                RawControl control = controlId == null ? null : snapshot.controls.get(controlId.trim());
+                if (control == null) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Id " + controlId
+                            + "; Ids gelten nur für die zuletzt mit browser_controls gelieferte Liste");
+                }
+                // A form that declares where it submits to is vetted before anything is sent there; script driven
+                // targets are only known afterwards and pass the guard as the final address.
+                if (!control.target().isEmpty() && (action == BrowserAction.SUBMIT
+                        || (action == BrowserAction.CLICK && "button".equals(control.kind())))) {
+                    guard.admit(conversation, control.target());
+                }
+                String before = rawTab(connection, raw).url();
+                RawActOutcome outcome = connection.act(raw, control.ref(), action, value);
+                // Same document or a new one: the page's links may have changed either way.
+                snapshots.remove(raw);
+                BrowserPage page = page(connection, raw);
+                if (outcome.navigated()) {
+                    controlSnapshots.remove(raw);
+                }
+                if (outcome.navigated() || !withoutFragment(page.url()).equals(withoutFragment(before))) {
+                    push(raw, before);
+                    checkFinal(connection, raw, page.url());
+                }
+                return new BrowserActResult(page, outcome.navigated(), outcome.changed());
+            }, false);
+        }
+
+        @Override
         public synchronized void closeBrowser() {
             dropConnection();
             stopInstance();
@@ -317,7 +420,10 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
 
         /** Remembers the page the tab shows now as the target of a later {@link #back}. */
         private void remember(BrowserConnection connection, String raw) throws BrowserException {
-            String url = rawTab(connection, raw).url();
+            push(raw, rawTab(connection, raw).url());
+        }
+
+        private void push(String raw, String url) {
             if (usableUrl(url) == null) {
                 return;
             }
@@ -438,6 +544,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             // New process, new raw context ids: the old tab ids no longer mean anything.
             tabIds.clear();
             snapshots.clear();
+            controlSnapshots.clear();
             history.clear();
             currentRaw = null;
         }
@@ -530,6 +637,17 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
 
         LinkSnapshot(String pageUrl, String document) {
             this.pageUrl = pageUrl;
+            this.document = document;
+        }
+    }
+
+    /** The controls of one document of one tab: snapshot id to the engine's control (target already vetted as url). */
+    private static final class ControlSnapshot {
+
+        final String document;
+        final Map<String, RawControl> controls = new HashMap<String, RawControl>();
+
+        ControlSnapshot(String document) {
             this.document = document;
         }
     }

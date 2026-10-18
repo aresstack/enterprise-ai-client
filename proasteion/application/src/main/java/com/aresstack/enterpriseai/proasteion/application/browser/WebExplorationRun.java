@@ -30,6 +30,7 @@ public final class WebExplorationRun {
     private final LinkedList<WebExplorationProgress.Step> steps = new LinkedList<WebExplorationProgress.Step>();
     /** Link id to target of the last link list shown, to name a refused or failed follow. */
     private final java.util.Map<String, String> lastLinks = new java.util.HashMap<String, String>();
+    private final java.util.Map<String, String> lastControls = new java.util.HashMap<String, String>();
     private int unlisted;
     private String currentPage;
     private String currentTitle = "";
@@ -49,6 +50,7 @@ public final class WebExplorationRun {
             relevant.clear();
             steps.clear();
             lastLinks.clear();
+            lastControls.clear();
             currentPage = null;
             currentTitle = "";
             active = false;
@@ -94,6 +96,7 @@ public final class WebExplorationRun {
             }
             currentPage = page;
             lastLinks.clear();
+            lastControls.clear();
             currentTitle = title == null ? "" : title;
             step(back ? WebExplorationProgress.StepKind.BACK : WebExplorationProgress.StepKind.OPENED,
                     label(title, url), 0);
@@ -115,6 +118,29 @@ public final class WebExplorationRun {
             addAll(examined, shown);
             step(WebExplorationProgress.StepKind.LINKS, filter == null ? "" : filter, total);
         });
+    }
+
+    /**
+     * The model operated a control of the current page ({@code description}: what it did, e.g. a search term); when
+     * the action loaded a new page, {@link #opened} follows. A page changed in place counts as visited again.
+     */
+    public void acted(String description) {
+        change(() -> step(WebExplorationProgress.StepKind.ACTED, description == null ? "" : description, 0));
+    }
+
+    /** A control list was shown to the model: id to label, for describing later actions. */
+    public void controlsListed(java.util.Map<String, String> labelsById) {
+        change(() -> {
+            lastControls.clear();
+            lastControls.putAll(labelsById);
+            step(WebExplorationProgress.StepKind.ACTED, labelsById.size()
+                    + (labelsById.size() == 1 ? " Bedienelement erkannt" : " Bedienelemente erkannt"), 0);
+        });
+    }
+
+    /** The label of control {@code id} in the last control list shown, or {@code null}. */
+    public synchronized String controlLabel(String id) {
+        return id == null ? null : lastControls.get(id.trim());
     }
 
     /** {@code url} was not opened on purpose (policy or user refused it). */
