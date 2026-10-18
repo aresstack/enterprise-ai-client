@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
 import com.aresstack.enterpriseai.browser.api.engine.RawControl;
+import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
@@ -41,13 +42,20 @@ final class BidiBrowserConnection implements BrowserConnection {
     static final int MAX_RAW_LINKS = 2000;
     /**
      * The anchors of the rendered page (document order, at most {@value #MAX_RAW_LINKS}) as a JSON array of
-     * [text, resolved href, title, aria-label]; {@code a.href} is already absolute. Only plain values leave the page.
+     * [text, resolved href, title, aria-label, landmark region]; {@code a.href} is already absolute. Only plain values leave the page.
      */
     static final String LINKS_SCRIPT = "JSON.stringify(Array.prototype.slice.call("
             + "document.querySelectorAll('a[href], area[href]'), 0, " + MAX_RAW_LINKS + ").map(function (a) {"
             + " var t = (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim();"
             + " if (!t) { var img = a.querySelector('img[alt]'); t = img ? img.getAttribute('alt') : ''; }"
-            + " return [t, String(a.href || ''), a.getAttribute('title') || '', a.getAttribute('aria-label') || '']; }))";
+            + " var l = a.closest ? a.closest('nav, [role=navigation], header, [role=banner], footer,"
+            + " [role=contentinfo], aside, [role=complementary], main, [role=main], article') : null, region = '';"
+            + " if (l) { var n = l.tagName.toLowerCase(), r = l.getAttribute('role') || '';"
+            + "  region = n === 'nav' || r === 'navigation' ? 'nav' : n === 'header' || r === 'banner' ? 'header'"
+            + "   : n === 'footer' || r === 'contentinfo' ? 'footer' : n === 'aside' || r === 'complementary' ? 'aside'"
+            + "   : 'main'; }"
+            + " return [t, String(a.href || ''), a.getAttribute('title') || '', a.getAttribute('aria-label') || '',"
+            + " region]; }))";
     /** A random id stored on the window: it lives exactly as long as the document. */
     static final String DOCUMENT_TOKEN_SCRIPT = "window.__enterpriseAiDocument || (window.__enterpriseAiDocument = "
             + "String(Date.now()) + '-' + Math.random().toString(36).slice(2))";
@@ -180,6 +188,20 @@ final class BidiBrowserConnection implements BrowserConnection {
             + " else { var pw = document.querySelectorAll('input[type=password]');"
             + "  for (var k = 0; k < pw.length; k++) { if (shown(pw[k])) { challenge = 'login'; break; } } }"
             + " return JSON.stringify([consent, labels.join(' | '), challenge]); })()";
+    /**
+     * Fetches (url, maxBytes) inside the page with its cookies and answers a JSON array: ["ok", final url, content
+     * type, base64 bytes] or ["error", reason]. Same-origin rules of the page apply.
+     */
+    static final String FETCH_FUNCTION = "(function (url, max) {"
+            + " return fetch(url, {credentials: 'include', redirect: 'follow'}).then(function (r) {"
+            + "  if (!r.ok) return JSON.stringify(['error', 'HTTP ' + r.status]);"
+            + "  if (+(r.headers.get('content-length') || 0) > max) return JSON.stringify(['error', 'zu groß']);"
+            + "  return r.arrayBuffer().then(function (b) {"
+            + "   if (b.byteLength > max) return JSON.stringify(['error', 'zu groß']);"
+            + "   var u = new Uint8Array(b), s = '', c = 32768;"
+            + "   for (var i = 0; i < u.length; i += c) { s += String.fromCharCode.apply(null, u.subarray(i, i + c)); }"
+            + "   return JSON.stringify(['ok', r.url, r.headers.get('content-type') || '', btoa(s)]); }); })"
+            + " .catch(function (e) { return JSON.stringify(['error', String(e && e.message || e)]); }); })";
     /** Upper bound for waiting after a load until scripts stopped changing the page. */
     static final long LOAD_SETTLE_MILLIS = 5000L;
     /** Upper bound for waiting until the page settled after an action. */
@@ -311,7 +333,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             for (JsonElement value : values) {
                 JsonArray link = value.getAsJsonArray();
                 links.add(new RawLink(link.get(0).getAsString(), link.get(1).getAsString(), link.get(2).getAsString(),
-                        link.get(3).getAsString()));
+                        link.get(3).getAsString(), link.get(4).getAsString()));
             }
             return links;
         } catch (BrowserException e) {
@@ -416,6 +438,25 @@ final class BidiBrowserConnection implements BrowserConnection {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BrowserException(BrowserException.Kind.FAILED, "Warten auf die Seite unterbrochen", e);
+        }
+    }
+
+    @Override
+    public RawDownload fetch(String contextId, String url, int maxBytes) throws BrowserException {
+        check();
+        try {
+            JsonArray values = JsonParser.parseString(evaluate(contextId, FETCH_FUNCTION + "(" + GSON.toJson(url)
+                    + ", " + maxBytes + ")")).getAsJsonArray();
+            if (!"ok".equals(values.get(0).getAsString())) {
+                throw new BrowserException(BrowserException.Kind.FAILED,
+                        "Dokument konnte nicht geladen werden: " + values.get(1).getAsString());
+            }
+            return new RawDownload(values.get(1).getAsString(), values.get(2).getAsString(),
+                    java.util.Base64.getDecoder().decode(values.get(3).getAsString()));
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
         }
     }
 

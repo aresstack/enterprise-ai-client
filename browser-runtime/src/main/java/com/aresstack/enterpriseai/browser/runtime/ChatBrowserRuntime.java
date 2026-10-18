@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
 import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
+import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -19,6 +20,7 @@ import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
 import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
 import com.aresstack.enterpriseai.browser.api.engine.RawControl;
+import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
@@ -245,7 +247,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     }
                     String[] known = usable.get(url);
                     if (known == null) {
-                        usable.put(url, new String[]{text, label.equals(text) ? "" : label});
+                        usable.put(url, new String[]{text, label.equals(text) ? "" : label, anchor.region()});
                     } else if (known[0].isEmpty()) {
                         known[0] = text;
                     }
@@ -258,34 +260,41 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     }
                     String id = "link-" + (links.size() + 1);
                     snapshot.urls.put(id, entry.getKey());
-                    links.add(new BrowserLink(id, entry.getValue()[0], entry.getKey(), entry.getValue()[1]));
+                    links.add(new BrowserLink(id, entry.getValue()[0], entry.getKey(), entry.getValue()[1],
+                            entry.getValue()[2]));
                 }
                 snapshots.put(raw, snapshot);
                 return new BrowserLinks(idOf(raw), tab.url(), tab.title(), links, usable.size());
             }, true);
         }
 
+        /** The address of {@code linkId} in the tab's still valid link snapshot, else {@code INVALID_REQUEST}. */
+        private String snapshotUrl(BrowserConnection connection, String raw, String linkId) throws BrowserException {
+            LinkSnapshot snapshot = snapshots.get(raw);
+            if (snapshot == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        "Keine gültige Linkliste für diesen Tab; zuerst browser_links aufrufen");
+            }
+            if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)
+                    || !connection.documentToken(raw).equals(snapshot.document)) {
+                snapshots.remove(raw);
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        "Die Seite hat sich seit browser_links geändert; die Link-Ids gelten nicht mehr. "
+                                + "browser_links erneut aufrufen");
+            }
+            String url = linkId == null ? null : snapshot.urls.get(linkId.trim());
+            if (url == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Link-Id " + linkId
+                        + "; Link-Ids gelten nur für die zuletzt mit browser_links gelieferte Liste");
+            }
+            return url;
+        }
+
         @Override
         public synchronized BrowserPage follow(final String tabId, final String linkId) throws BrowserException {
             return call(connection -> {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
-                LinkSnapshot snapshot = snapshots.get(raw);
-                if (snapshot == null) {
-                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
-                            "Keine gültige Linkliste für diesen Tab; zuerst browser_links aufrufen");
-                }
-                if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)
-                        || !connection.documentToken(raw).equals(snapshot.document)) {
-                    snapshots.remove(raw);
-                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
-                            "Die Seite hat sich seit browser_links geändert; die Link-Ids gelten nicht mehr. "
-                                    + "browser_links erneut aufrufen");
-                }
-                String url = linkId == null ? null : snapshot.urls.get(linkId.trim());
-                if (url == null) {
-                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Link-Id " + linkId
-                            + "; Link-Ids gelten nur für die zuletzt mit browser_links gelieferte Liste");
-                }
+                String url = snapshotUrl(connection, raw, linkId);
                 guard.admit(conversation, url);
                 snapshots.remove(raw);
                 remember(connection, raw);
@@ -294,6 +303,21 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 checkFinal(connection, raw, page.url());
                 return page;
             }, false);
+        }
+
+        @Override
+        public synchronized BrowserDocument download(final String tabId, final String linkId)
+                throws BrowserException {
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                String url = snapshotUrl(connection, raw, linkId);
+                guard.admit(conversation, url);
+                RawDownload download = connection.fetch(raw, url, BrowserDocument.MAX_BYTES);
+                String reached = download.finalUrl().isEmpty() ? url : download.finalUrl();
+                // A redirect to a refused host is dropped before anything reaches the caller.
+                guard.admit(conversation, reached);
+                return new BrowserDocument(reached, fileNameOf(reached), download.contentType(), download.content());
+            }, true);
         }
 
         @Override
@@ -674,6 +698,22 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         } catch (URISyntaxException e) {
             return null;
         }
+    }
+
+    /** The last path segment of {@code url}, decoded, or {@code dokument}. */
+    static String fileNameOf(String url) {
+        try {
+            String path = new URI(url).getPath();
+            if (path != null) {
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                if (!name.isEmpty()) {
+                    return name;
+                }
+            }
+        } catch (URISyntaxException ignored) {
+            // Fall through to the default name.
+        }
+        return "dokument";
     }
 
     static String withoutFragment(String url) {

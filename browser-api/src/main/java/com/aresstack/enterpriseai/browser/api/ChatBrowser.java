@@ -41,6 +41,14 @@ public interface ChatBrowser {
     BrowserPage follow(String tabId, String linkId) throws BrowserException;
 
     /**
+     * Downloads the document behind link {@code linkId} of the tab's link snapshot (PDF, Office file) inside the page,
+     * with the chat's cookies and logins, without leaving the page; at most {@link BrowserDocument#MAX_BYTES}. The
+     * address passes the access guard before the download and the address reached after redirects again. Only
+     * addresses the page's own origin may fetch work (no cross-origin downloads); others are opened with follow.
+     */
+    BrowserDocument download(String tabId, String linkId) throws BrowserException;
+
+    /**
      * Returns to the page the tab showed before its last navigation through this browser. The address passes the
      * access guard before it is opened and again after redirects.
      */

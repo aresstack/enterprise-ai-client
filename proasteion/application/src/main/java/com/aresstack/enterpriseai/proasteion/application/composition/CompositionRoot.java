@@ -444,10 +444,14 @@ public final class CompositionRoot {
                             MemoryTools.forChat(null, "")));
         }
         registerHelpTools(toolCatalog, config.agent().toolSettings());
+        // Anhänge (Chat, Agent und Dokumente im Browser): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
+        this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
+                DocumentExtraction.registry());
         // Browser per chat (#141): listed and switchable in the catalog; executed only bound to a conversation
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
         this.browserTools = ports.browsers() == null ? null
-                : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers());
+                : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers(),
+                attachmentText);
         // Listed even without Firefox, so the tab "Tools" shows why a chat has no browser.
         {
             toolCatalog.registerDefinitions(browserTools != null ? ORIGIN_BROWSER : ORIGIN_BROWSER_MISSING,
@@ -493,9 +497,6 @@ public final class CompositionRoot {
                         () -> settings.current().textMining().statements().verify())),
                 new FactCatalogStatements(ports.facts()), () -> settings.current().textMining().statements());
         this.statementAnalysis = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-statements"));
-        // Anhänge (Chat und Agent): Text über den Dokument-Port, Markdown/Klartext direkt, sonst Apache Tika.
-        this.attachmentText = new DocumentAttachmentTextExtractor(DocumentExtraction.detector(),
-                DocumentExtraction.registry());
 
         this.agentStarts = Executors.newSingleThreadExecutor(daemonThreads("enterprise-ai-agent-start"));
         // Der eingebaute Recherche-Agent aus askai-java8 (arch) samt Weidezaun, Projekte neben der Konfiguration.

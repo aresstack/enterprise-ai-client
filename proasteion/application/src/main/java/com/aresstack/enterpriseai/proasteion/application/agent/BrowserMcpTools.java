@@ -1,10 +1,13 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
+import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentException;
+import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
 import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
+import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -35,7 +38,7 @@ import java.util.function.Consumer;
 
 /**
  * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}, {@value #LINKS},
- * {@value #FOLLOW}, {@value #BACK}, {@value #CONTROLS}, {@value #ACT}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
+ * {@value #FOLLOW}, {@value #BACK}, {@value #DOCUMENT}, {@value #CONTROLS}, {@value #ACT}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
  * {@link WebExplorationRun}, the state behind the progress display. Links are followed by their snapshot id, never by a guessed
  * address; the ids of a page become invalid with the next navigation. The chat is bound when the
  * tools are built ({@link #contributionsFor}), by the host, never by a model argument: the schemas have no chat id,
@@ -53,6 +56,10 @@ public final class BrowserMcpTools {
     public static final String CLOSE = "browser_close";
     public static final String MARK = "browser_mark";
     public static final String CONTROLS = "browser_controls";
+    public static final String DOCUMENT = "browser_document";
+    /** Address endings of links that lead to documents rather than pages. */
+    private static final List<String> DOCUMENT_ENDINGS = Arrays.asList(".pdf", ".doc", ".docx", ".xls", ".xlsx",
+            ".ppt", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".txt", ".csv");
     public static final String ACT = "browser_act";
     static final String PARAM_CONTROL = "control";
     static final String PARAM_VALUE = "value";
@@ -72,14 +79,22 @@ public final class BrowserMcpTools {
     private static final List<String> ACTIONS = Arrays.asList("list", "select", "new", "close");
 
     private final ChatBrowserPort browsers;
+    /** Text of downloaded documents through the document pipeline; {@code null}: no {@value #DOCUMENT}. */
+    private final AttachmentTextExtractor documents;
     private final ConcurrentMap<ChatConversationId, WebExplorationRun> runs =
             new ConcurrentHashMap<ChatConversationId, WebExplorationRun>();
 
     public BrowserMcpTools(ChatBrowserPort browsers) {
+        this(browsers, null);
+    }
+
+    /** With {@code documents} (may be null) linked PDFs and Office files are read through the document pipeline. */
+    public BrowserMcpTools(ChatBrowserPort browsers, AttachmentTextExtractor documents) {
         if (browsers == null) {
             throw new IllegalArgumentException("browsers must not be null");
         }
         this.browsers = browsers;
+        this.documents = documents;
     }
 
     /** The browser tools bound to {@code conversation}. */
@@ -96,6 +111,7 @@ public final class BrowserMcpTools {
                 links(tracked(run, call -> links(browser, run, call))),
                 follow(tracked(run, call -> follow(browser, run, call))),
                 back(tracked(run, call -> back(browser, run, call))),
+                document(tracked(run, call -> document(browser, documents, run, call))),
                 controls(tracked(run, call -> controls(browser, run, call))),
                 act(tracked(run, call -> act(browser, run, call))),
                 mark(tracked(run, call -> mark(run, call))),
@@ -143,7 +159,7 @@ public final class BrowserMcpTools {
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
-                links(refuse), follow(refuse), back(refuse), controls(refuse), act(refuse), mark(refuse),
+                links(refuse), follow(refuse), back(refuse), document(refuse), controls(refuse), act(refuse), mark(refuse),
                 close(refuse)));
     }
 
@@ -179,7 +195,8 @@ public final class BrowserMcpTools {
     private static McpToolContribution links(McpToolHandler handler) {
         return McpToolContribution.of(LINKS,
                 "List the real links of the page in a tab of this chat's browser (current tab unless tab is given): "
-                        + "id | text | address. Use it before visiting subpages instead of guessing addresses, then "
+                        + "id | text | address {region}; the region (Navigation, Kopfbereich, Inhalt, Seitenleiste, "
+                        + "Fußbereich) tells menus from content. Use it before visiting subpages instead of guessing addresses, then "
                         + "open a link with " + FOLLOW + ". The ids are valid only for this page: after any "
                         + "navigation call " + LINKS + " again. filter keeps only links whose text, label or "
                         + "address contains the word.",
@@ -204,6 +221,18 @@ public final class BrowserMcpTools {
                 "Go one page back in the history of a tab of this chat's browser and return that page.",
                 handler,
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
+    private static McpToolContribution document(McpToolHandler handler) {
+        return McpToolContribution.of(DOCUMENT,
+                "Read a document a page links to (PDF, Word, Excel, PowerPoint, text; marked \"Dokument\" in "
+                        + LINKS + ") by its link id, without leaving the page: downloaded with this chat's logins "
+                        + "and converted to text like an attachment. Use it instead of " + FOLLOW + " for documents.",
+                handler,
+                McpToolParameter.string(PARAM_LINK, true, "Link id from " + LINKS + "."),
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."),
+                McpToolParameter.integer(PARAM_MAX_CHARS, false, "Maximum characters of text (default "
+                        + DEFAULT_MAX_CHARS + ")."));
     }
 
     private static McpToolContribution controls(McpToolHandler handler) {
@@ -289,6 +318,74 @@ public final class BrowserMcpTools {
         } catch (BrowserException e) {
             return refused(run, null, e);
         }
+    }
+
+    static McpToolResult document(ChatBrowser browser, AttachmentTextExtractor documents, WebExplorationRun run,
+                                  McpToolCall call) {
+        if (documents == null) {
+            return McpToolResult.error("Dokumente lesen ist in dieser Umgebung nicht verfügbar");
+        }
+        String link = blankToNull(call.getString(PARAM_LINK));
+        if (link == null) {
+            return McpToolResult.error("link fehlt; Link-Ids liefert " + LINKS);
+        }
+        int maxChars = (int) Math.min(Integer.MAX_VALUE, Math.max(1L, call.getInteger(PARAM_MAX_CHARS, DEFAULT_MAX_CHARS)));
+        String target = run.linkTarget(link);
+        BrowserDocument document;
+        try {
+            document = browser.download(blankToNull(call.getString(PARAM_TAB)), link);
+        } catch (BrowserException e) {
+            return refused(run, target, e);
+        }
+        String text;
+        try {
+            text = documents.extractText(document.fileName(), document.content());
+        } catch (AttachmentException e) {
+            run.failed(document.url(), e.getMessage());
+            return McpToolResult.error(e.getMessage());
+        }
+        run.documentRead(document.url(), document.fileName());
+        boolean cut = text.length() > maxChars;
+        StringBuilder out = new StringBuilder();
+        out.append("Dokument: ").append(document.fileName()).append('\n')
+                .append("Adresse: ").append(document.url()).append("\n\n")
+                .append(cut ? text.substring(0, maxChars) : text);
+        if (cut) {
+            out.append("\n[… gekürzt, ").append(text.length()).append(" Zeichen insgesamt]");
+        }
+        return McpToolResult.ok(out.toString());
+    }
+
+    /** Whether {@code url} leads to a document ({@value #DOCUMENT}) rather than a page, judged by its path. */
+    static boolean isDocument(String url) {
+        try {
+            String path = new URI(url).getPath();
+            String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
+            for (String ending : DOCUMENT_ENDINGS) {
+                if (lower.endsWith(ending)) {
+                    return true;
+                }
+            }
+        } catch (URISyntaxException ignored) {
+            // Not a document then.
+        }
+        return false;
+    }
+
+    private static String regionName(String region) {
+        if ("nav".equals(region)) {
+            return "Navigation";
+        }
+        if ("header".equals(region)) {
+            return "Kopfbereich";
+        }
+        if ("footer".equals(region)) {
+            return "Fußbereich";
+        }
+        if ("aside".equals(region)) {
+            return "Seitenleiste";
+        }
+        return "main".equals(region) ? "Inhalt" : "";
     }
 
     static McpToolResult controls(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
@@ -536,6 +633,13 @@ public final class BrowserMcpTools {
                 out.append(" [").append(link.label()).append(']');
             }
             out.append(" | ").append(link.url());
+            String region = regionName(link.region());
+            if (!region.isEmpty()) {
+                out.append(" {").append(region).append('}');
+            }
+            if (isDocument(link.url())) {
+                out.append(" (Dokument → ").append(DOCUMENT).append(')');
+            }
             if (run.wasVisited(link.url())) {
                 out.append(" (schon besucht)");
             }

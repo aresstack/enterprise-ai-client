@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
+import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
@@ -643,5 +644,32 @@ public class ChatBrowserRuntimeTest {
 
         browser.navigate(null, "https://login.example/");
         assertEquals(BrowserProbe.LOGIN, browser.probe(null).challenge());
+    }
+
+    @Test
+    public void linksCarryTheirRegionAndDocumentsDownloadThroughTheGuard() throws Exception {
+        engine.anchors.put(PORTAL, Arrays.asList(
+                new RawLink("Start", "https://intranet.example/", "", "", "nav"),
+                new RawLink("Richtlinie", "https://intranet.example/richtlinie.pdf", "", "", "main"),
+                new RawLink("Extern", "https://intranet.example/extern.pdf", "", "", "main")));
+        engine.redirects.put("https://intranet.example/extern.pdf", "https://blocked.example/x.pdf");
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        BrowserLinks links = browser.links(null, 100, null);
+        assertEquals("nav", links.links().get(0).region());
+        assertEquals("main", links.links().get(1).region());
+
+        BrowserDocument document = browser.download(null, "link-2");
+        assertEquals("richtlinie.pdf", document.fileName());
+        assertEquals("application/pdf", document.contentType());
+        assertEquals(PORTAL, browser.read(null).url());
+        try {
+            browser.download(null, "link-3");
+            fail("expected BLOCKED after the redirect");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals(Arrays.asList("https://intranet.example/richtlinie.pdf", "https://intranet.example/extern.pdf"),
+                engine.fetches);
     }
 }
