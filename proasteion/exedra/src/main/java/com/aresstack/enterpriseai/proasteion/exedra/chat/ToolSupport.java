@@ -32,7 +32,7 @@ public final class ToolSupport {
     private final AttachmentTextExtractor extractor;
     private final Supplier<List<AiTool>> knowledgeTools;
     private final Predicate<String> enabled;
-    private final boolean alwaysOn;
+    private final java.util.function.BooleanSupplier alwaysOn;
     private final Executor loopExecutor;
     private final IntSupplier maxRounds;
     private final ToolActivityListener diagnostics;
@@ -61,7 +61,7 @@ public final class ToolSupport {
         this.extractor = extractor;
         this.knowledgeTools = knowledgeTools == null ? fixed(null) : knowledgeTools;
         this.enabled = enabled == null ? name -> true : enabled;
-        this.alwaysOn = alwaysOn;
+        this.alwaysOn = () -> alwaysOn;
         this.loopExecutor = command -> {
             Thread thread = new Thread(command, "tool-loop");
             thread.setDaemon(true);
@@ -73,17 +73,17 @@ public final class ToolSupport {
     }
 
     private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics) {
-        this(base, maxRounds, diagnostics, base.chatTools);
+        this(base, maxRounds, diagnostics, base.chatTools, base.alwaysOn);
     }
 
     private ToolSupport(ToolSupport base, IntSupplier maxRounds, ToolActivityListener diagnostics,
-                        Function<String, List<AiTool>> chatTools) {
+                        Function<String, List<AiTool>> chatTools, java.util.function.BooleanSupplier alwaysOn) {
         this.chat = base.chat;
         this.store = base.store;
         this.extractor = base.extractor;
         this.knowledgeTools = base.knowledgeTools;
         this.enabled = base.enabled;
-        this.alwaysOn = base.alwaysOn;
+        this.alwaysOn = alwaysOn;
         this.loopExecutor = base.loopExecutor;
         this.maxRounds = maxRounds;
         this.diagnostics = diagnostics;
@@ -98,7 +98,20 @@ public final class ToolSupport {
         if (chatTools == null) {
             throw new IllegalArgumentException("chatTools must not be null");
         }
-        return new ToolSupport(this, maxRounds, diagnostics, chatTools);
+        return new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
+    }
+
+    /**
+     * Copy whose turns also take the tool path while {@code alsoWhen} holds, asked per turn (#141: a browser is
+     * available and its tools are switched on, so an empty chat can use it without {@code chat.tools.enabled}).
+     */
+    public ToolSupport withToolPathWhen(final java.util.function.BooleanSupplier alsoWhen) {
+        if (alsoWhen == null) {
+            throw new IllegalArgumentException("alsoWhen must not be null");
+        }
+        final java.util.function.BooleanSupplier base = alwaysOn;
+        return new ToolSupport(this, maxRounds, diagnostics, chatTools,
+                () -> base.getAsBoolean() || alsoWhen.getAsBoolean());
     }
 
     /** The active tools bound to the chat {@code chatId}, empty without any. */
@@ -176,7 +189,7 @@ public final class ToolSupport {
 
     /** {@code chat.tools.enabled}: jede Frage über die Werkzeug-Schleife, nicht nur mit Anhängen oder Seiten. */
     public boolean alwaysOn() {
-        return alwaysOn;
+        return alwaysOn.getAsBoolean();
     }
 
     public Executor loopExecutor() {

@@ -125,6 +125,8 @@ public final class CompositionRoot {
     static final String ORIGIN_ATTACHMENTS = "Dateianhänge (AttachmentTools)";
     static final String ORIGIN_HELP = "Produkthilfe (AppHelpMcpTools)";
     static final String ORIGIN_BROWSER = "Browser des Chats (BrowserMcpTools)";
+    static final String ORIGIN_BROWSER_MISSING =
+            "Browser des Chats: Firefox nicht gefunden (Pfad mit -Denterpriseai.firefox=... angeben)";
     static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
@@ -424,8 +426,10 @@ public final class CompositionRoot {
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
         this.browserTools = ports.browsers() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers());
-        if (browserTools != null) {
-            toolCatalog.registerDefinitions(ORIGIN_BROWSER, EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT), () -> {
+        // Listed even without Firefox, so the tab "Tools" shows why a chat has no browser.
+        {
+            toolCatalog.registerDefinitions(browserTools != null ? ORIGIN_BROWSER : ORIGIN_BROWSER_MISSING,
+                    EnumSet.of(ToolChannel.CHAT, ToolChannel.AGENT), () -> {
                 List<com.aresstack.enterpriseai.chat.api.ToolDefinition> definitions =
                         new ArrayList<com.aresstack.enterpriseai.chat.api.ToolDefinition>();
                 for (com.aresstack.enterpriseai.astu.acropolis.tool.AiTool tool : McpChatTool.all(
@@ -614,6 +618,28 @@ public final class CompositionRoot {
     public void bindAgentConversation(
             java.util.function.Supplier<com.aresstack.enterpriseai.astu.chat.ChatConversationId> current) {
         this.agentConversation = current;
+    }
+
+    /**
+     * Whether a chat can use its browser now (#141): Firefox was found at start and at least one browser tool is
+     * switched on in the tab "Tools". Read per turn, so switching the tools off takes effect without a restart.
+     */
+    public boolean browserReady() {
+        if (browserTools == null) {
+            return false;
+        }
+        for (McpToolContribution tool :
+                com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools.unbound()) {
+            if (toolCatalog.isEnabled(tool.getName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether Firefox was found at start (#141); without it the chats have no browser tools. */
+    public boolean browserAvailable() {
+        return browserTools != null;
     }
 
     /**
