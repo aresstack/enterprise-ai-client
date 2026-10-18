@@ -207,6 +207,17 @@ public class BrowserMcpToolsTest {
     }
 
     @Test
+    public void formErrorsAfterAnActionAreShownToTheModel() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        List<McpToolContribution> bound = tools.contributionsFor(a);
+        invoke(bound, BrowserMcpTools.CONTROLS);
+        port.browser(a).probe = new BrowserProbe(false, "", "", "Betrag: Bitte einen Betrag eingeben");
+        McpToolResult sent = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-2", "action", "select",
+                "value", "English");
+        assertTrue(sent.getText(), sent.getText().contains("Das Formular meldet: Betrag: Bitte einen Betrag eingeben"));
+    }
+
+    @Test
     public void consentBannerAndChallengesBecomeHintsAndAChallengeKeepsTheBrowserOpen() {
         ChatConversationId a = new ChatConversationId("chat-a");
         tools.beginTurn(a, null);

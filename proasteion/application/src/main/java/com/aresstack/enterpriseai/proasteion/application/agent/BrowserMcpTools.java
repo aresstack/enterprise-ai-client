@@ -262,7 +262,8 @@ public final class BrowserMcpTools {
                 "Operate a control of the last " + CONTROLS + " list and return the page once it settled (new page "
                         + "loaded or content changed). action: click (button, menu entry, tab, toggle, checkbox), "
                         + "fill (type value into a field), submit (type value into a search field and send it like "
-                        + "Enter), select (choose the option named in value). Example: control=\"ctl-1\", "
+                        + "Enter), select (choose the option named in value; works for native select boxes and for list boxes that open "
+                        + "on click or typing). After every action the result shows error messages the form reports. Example: control=\"ctl-1\", "
                         + "action=\"submit\", value=\"Reisekostenabrechnung\".",
                 handler,
                 McpToolParameter.string(PARAM_CONTROL, true, "Control id from " + CONTROLS + "."),
@@ -543,6 +544,11 @@ public final class BrowserMcpTools {
                     .append(probe.consentOptions()).append("). Wähle mit ").append(CONTROLS).append(" und ")
                     .append(ACT).append(" die sparsamste Option, z. B. „Ablehnen“ oder „Nur notwendige“; stimme nie ")
                     .append("mehr zu als nötig.]");
+        }
+        if (!probe.formErrors().isEmpty()) {
+            out.append("\n\n[Hinweis: Das Formular meldet: ").append(probe.formErrors())
+                    .append(". Korrigiere die genannten Felder mit ").append(ACT).append(" und sende erneut ab; ")
+                    .append("melde dem Benutzer erst Erfolg, wenn keine Fehlermeldung mehr erscheint.]");
         }
         if (BrowserProbe.CAPTCHA.equals(probe.challenge())) {
             out.append("\n\n[Hinweis: Prüfseite (Captcha oder Bot-Schutz). Nicht selbst lösen: Sag dem Benutzer, dass ")
