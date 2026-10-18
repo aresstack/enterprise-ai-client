@@ -238,6 +238,30 @@ public class ComposerResourcesTest {
         });
     }
 
+    @Test
+    public void budgetArrowSitsAtTheGlobeAndTakesTypedAndSliderValues() throws Exception {
+        Edt.run(() -> {
+            ChatComposerPanel composer = composer(new ResourceActions(new ArrayList<ChatResource>()));
+            final List<Integer> heard = new ArrayList<Integer>();
+            composer.configureBrowserBudget(1, 999, 4, 60, heard::add);
+            composer.showBrowserBudget(20);
+            java.awt.Container row = composer.browserButton().getParent();
+            assertEquals(indexOf(row, composer.browserButton()) + 1, indexOf(row, composer.budgetButton()));
+            assertTrue(composer.budgetButton().getText() == null || composer.budgetButton().getText().isEmpty());
+            assertTrue(composer.budgetButton().getToolTipText().contains("20 Werkzeugrunden"));
+
+            composer.openBudgetPopup();
+            BrowserBudgetPopup popup = composer.lastBudgetPopup();
+            popup.number().setValue(137);
+            assertEquals(60, popup.slider().getValue());
+            popup.slider().setValue(30);
+            assertEquals(30, popup.value());
+
+            assertEquals(Arrays.asList(137, 30), heard);
+            assertTrue(composer.budgetButton().getToolTipText().contains("30 Werkzeugrunden"));
+        });
+    }
+
     private static ChatComposerPanel composer(ChatShellActions actions) {
         return new ChatComposerPanel(new ChatShellModel(() -> 0L), actions, ComicPalette.defaultPalette());
     }
