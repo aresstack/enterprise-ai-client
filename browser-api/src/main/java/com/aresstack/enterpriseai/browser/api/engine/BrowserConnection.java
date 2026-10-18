@@ -31,8 +31,11 @@ public interface BrowserConnection {
     /** The anchors of the rendered page in document order, hrefs resolved against the document. */
     List<RawLink> links(String contextId) throws BrowserException;
 
-    /** Goes one step back in the tab's history and waits for the document to be complete. */
-    void back(String contextId) throws BrowserException;
+    /**
+     * An identity of the tab's current document: the same value while the document lives, a new one after any load
+     * or reload, also when the address stays the same.
+     */
+    String documentToken(String contextId) throws BrowserException;
 
     /** Closes the connection only; the browser keeps running. */
     void disconnect();

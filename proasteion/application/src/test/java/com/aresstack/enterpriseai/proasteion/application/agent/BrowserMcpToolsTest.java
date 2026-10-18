@@ -89,9 +89,9 @@ public class BrowserMcpToolsTest {
         assertTrue(all.getText(), all.getText().contains("2 von 2 Links"));
 
         McpToolResult filtered = invoke(tools.contributionsFor(a), BrowserMcpTools.LINKS, "filter", "portal");
-        assertFalse(filtered.getText(), filtered.getText().contains("link-1"));
-        assertTrue(filtered.getText(), filtered.getText().contains("link-2"));
-        assertEquals("links null " + BrowserLinks.MAX_LINKS, port.browser(a).calls.get(1));
+        assertTrue(filtered.getText(), filtered.getText().contains("link-1 | KI [KI-Portal]"));
+        assertTrue(filtered.getText(), filtered.getText().contains("1 Links passend zu \"portal\""));
+        assertEquals("links null " + BrowserMcpTools.DEFAULT_MAX_LINKS + " portal", port.browser(a).calls.get(1));
     }
 
     @Test
@@ -203,12 +203,15 @@ public class BrowserMcpToolsTest {
         }
 
         @Override
-        public BrowserLinks links(String tabId, int maxLinks) throws BrowserException {
+        public BrowserLinks links(String tabId, int maxLinks, String filter) throws BrowserException {
             check();
-            calls.add("links " + tabId + " " + maxLinks);
-            return new BrowserLinks("tab-1", "https://intranet.example/", "Intranet", java.util.Arrays.asList(
-                    new BrowserLink("link-1", "Reisekosten", "https://intranet.example/reise", ""),
-                    new BrowserLink("link-2", "KI", "https://intranet.example/ki", "KI-Portal")), 2);
+            calls.add("links " + tabId + " " + maxLinks + " " + filter);
+            BrowserLink ki = new BrowserLink("link-2", "KI", "https://intranet.example/ki", "KI-Portal");
+            return filter == null ? new BrowserLinks("tab-1", "https://intranet.example/", "Intranet",
+                    java.util.Arrays.asList(new BrowserLink("link-1", "Reisekosten", "https://intranet.example/reise",
+                            ""), ki), 2)
+                    : new BrowserLinks("tab-1", "https://intranet.example/", "Intranet",
+                    java.util.Collections.singletonList(new BrowserLink("link-1", "KI", ki.url(), ki.label())), 1);
         }
 
         @Override

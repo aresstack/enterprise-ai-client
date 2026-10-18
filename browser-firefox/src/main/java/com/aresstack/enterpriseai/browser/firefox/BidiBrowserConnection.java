@@ -43,8 +43,9 @@ final class BidiBrowserConnection implements BrowserConnection {
             + " var t = (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim();"
             + " if (!t) { var img = a.querySelector('img[alt]'); t = img ? img.getAttribute('alt') : ''; }"
             + " return [t, String(a.href || ''), a.getAttribute('title') || '', a.getAttribute('aria-label') || '']; }))";
-    private static final long BACK_TIMEOUT_MILLIS = 20000L;
-    private static final long BACK_POLL_MILLIS = 100L;
+    /** A random id stored on the window: it lives exactly as long as the document. */
+    static final String DOCUMENT_TOKEN_SCRIPT = "window.__enterpriseAiDocument || (window.__enterpriseAiDocument = "
+            + "String(Date.now()) + '-' + Math.random().toString(36).slice(2))";
     private static final double CONNECT_TIMEOUT_MILLIS = 30000.0;
 
     private final WDWebSocketImpl socket;
@@ -177,41 +178,13 @@ final class BidiBrowserConnection implements BrowserConnection {
     }
 
     @Override
-    public void back(String contextId) throws BrowserException {
+    public String documentToken(String contextId) throws BrowserException {
         check();
         try {
-            String before = evaluate(contextId, "location.href");
-            driver.browsingContext().traverseHistory(contextId, -1);
-            // traverseHistory does not wait for the load: wait until the document left the old address and is complete.
-            long deadline = System.currentTimeMillis() + BACK_TIMEOUT_MILLIS;
-            while (System.currentTimeMillis() < deadline) {
-                check();
-                String state;
-                try {
-                    state = evaluate(contextId, "location.href + '\\n' + document.readyState");
-                } catch (BrowserException | RuntimeException loading) {
-                    // The old document is being replaced; ask again.
-                    state = "";
-                }
-                int split = state.lastIndexOf('\n');
-                if (split > 0 && !state.substring(0, split).equals(before)
-                        && "complete".equals(state.substring(split + 1))) {
-                    return;
-                }
-                Thread.sleep(BACK_POLL_MILLIS);
-            }
-            throw new BrowserException(BrowserException.Kind.TIMEOUT, "Zurück: Seite wurde nicht rechtzeitig geladen");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BrowserException(BrowserException.Kind.FAILED, "Zurück unterbrochen", e);
+            return evaluate(contextId, DOCUMENT_TOKEN_SCRIPT);
         } catch (BrowserException e) {
             throw e;
         } catch (RuntimeException e) {
-            String message = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT);
-            if (message.contains("history") || message.contains("no such")) {
-                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
-                        "Kein vorheriger Eintrag im Verlauf dieses Tabs", e);
-            }
             throw classify(e);
         }
     }

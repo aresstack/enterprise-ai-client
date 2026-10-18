@@ -16,7 +16,6 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -153,9 +152,7 @@ public final class BrowserMcpTools {
                 Math.max(1L, call.getInteger(PARAM_MAX_LINKS, DEFAULT_MAX_LINKS)));
         String filter = blankToNull(call.getString(PARAM_FILTER));
         try {
-            BrowserLinks links = browser.links(blankToNull(call.getString(PARAM_TAB)),
-                    filter == null ? max : BrowserLinks.MAX_LINKS);
-            return McpToolResult.ok(render(links, filter, max));
+            return McpToolResult.ok(render(browser.links(blankToNull(call.getString(PARAM_TAB)), max, filter), filter));
         } catch (BrowserException e) {
             return McpToolResult.error(e.getMessage());
         }
@@ -279,22 +276,12 @@ public final class BrowserMcpTools {
         return out.append("(* = aktueller Tab)").toString();
     }
 
-    private static String render(BrowserLinks links, String filter, int max) {
-        List<BrowserLink> shown = new ArrayList<BrowserLink>();
-        String needle = filter == null ? null : filter.toLowerCase(Locale.ROOT);
-        for (BrowserLink link : links.links()) {
-            if (shown.size() >= max) {
-                break;
-            }
-            if (needle == null || (link.text() + " " + link.label() + " " + link.url()).toLowerCase(Locale.ROOT)
-                    .contains(needle)) {
-                shown.add(link);
-            }
-        }
+    private static String render(BrowserLinks links, String filter) {
+        List<BrowserLink> shown = links.links();
         StringBuilder out = new StringBuilder();
         out.append("Tab: ").append(links.tabId()).append('\n')
                 .append("Seite: ").append(links.pageTitle()).append(" | ").append(links.pageUrl()).append('\n');
-        if (needle == null) {
+        if (filter == null) {
             out.append(shown.size()).append(" von ").append(links.total()).append(" Links");
         } else {
             out.append(shown.size()).append(" Links passend zu \"").append(filter).append("\" (von ")

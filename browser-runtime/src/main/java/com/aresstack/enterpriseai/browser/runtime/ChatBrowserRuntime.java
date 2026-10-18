@@ -45,8 +45,10 @@ import java.util.concurrent.ConcurrentMap;
  *         The guard is called while holding only the per-chat slot monitor (it may wait for the user), so
  *         other chats and the UI are never blocked by it. Blocked calls are never retried.</li>
  *     <li>Links are snapshots per tab: {@link ChatBrowser#links} numbers the anchors of the current page, and every
- *         navigation of the tab (navigate, follow, back, closing, a restart, a page change by the user) invalidates
- *         them. {@link ChatBrowser#follow} only opens addresses of that snapshot, through the guard.</li>
+ *         navigation of the tab (navigate, follow, back, closing, a restart, a page change or reload by the user)
+ *         invalidates them. {@link ChatBrowser#follow} only opens addresses of that snapshot, through the guard.</li>
+ *     <li>{@link ChatBrowser#back} opens the page the tab showed before the last navigation through this runtime,
+ *         through the guard before loading; the browser's own history is not replayed.</li>
  *     <li>{@link ChatBrowser#closeBrowser} ends process and connection but keeps the slot: the next operation starts
  *         the browser again on the same profile.</li>
  * </ul>
@@ -57,6 +59,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
     private final BrowserProfileStore profiles;
     private final BrowserAccessGuard guard;
     private static final int MAX_LINK_TEXT = 160;
+    private static final int MAX_HISTORY = 50;
 
     private final ConcurrentMap<ChatConversationId, Slot> slots = new ConcurrentHashMap<ChatConversationId, Slot>();
 
@@ -127,6 +130,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         private boolean closed;
         /** Raw context id to the tab's current link snapshot. */
         private final Map<String, LinkSnapshot> snapshots = new HashMap<String, LinkSnapshot>();
+        /** Raw context id to the pages the tab showed before, newest first (targets of back). */
+        private final Map<String, java.util.Deque<String>> history = new HashMap<String, java.util.Deque<String>>();
 
         Slot(ChatConversationId conversation) {
             this.conversation = conversation;
@@ -171,6 +176,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 connection.close(raw);
                 tabIds.remove(raw);
                 snapshots.remove(raw);
+                history.remove(raw);
                 if (raw.equals(currentRaw)) {
                     currentRaw = null;
                 }
@@ -184,6 +190,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             return call(connection -> {
                 String raw = tabId == null ? currentOrNew(connection) : rawOf(connection, tabId);
                 snapshots.remove(raw);
+                remember(connection, raw);
                 connection.navigate(raw, url);
                 BrowserPage page = page(connection, raw);
                 checkFinal(connection, raw, page.url());
@@ -200,11 +207,15 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         }
 
         @Override
-        public synchronized BrowserLinks links(final String tabId, final int maxLinks) throws BrowserException {
+        public synchronized BrowserLinks links(final String tabId, final int maxLinks, final String filter)
+                throws BrowserException {
+            final String needle = filter == null || filter.trim().isEmpty() ? null
+                    : filter.trim().toLowerCase(Locale.ROOT);
             final int limit = Math.max(1, Math.min(BrowserLinks.MAX_LINKS, maxLinks));
             return call(connection -> {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
                 RawTab tab = rawTab(connection, raw);
+                String document = connection.documentToken(raw);
                 List<RawLink> anchors = connection.links(raw);
                 String page = withoutFragment(tab.url());
                 Map<String, String[]> usable = new LinkedHashMap<String, String[]>();
@@ -215,6 +226,9 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     }
                     String text = clip(anchor.text());
                     String label = clip(anchor.title().isEmpty() ? anchor.ariaLabel() : anchor.title());
+                    if (needle != null && !(text + " " + label + " " + url).toLowerCase(Locale.ROOT).contains(needle)) {
+                        continue;
+                    }
                     String[] known = usable.get(url);
                     if (known == null) {
                         usable.put(url, new String[]{text, label.equals(text) ? "" : label});
@@ -222,7 +236,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                         known[0] = text;
                     }
                 }
-                LinkSnapshot snapshot = new LinkSnapshot(page);
+                LinkSnapshot snapshot = new LinkSnapshot(page, document);
                 List<BrowserLink> links = new ArrayList<BrowserLink>(Math.min(limit, usable.size()));
                 for (Map.Entry<String, String[]> entry : usable.entrySet()) {
                     if (links.size() >= limit) {
@@ -246,7 +260,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                             "Keine gültige Linkliste für diesen Tab; zuerst browser_links aufrufen");
                 }
-                if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)) {
+                if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)
+                        || !connection.documentToken(raw).equals(snapshot.document)) {
                     snapshots.remove(raw);
                     throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                             "Die Seite hat sich seit browser_links geändert; die Link-Ids gelten nicht mehr. "
@@ -259,6 +274,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 }
                 guard.admit(conversation, url);
                 snapshots.remove(raw);
+                remember(connection, raw);
                 connection.navigate(raw, url);
                 BrowserPage page = page(connection, raw);
                 checkFinal(connection, raw, page.url());
@@ -270,8 +286,18 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         public synchronized BrowserPage back(final String tabId) throws BrowserException {
             return call(connection -> {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                java.util.Deque<String> past = history.get(raw);
+                if (past == null || past.isEmpty()) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                            "Keine vorherige Seite in diesem Tab");
+                }
+                // The target is known before loading, so it passes the guard first like every other navigation;
+                // the browser's own history (which may contain pages the user opened) is never replayed unchecked.
+                String url = past.peek();
+                guard.admit(conversation, url);
+                past.pop();
                 snapshots.remove(raw);
-                connection.back(raw);
+                connection.navigate(raw, url);
                 BrowserPage page = page(connection, raw);
                 checkFinal(connection, raw, page.url());
                 return page;
@@ -287,6 +313,25 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         @Override
         public synchronized boolean isRunning() {
             return instance != null && instance.isAlive();
+        }
+
+        /** Remembers the page the tab shows now as the target of a later {@link #back}. */
+        private void remember(BrowserConnection connection, String raw) throws BrowserException {
+            String url = rawTab(connection, raw).url();
+            if (usableUrl(url) == null) {
+                return;
+            }
+            java.util.Deque<String> past = history.get(raw);
+            if (past == null) {
+                past = new java.util.ArrayDeque<String>();
+                history.put(raw, past);
+            }
+            if (!url.equals(past.peek())) {
+                past.push(url);
+            }
+            while (past.size() > MAX_HISTORY) {
+                past.removeLast();
+            }
         }
 
         private RawTab rawTab(BrowserConnection connection, String raw) throws BrowserException {
@@ -393,6 +438,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             // New process, new raw context ids: the old tab ids no longer mean anything.
             tabIds.clear();
             snapshots.clear();
+            history.clear();
             currentRaw = null;
         }
 
@@ -479,10 +525,12 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
     private static final class LinkSnapshot {
 
         final String pageUrl;
+        final String document;
         final Map<String, String> urls = new HashMap<String, String>();
 
-        LinkSnapshot(String pageUrl) {
+        LinkSnapshot(String pageUrl, String document) {
             this.pageUrl = pageUrl;
+            this.document = document;
         }
     }
 

@@ -282,7 +282,7 @@ public class ChatBrowserRuntimeTest {
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
 
-        BrowserLinks links = browser.links(null, 100);
+        BrowserLinks links = browser.links(null, 100, null);
 
         assertEquals(3, links.total());
         assertEquals("link-1", links.links().get(0).id());
@@ -299,7 +299,7 @@ public class ChatBrowserRuntimeTest {
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
 
-        BrowserLinks links = browser.links(null, 1);
+        BrowserLinks links = browser.links(null, 1, null);
 
         assertEquals(1, links.links().size());
         assertEquals(3, links.total());
@@ -316,7 +316,7 @@ public class ChatBrowserRuntimeTest {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
-        browser.links(null, 100);
+        browser.links(null, 100, null);
 
         BrowserPage page = browser.follow(null, "link-2");
 
@@ -334,7 +334,7 @@ public class ChatBrowserRuntimeTest {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
-        browser.links(null, 100);
+        browser.links(null, 100, null);
         browser.navigate(null, "https://other.example/");
 
         try {
@@ -350,7 +350,7 @@ public class ChatBrowserRuntimeTest {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
-        browser.links(null, 100);
+        browser.links(null, 100, null);
         String raw = engine.last().tabs.keySet().iterator().next();
         engine.last().connection.userNavigates(raw, "https://intranet.example/elsewhere");
 
@@ -368,7 +368,7 @@ public class ChatBrowserRuntimeTest {
         homeWithLinks();
         ChatBrowser browser = guarded().browserOf(chatA);
         browser.navigate(null, HOME);
-        BrowserLinks links = browser.links(null, 100);
+        BrowserLinks links = browser.links(null, 100, null);
         assertEquals("https://blocked.example/x", links.links().get(2).url());
 
         try {
@@ -386,7 +386,7 @@ public class ChatBrowserRuntimeTest {
         engine.redirects.put("https://intranet.example/reise", "https://blocked.example/landing");
         ChatBrowser browser = guarded().browserOf(chatA);
         browser.navigate(null, HOME);
-        browser.links(null, 100);
+        browser.links(null, 100, null);
 
         try {
             browser.follow(null, "link-1");
@@ -402,13 +402,13 @@ public class ChatBrowserRuntimeTest {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
-        browser.links(null, 100);
+        browser.links(null, 100, null);
         browser.follow(null, "link-1");
 
         BrowserPage page = browser.back(null);
 
         assertEquals(HOME, page.url());
-        assertEquals("link-1", browser.links(null, 100).links().get(0).id());
+        assertEquals("link-1", browser.links(null, 100, null).links().get(0).id());
     }
 
     @Test
@@ -435,5 +435,78 @@ public class ChatBrowserRuntimeTest {
 
         assertFalse(browser.isRunning());
         assertTrue(engine.starts.isEmpty());
+    }
+
+    @Test
+    public void filterIsAppliedBeforeTheLimit() throws Exception {
+        java.util.List<RawLink> many = new java.util.ArrayList<RawLink>();
+        for (int i = 0; i < 400; i++) {
+            many.add(new RawLink("Seite " + i, "https://intranet.example/p" + i, "", ""));
+        }
+        many.add(new RawLink("Reisekostenabrechnung", "https://intranet.example/reise", "", ""));
+        engine.anchors.put(HOME, many);
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+
+        BrowserLinks links = browser.links(null, 10, "REISE");
+
+        assertEquals(1, links.total());
+        assertEquals("https://intranet.example/reise", links.links().get(0).url());
+        assertEquals("https://intranet.example/reise", browser.follow(null, "link-1").url());
+    }
+
+    @Test
+    public void reloadOnTheSameAddressInvalidatesTheLinkIds() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100, null);
+        engine.last().connection.userReloads(engine.last().tabs.keySet().iterator().next());
+
+        try {
+            browser.follow(null, "link-1");
+            fail("expected INVALID_REQUEST");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        assertEquals(1, engine.navigations.size());
+    }
+
+    @Test
+    public void backTargetPassesTheGuardBeforeItIsLoaded() throws Exception {
+        java.util.List<String> admitted = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        java.util.concurrent.atomic.AtomicBoolean blockStart = new java.util.concurrent.atomic.AtomicBoolean();
+        ChatBrowser browser = new ChatBrowserRuntime(engine, new BrowserProfileStore(folder.getRoot().toPath()),
+                (chat, url) -> {
+                    admitted.add(url);
+                    if (blockStart.get() && url.startsWith("https://start.example")) {
+                        throw new BrowserException(BrowserException.Kind.BLOCKED, "gesperrt");
+                    }
+                }).browserOf(chatA);
+        browser.navigate(null, "https://start.example/");
+        browser.navigate(null, "https://next.example/");
+        blockStart.set(true);
+
+        try {
+            browser.back(null);
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals(Arrays.asList("https://start.example/", "https://next.example/"), engine.navigations);
+        assertEquals("https://next.example/", browser.read(null).url());
+    }
+
+    @Test
+    public void backWithoutPreviousPageIsRejected() throws Exception {
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, "https://example.org/");
+
+        try {
+            browser.back(null);
+            fail("expected INVALID_REQUEST");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
     }
 }

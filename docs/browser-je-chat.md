@@ -37,18 +37,20 @@ dem Chat; Browserprozess und Automatisierungsverbindung sind austauschbare Laufz
 8. Wie in askai bleibt Firefox nach getaner Arbeit nicht offen: jede Antwort, der die Browser-Werkzeuge angeboten
    wurden, beendet am Ende (fertig, Fehler oder Abbruch) den Browser des Chats. `browser_close` beendet ihn sofort.
    Das Profil bleibt, der nächste Werkzeugaufruf startet ihn neu (Cookies, Logins, Consent bleiben erhalten).
-   `follow` und `back` werden nach einer Recovery nicht wiederholt (die Linkliste gilt ohnehin nicht mehr).
+   `follow` und `back` werden nach einer Recovery nicht wiederholt (Linkliste und Verlauf gelten dann nicht mehr).
 
 ## Linknavigation
 
 `browser_links` liefert die echten Anker der gerenderten Seite (`a[href]`, `area[href]`) als Snapshot:
 `link-N | Text [title/aria-label] | absolute Adresse`, nur http(s), ohne `mailto:`/`javascript:` und ohne reine
 Sprungmarken auf derselben Seite, je Adresse einmal, höchstens `max_links` (Standard 100, höchstens 300), optional
-mit `filter`. `browser_follow(link)` öffnet einen Link dieses Snapshots im selben Tab, `browser_back` geht einen
-Schritt zurück. Die Ids gelten nur für diese Seite: jede Navigation des Tabs (auch ein Klick des Benutzers im
-sichtbaren Firefox) macht sie ungültig, das Modell ruft dann `browser_links` erneut auf. Die Adresse eines Links
-geht vor dem Öffnen durch die Zugriffsrichtlinie, die erreichte Adresse nach Weiterleitungen und nach `back` erneut;
-ein gesperrtes Ziel wird nie geöffnet bzw. endet auf `about:blank`.
+mit `filter` (vor der Begrenzung angewendet). `browser_follow(link)` öffnet einen Link dieses Snapshots im selben
+Tab, `browser_back` öffnet die Seite, die der Tab vor der letzten Navigation über die Werkzeuge zeigte. Die Ids
+gelten nur für dieses Dokument: jede Navigation des Tabs, auch ein Klick oder Neuladen des Benutzers im sichtbaren
+Firefox, macht sie ungültig (Adresse plus Dokumentkennung), das Modell ruft dann `browser_links` erneut auf. Das
+Ziel von `follow` und `back` geht **vor** dem Laden durch die Zugriffsrichtlinie, die erreichte Adresse nach
+Weiterleitungen erneut; ein gesperrtes Ziel wird nie geladen bzw. endet auf `about:blank`. Den eigenen Verlauf des
+Browsers (der vom Benutzer geöffnete Seiten enthalten kann) spielt `back` bewusst nicht ab.
 
 ## Persistenz
 

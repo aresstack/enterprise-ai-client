@@ -28,10 +28,11 @@ public interface ChatBrowser {
 
     /**
      * The links of {@code tabId} (or the current tab if {@code null}) as a new snapshot: only real anchors of the
-     * rendered page, absolute http(s) addresses, de-duplicated, at most {@code maxLinks}. Replaces the previous
+     * rendered page, absolute http(s) addresses, de-duplicated, and when {@code filter} is not {@code null} only links
+     * whose text, label or address contains it (ignoring case), at most {@code maxLinks}. Replaces the previous
      * snapshot of the tab.
      */
-    BrowserLinks links(String tabId, int maxLinks) throws BrowserException;
+    BrowserLinks links(String tabId, int maxLinks, String filter) throws BrowserException;
 
     /**
      * Opens the link {@code linkId} of the tab's current link snapshot. The address passes the access guard like any
@@ -39,7 +40,10 @@ public interface ChatBrowser {
      */
     BrowserPage follow(String tabId, String linkId) throws BrowserException;
 
-    /** Goes one step back in the tab's history; the reached address passes the access guard again. */
+    /**
+     * Returns to the page the tab showed before its last navigation through this browser. The address passes the
+     * access guard before it is opened and again after redirects.
+     */
     BrowserPage back(String tabId) throws BrowserException;
 
     /**

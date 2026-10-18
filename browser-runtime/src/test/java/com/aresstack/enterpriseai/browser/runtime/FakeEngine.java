@@ -53,8 +53,8 @@ final class FakeEngine implements BrowserEngine {
         final FakeEngine engine;
         final int number;
         final Map<String, String[]> tabs = new LinkedHashMap<String, String[]>();
-        /** Per tab the urls visited before the current one. */
-        final Map<String, java.util.Deque<String>> history = new java.util.HashMap<String, java.util.Deque<String>>();
+        /** Per tab the number of documents loaded so far. */
+        final Map<String, Integer> documents = new java.util.HashMap<String, Integer>();
         final AtomicInteger connects = new AtomicInteger();
         final List<String> activated = new CopyOnWriteArrayList<String>();
         volatile boolean alive = true;
@@ -161,10 +161,7 @@ final class FakeEngine implements BrowserEngine {
             process.engine.navigations.add(url);
             String target = process.engine.redirects.containsKey(url) ? process.engine.redirects.get(url) : url;
             synchronized (process) {
-                String[] old = process.tabs.get(contextId);
-                if (old != null && !"about:blank".equals(old[0])) {
-                    process.history.computeIfAbsent(contextId, k -> new java.util.ArrayDeque<String>()).push(old[0]);
-                }
+                process.documents.merge(contextId, 1, Integer::sum);
                 process.tabs.put(contextId, new String[]{target, "Title of " + target});
             }
         }
@@ -179,21 +176,24 @@ final class FakeEngine implements BrowserEngine {
         }
 
         @Override
-        public void back(String contextId) throws BrowserException {
+        public String documentToken(String contextId) throws BrowserException {
             check();
             synchronized (process) {
-                java.util.Deque<String> past = process.history.get(contextId);
-                if (past == null || past.isEmpty()) {
-                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "no history");
-                }
-                String url = past.pop();
-                process.tabs.put(contextId, new String[]{url, "Title of " + url});
+                return contextId + "#" + process.documents.getOrDefault(contextId, 0);
+            }
+        }
+
+        /** The user reloads the page: same address, new document. */
+        void userReloads(String contextId) {
+            synchronized (process) {
+                process.documents.merge(contextId, 1, Integer::sum);
             }
         }
 
         /** The user clicks something in the visible browser. */
         void userNavigates(String contextId, String url) {
             synchronized (process) {
+                process.documents.merge(contextId, 1, Integer::sum);
                 process.tabs.put(contextId, new String[]{url, "Title of " + url});
             }
         }
