@@ -260,7 +260,9 @@ public class ApplicationCompositionTest {
         }
         List<String> shownForAgent = new ArrayList<String>();
         for (ToolOverviewEntry tool : shown.values()) {
-            if (tool.availability().contains("Agent") && !tool.availability().contains("Recherche-Agent")) {
+            // browser_* (#141) reach an agent only bound to the open chat; none is open here.
+            if (tool.availability().contains("Agent") && !tool.availability().contains("Recherche-Agent")
+                    && !tool.name().startsWith("browser_")) {
                 shownForAgent.add(tool.name());
             }
         }
