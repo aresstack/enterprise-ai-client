@@ -156,9 +156,9 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  if (!hit) return 'nooption';"
             + "  e.value = hit.value; fire('input'); fire('change'); return 'ok'; }"
             + " e.click(); return 'ok'; })";
-    /** Document token, readiness and the mutation count since the last action, as a JSON array. */
+    /** Document token, readiness, the mutation count since the last action and the origin, as a JSON array. */
     static final String STATE_SCRIPT = "(function () {" + OBSERVE + " return JSON.stringify([(" + DOCUMENT_TOKEN_SCRIPT
-            + "), document.readyState, window.__enterpriseAiMutations || 0]); })()";
+            + "), document.readyState, window.__enterpriseAiMutations || 0, location.origin]); })()";
     /**
      * Consent banner and challenge of the page as a JSON array [consent, button labels, challenge]. A consent banner
      * is a visible element named or labelled like one (cookie, consent, Einwilligung; common banner ids) whose text
@@ -204,6 +204,8 @@ final class BidiBrowserConnection implements BrowserConnection {
             + " .catch(function (e) { return JSON.stringify(['error', String(e && e.message || e)]); }); })";
     /** Upper bound for waiting after a load until scripts stopped changing the page. */
     static final long LOAD_SETTLE_MILLIS = 5000L;
+    /** Upper bound when the load was replaced by a redirect chain (SSO round trips can take a while). */
+    static final long REDIRECT_SETTLE_MILLIS = 15000L;
     /** Upper bound for waiting until the page settled after an action. */
     static final long SETTLE_TIMEOUT_MILLIS = 10000L;
     /** The document counts as settled after this long without a DOM change. */
@@ -302,13 +304,78 @@ final class BidiBrowserConnection implements BrowserConnection {
     @Override
     public void navigate(String contextId, String url) throws BrowserException {
         check();
+        String before = tokenOrNull(contextId);
         try {
             driver.browsingContext().navigate(url, contextId, WDReadinessState.COMPLETE);
         } catch (RuntimeException e) {
-            throw classify(e);
+            if (!isAbortedByRedirect(e)) {
+                throw classify(e);
+            }
+            // Possibly a script or form redirect (SAML/SSO bounce) that replaced the requested load: wait for the
+            // final page; a stop without replacement still fails.
+            check();
+            settleRedirect(contextId, before, originOf(url), e);
+            return;
         }
         // Complete is not ready: intranets and single page apps render their content after the load event.
         settle(contextId, null, LOAD_SETTLE_MILLIS);
+    }
+
+    private String tokenOrNull(String contextId) {
+        try {
+            return evaluate(contextId, DOCUMENT_TOKEN_SCRIPT);
+        } catch (BrowserException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Waits after an aborted load until a replacement navigation arrived: the tab left {@code returnOrigin} (SSO
+     * provider) or showed at least two new documents (launch page plus target), and is then quiet and complete back
+     * on {@code returnOrigin}. A launch page that is quiet while the provider still answers is not taken. A tab that
+     * left and stays away (login page) is taken after {@link #REDIRECT_SETTLE_MILLIS}; one that never saw a
+     * replacement (the user pressed Stop) fails with the original abort.
+     */
+    private void settleRedirect(String contextId, String before, String returnOrigin, RuntimeException abort)
+            throws BrowserException {
+        long deadline = System.currentTimeMillis() + REDIRECT_SETTLE_MILLIS;
+        java.util.Set<String> documents = new java.util.HashSet<String>();
+        boolean left = false;
+        String last = null;
+        long quietSince = System.currentTimeMillis();
+        while (System.currentTimeMillis() < deadline) {
+            pause();
+            JsonArray state;
+            try {
+                state = JsonParser.parseString(evaluate(contextId, STATE_SCRIPT)).getAsJsonArray();
+            } catch (BrowserException | RuntimeException e) {
+                check();
+                continue;
+            }
+            String token = state.get(0).getAsString();
+            String origin = state.get(3).getAsString();
+            if (!token.equals(before)) {
+                documents.add(token);
+            }
+            left |= returnOrigin != null && !returnOrigin.equals(origin);
+            String now = state.toString();
+            if (!now.equals(last)) {
+                last = now;
+                quietSince = System.currentTimeMillis();
+            } else if (isRedirectSettled(left, documents.size(), "complete".equals(state.get(1).getAsString()),
+                    System.currentTimeMillis() - quietSince, returnOrigin == null || returnOrigin.equals(origin))) {
+                return;
+            }
+        }
+        if (!left && documents.size() < 2) {
+            throw classify(abort);
+        }
+    }
+
+    /** The decision of {@link #settleRedirect}: a replacement arrived and the page is quiet back on the origin. */
+    static boolean isRedirectSettled(boolean left, int newDocuments, boolean complete, long quietMillis,
+                                     boolean onReturnOrigin) {
+        return (left || newDocuments >= 2) && complete && quietMillis >= QUIET_MILLIS && onReturnOrigin;
     }
 
     @Override
@@ -430,6 +497,31 @@ final class BidiBrowserConnection implements BrowserConnection {
             }
         }
         return new RawActOutcome(navigated, changed);
+    }
+
+    /** {@code scheme://host[:port]} of {@code url} as {@code location.origin} reports it, or {@code null}. */
+    static String originOf(String url) {
+        try {
+            URI uri = URI.create(url);
+            if (uri.getScheme() == null || uri.getHost() == null) {
+                return null;
+            }
+            String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+            int port = uri.getPort();
+            boolean usual = port < 0 || ("http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443);
+            return scheme + "://" + uri.getHost().toLowerCase(Locale.ROOT) + (usual ? "" : ":" + port);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether {@code e} only says that the requested load was replaced by another one (Firefox reports
+     * {@code NS_BINDING_ABORTED} when a page redirects by script or form post before it finished loading).
+     */
+    static boolean isAbortedByRedirect(RuntimeException e) {
+        String message = e.getMessage();
+        return message != null && message.contains("NS_BINDING_ABORTED");
     }
 
     private static void pause() throws BrowserException {

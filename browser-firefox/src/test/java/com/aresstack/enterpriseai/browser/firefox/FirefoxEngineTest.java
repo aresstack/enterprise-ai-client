@@ -56,4 +56,26 @@ public class FirefoxEngineTest {
         assertEquals(null, FirefoxEngine.locate(folder.getRoot().toPath().resolve("no-firefox").toString(),
                 java.util.Collections.<String, String>emptyMap(), "Linux"));
     }
+
+    @Test
+    public void redirectAbortIsRecognisedAndOriginsMatchLocationOrigin() {
+        assertTrue(BidiBrowserConnection.isAbortedByRedirect(new RuntimeException("Error: NS_BINDING_ABORTED")));
+        assertTrue(!BidiBrowserConnection.isAbortedByRedirect(new RuntimeException("Error: NS_ERROR_UNKNOWN_HOST")));
+        assertEquals("https://mapz.example", BidiBrowserConnection.originOf("https://MAPZ.example:443/a/b.html?x"));
+        assertEquals("http://intra.example:8080", BidiBrowserConnection.originOf("http://intra.example:8080/"));
+        assertEquals(null, BidiBrowserConnection.originOf("about:blank"));
+    }
+
+    @Test
+    public void redirectCountsOnlyAfterAReplacementAndBackOnTheOrigin() {
+        // Launch page quiet on the origin while the provider still answers: not yet.
+        assertTrue(!BidiBrowserConnection.isRedirectSettled(false, 1, true, 5000, true));
+        // Back from the provider, quiet: done.
+        assertTrue(BidiBrowserConnection.isRedirectSettled(true, 3, true, 700, true));
+        // Same-origin script redirect: launch page plus target.
+        assertTrue(BidiBrowserConnection.isRedirectSettled(false, 2, true, 700, true));
+        // Still on the provider or still changing: not yet.
+        assertTrue(!BidiBrowserConnection.isRedirectSettled(true, 2, true, 700, false));
+        assertTrue(!BidiBrowserConnection.isRedirectSettled(true, 3, true, 100, true));
+    }
 }
