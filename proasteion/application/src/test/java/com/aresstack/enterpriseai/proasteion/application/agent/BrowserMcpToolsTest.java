@@ -1,5 +1,9 @@
 package com.aresstack.enterpriseai.proasteion.application.agent;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
+import com.aresstack.enterpriseai.astu.approval.ApprovalPromptPort;
+import com.aresstack.enterpriseai.astu.approval.ApprovalRules;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
@@ -148,6 +152,53 @@ public class BrowserMcpToolsTest {
         assertEquals(1, last.relevant());
         assertTrue(again.getText(), again.getText().contains("https://intranet.example/ki (schon besucht)"));
         assertTrue(seen.get(0).isRunning());
+    }
+
+    @Test
+    public void dataChangingSubmitAsksTheSharedGateAndDoesNotRunWhenRejected() {
+        final List<String> asked = new ArrayList<String>();
+        ToolApprovalGate gate = new ToolApprovalGate(ApprovalRules::none, (request, timeout) -> {
+            asked.add(request.target().description());
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.REJECTED);
+        }, 1000);
+        BrowserMcpTools gated = new BrowserMcpTools(port, null, gate);
+        ChatConversationId a = new ChatConversationId("chat-gate");
+        List<McpToolContribution> bound = gated.contributionsFor(a);
+        invoke(bound, BrowserMcpTools.CONTROLS);
+
+        McpToolResult filled = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-3", "action", "fill", "value", "42");
+        assertFalse(filled.getText(), filled.isError());
+        McpToolResult searched = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-1", "action", "submit",
+                "value", "Reise");
+        assertFalse(searched.getText(), searched.isError());
+        invoke(bound, BrowserMcpTools.CONTROLS);
+        McpToolResult sent = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-3", "action", "submit");
+
+        assertTrue(sent.getText(), sent.isError());
+        assertTrue(sent.getText(), sent.getText().contains("vom Benutzer abgelehnt"));
+        assertEquals(1, asked.size());
+        assertTrue(asked.get(0), asked.get(0).contains("„Betrag (EUR)“ absenden (Formular „Neue eRechnung“) auf "
+                + "intranet.example"));
+        assertFalse(port.browser(a).calls.toString(), port.browser(a).calls.contains("act ctl-3 SUBMIT null"));
+        assertTrue(port.browser(a).calls.contains("act ctl-3 FILL 42"));
+    }
+
+    @Test
+    public void approvedSubmitRunsAndSettingsCanAllowIt() {
+        ToolApprovalGate approving = new ToolApprovalGate(ApprovalRules::none,
+                (request, timeout) -> ApprovalDecision.of(request, ApprovalDecision.Outcome.APPROVED), 1000);
+        ChatConversationId a = new ChatConversationId("chat-ok");
+        List<McpToolContribution> bound = new BrowserMcpTools(port, null, approving).contributionsFor(a);
+        invoke(bound, BrowserMcpTools.CONTROLS);
+        assertFalse(invoke(bound, BrowserMcpTools.ACT, "control", "ctl-3", "action", "submit").isError());
+        assertTrue(port.browser(a).calls.contains("act ctl-3 SUBMIT null"));
+
+        ToolApprovalGate allowed = new ToolApprovalGate(() -> ApprovalRules.parse("browser_act:change=ALLOW"),
+                ApprovalPromptPort.unavailable(), 1000);
+        ChatConversationId b = new ChatConversationId("chat-allowed");
+        List<McpToolContribution> free = new BrowserMcpTools(port, null, allowed).contributionsFor(b);
+        invoke(free, BrowserMcpTools.CONTROLS);
+        assertFalse(invoke(free, BrowserMcpTools.ACT, "control", "ctl-3", "action", "submit").isError());
     }
 
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
