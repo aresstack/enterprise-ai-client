@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -276,7 +277,7 @@ public final class BrowserMcpTools {
         }
         String target = run.linkTarget(link);
         try {
-            return opened(run, browser.follow(blankToNull(call.getString(PARAM_TAB)), link), false);
+            return opened(browser, run, browser.follow(blankToNull(call.getString(PARAM_TAB)), link), false);
         } catch (BrowserException e) {
             return refused(run, target, e);
         }
@@ -284,7 +285,7 @@ public final class BrowserMcpTools {
 
     static McpToolResult back(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
         try {
-            return opened(run, browser.back(blankToNull(call.getString(PARAM_TAB))), true);
+            return opened(browser, run, browser.back(blankToNull(call.getString(PARAM_TAB))), true);
         } catch (BrowserException e) {
             return refused(run, null, e);
         }
@@ -336,7 +337,8 @@ public final class BrowserMcpTools {
                     : result.changed() ? "Die Seite hat sich geändert (gleiche Seite). Neue Einträge zeigt "
                     + CONTROLS + " bzw. " + LINKS + "."
                     : "Keine sichtbare Änderung der Seite.";
-            return McpToolResult.ok(description + ". " + outcome + "\n\n" + render(page, DEFAULT_MAX_CHARS));
+            return McpToolResult.ok(description + ". " + outcome + "\n\n" + render(page, DEFAULT_MAX_CHARS)
+                    + hints(browser, run, page.tabId()));
         } catch (BrowserException e) {
             return refused(run, null, e);
         }
@@ -366,13 +368,50 @@ public final class BrowserMcpTools {
 
     static McpToolResult close(ChatBrowser browser, WebExplorationRun run) {
         browser.closeBrowser();
+        run.challenged("");
         run.closed();
         return McpToolResult.ok("Browser geschlossen. Das Profil des Chats bleibt erhalten.");
     }
 
-    private static McpToolResult opened(WebExplorationRun run, BrowserPage page, boolean back) {
+    private static McpToolResult opened(ChatBrowser browser, WebExplorationRun run, BrowserPage page, boolean back) {
         run.opened(page.url(), page.title(), back);
-        return McpToolResult.ok(render(page, DEFAULT_MAX_CHARS));
+        return McpToolResult.ok(render(page, DEFAULT_MAX_CHARS) + hints(browser, run, page.tabId()));
+    }
+
+    /**
+     * What stands between the model and the content (consent banner, captcha, login), as advice appended to a page;
+     * records a challenge so the browser stays open for the user. A failing probe adds nothing.
+     */
+    static String hints(ChatBrowser browser, WebExplorationRun run, String tabId) {
+        BrowserProbe probe;
+        try {
+            probe = browser.probe(tabId);
+        } catch (BrowserException e) {
+            return "";
+        }
+        run.challenged(probe.challenge());
+        StringBuilder out = new StringBuilder();
+        if (probe.consent()) {
+            out.append("\n\n[Hinweis: Cookie- bzw. Einwilligungsbanner auf der Seite (Schaltflächen: ")
+                    .append(probe.consentOptions()).append("). Wähle mit ").append(CONTROLS).append(" und ")
+                    .append(ACT).append(" die sparsamste Option, z. B. „Ablehnen“ oder „Nur notwendige“; stimme nie ")
+                    .append("mehr zu als nötig.]");
+        }
+        if (BrowserProbe.CAPTCHA.equals(probe.challenge())) {
+            out.append("\n\n[Hinweis: Prüfseite (Captcha oder Bot-Schutz). Nicht selbst lösen: Sag dem Benutzer, dass ")
+                    .append("er sie im sichtbaren Firefox dieses Chats lösen soll, und arbeite danach weiter. Der ")
+                    .append("Browser bleibt dafür nach der Antwort offen.]");
+        } else if (BrowserProbe.LOGIN.equals(probe.challenge())) {
+            out.append("\n\n[Hinweis: Die Seite verlangt eine Anmeldung. Passwörter gibst du nie ein: Bitte den ")
+                    .append("Benutzer, sich im sichtbaren Firefox dieses Chats anzumelden; die Anmeldung bleibt im ")
+                    .append("Profil des Chats. Der Browser bleibt dafür nach der Antwort offen.]");
+        }
+        return out.toString();
+    }
+
+    /** Whether the browser of {@code conversation} has to stay open after the turn: the user has a challenge to solve. */
+    public boolean keepsBrowserOpen(ChatConversationId conversation) {
+        return conversation != null && runOf(conversation).challengePending();
     }
 
     /** A refused target is skipped, any other failure failed; the model gets the reason either way. */
@@ -434,7 +473,7 @@ public final class BrowserMcpTools {
             return McpToolResult.error(invalid);
         }
         try {
-            return opened(run, browser.navigate(blankToNull(call.getString(PARAM_TAB)), url), false);
+            return opened(browser, run, browser.navigate(blankToNull(call.getString(PARAM_TAB)), url), false);
         } catch (BrowserException e) {
             return refused(run, url, e);
         }
@@ -445,7 +484,7 @@ public final class BrowserMcpTools {
         try {
             BrowserPage page = browser.read(blankToNull(call.getString(PARAM_TAB)));
             run.opened(page.url(), page.title(), false);
-            return McpToolResult.ok(render(page, maxChars));
+            return McpToolResult.ok(render(page, maxChars) + hints(browser, run, page.tabId()));
         } catch (BrowserException e) {
             run.failed(null, e.getMessage());
             return McpToolResult.error(e.getMessage());

@@ -63,6 +63,12 @@ public interface ChatBrowser {
     BrowserActResult act(String tabId, String controlId, BrowserAction action, String value) throws BrowserException;
 
     /**
+     * Looks for what keeps the content of {@code tabId} (or the current tab if {@code null}) out of reach: a consent
+     * banner or a challenge (captcha, login) the user has to solve in the visible browser. Does not change the page.
+     */
+    BrowserProbe probe(String tabId) throws BrowserException;
+
+    /**
      * Ends this chat's browser process and connection; the profile stays. The next operation starts the browser
      * again with the same profile. Does nothing when no browser runs.
      */

@@ -664,9 +664,13 @@ public final class CompositionRoot {
 
     /**
      * Ends the browser of {@code conversation} after a finished turn (#141); its profile stays and the next browser
-     * tool starts it again. Does nothing without Firefox or when the chat's browser is not running.
+     * tool starts it again. Does nothing without Firefox or when the chat's browser is not running, and keeps it open
+     * while the user still has to solve a challenge (captcha, login) the turn ran into.
      */
     public void closeChatBrowser(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        if (browserTools != null && browserTools.keepsBrowserOpen(conversation)) {
+            return;
+        }
         if (ports.browsers() != null && conversation != null) {
             ports.browsers().browserOf(conversation).closeBrowser();
         }

@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.browser.runtime;
 
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
@@ -36,6 +37,8 @@ final class FakeEngine implements BrowserEngine {
     final Map<String, List<RawControl>> controls = new java.util.concurrent.ConcurrentHashMap<String, List<RawControl>>();
     /** Control ref to the url its action loads (a form submit); refs without entry change the page in place. */
     final Map<String, String> actionTargets = new java.util.concurrent.ConcurrentHashMap<String, String>();
+    /** Page url to what a probe finds there; other pages are clear. */
+    final Map<String, BrowserProbe> probes = new java.util.concurrent.ConcurrentHashMap<String, BrowserProbe>();
     /** Every action as "ref action value", in order. */
     final List<String> actions = new CopyOnWriteArrayList<String>();
 
@@ -205,6 +208,15 @@ final class FakeEngine implements BrowserEngine {
             }
             navigate(contextId, target);
             return new RawActOutcome(true, false);
+        }
+
+        @Override
+        public BrowserProbe probe(String contextId) throws BrowserException {
+            check();
+            synchronized (process) {
+                BrowserProbe probe = process.engine.probes.get(process.tabs.get(contextId)[0]);
+                return probe == null ? BrowserProbe.clear() : probe;
+            }
         }
 
         @Override

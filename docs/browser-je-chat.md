@@ -77,6 +77,21 @@ erneut (gesperrt → `about:blank`); Ziele, die erst ein Skript der Seite bestim
 Eine Aktion, die eine neue Seite lädt, zählt für `browser_back` wie eine Navigation. In der Browserrecherche-Karte
 erscheinen die Schritte als „Gesucht: „…““, „„Menü“ angeklickt“ usw.
 
+## Seitenbereitschaft, Einwilligungsbanner und Prüfseiten
+
+Nach jeder Navigation wartet der Adapter über „Dokument vollständig“ hinaus, bis die Seite 600 ms lang nicht mehr
+verändert wurde (höchstens 5 s): Intranets und Single-Page-Apps rendern ihren Inhalt oft erst nach dem Load-Ereignis.
+Jede geöffnete oder gelesene Seite wird danach geprüft (`ChatBrowser#probe`, ohne die Seite zu verändern):
+
+- **Einwilligungsbanner** (Cookie/Consent, übliche Banner-Ids, sichtbar und mit Schaltflächen): Die Werkzeugantwort
+  nennt die Schaltflächen und weist das Modell an, mit `browser_controls`/`browser_act` die sparsamste Option zu wählen
+  („Ablehnen“, „Nur notwendige“). Automatisch zugestimmt wird nie.
+- **Prüfseite** (Captcha-Frames, Bot-Schutz-Titel wie „Just a moment…“) und **Anmeldung** (sichtbares Passwortfeld):
+  Das Modell löst sie nicht und gibt nie Passwörter ein, sondern bittet den Benutzer, das im sichtbaren Firefox des
+  Chats zu tun. Die Karte zeigt „Prüfseite: bitte im Firefox lösen“ bzw. „Anmeldung nötig …“, und der Browser bleibt
+  nach dieser Antwort **offen** (Zusammenfassung „… · Browser bleibt offen (Anmeldung)“). Die nächste Antwort, die
+  keine offene Prüfseite mehr hinterlässt, schließt ihn wieder; `browser_close` schließt ihn sofort.
+
 ## Persistenz
 
 Persistente Cookies, Consent-Entscheidungen, Site-Storage und Einstellungen liegen im Profil und bleiben über

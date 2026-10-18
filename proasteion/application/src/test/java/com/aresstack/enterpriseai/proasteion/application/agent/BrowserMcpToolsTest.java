@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -184,6 +185,32 @@ public class BrowserMcpToolsTest {
         assertTrue(port.browser(a).calls.isEmpty());
     }
 
+    @Test
+    public void consentBannerAndChallengesBecomeHintsAndAChallengeKeepsTheBrowserOpen() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        tools.beginTurn(a, null);
+        List<McpToolContribution> bound = tools.contributionsFor(a);
+        port.browser(a).probe = new BrowserProbe(true, "Alle akzeptieren | Ablehnen", "");
+        McpToolResult banner = invoke(bound, BrowserMcpTools.NAVIGATE, "url", "https://a.example/");
+        assertTrue(banner.getText(), banner.getText().contains("Schaltflächen: Alle akzeptieren | Ablehnen"));
+        assertFalse(tools.keepsBrowserOpen(a));
+
+        port.browser(a).probe = new BrowserProbe(false, "", BrowserProbe.LOGIN);
+        McpToolResult login = invoke(bound, BrowserMcpTools.NAVIGATE, "url", "https://sso.example/");
+        assertTrue(login.getText(), login.getText().contains("Passwörter gibst du nie ein"));
+        assertTrue(tools.keepsBrowserOpen(a));
+        assertEquals(BrowserProbe.LOGIN, tools.endTurn(a).challenge());
+
+        tools.beginTurn(a, null);
+        assertFalse(tools.keepsBrowserOpen(a));
+        port.browser(a).probe = new BrowserProbe(false, "", BrowserProbe.CAPTCHA);
+        invoke(bound, BrowserMcpTools.READ);
+        assertTrue(tools.keepsBrowserOpen(a));
+        port.browser(a).probe = BrowserProbe.clear();
+        invoke(bound, BrowserMcpTools.READ);
+        assertFalse(tools.keepsBrowserOpen(a));
+    }
+
     private static final class RecordingPort implements ChatBrowserPort {
 
         private final Map<ChatConversationId, RecordingBrowser> browsers =
@@ -220,6 +247,7 @@ public class BrowserMcpToolsTest {
 
         final List<String> calls = new ArrayList<String>();
         boolean fail;
+        BrowserProbe probe = BrowserProbe.clear();
 
         private void check() throws BrowserException {
             if (fail) {
@@ -310,6 +338,11 @@ public class BrowserMcpToolsTest {
             boolean submit = action == BrowserAction.SUBMIT;
             return new BrowserActResult(new BrowserPage("tab-1", submit ? "https://intranet.example/suche?q=" + value
                     : "https://intranet.example/", submit ? "Treffer" : "Intranet", "text"), submit, !submit);
+        }
+
+        @Override
+        public BrowserProbe probe(String tabId) {
+            return probe;
         }
 
         @Override

@@ -71,6 +71,10 @@ final class ChatBrowserCard {
         }
         text.append(" · ").append(progress.relevant())
                 .append(progress.relevant() == 1 ? " relevante Seite verwendet" : " relevante Seiten verwendet");
+        if (!progress.challenge().isEmpty()) {
+            text.append(" · Browser bleibt offen (")
+                    .append("login".equals(progress.challenge()) ? "Anmeldung" : "Prüfseite").append(')');
+        }
         return text.toString();
     }
 
@@ -108,6 +112,9 @@ final class ChatBrowserCard {
                 return "Zurück zu „" + label + "“";
             case ACTED:
                 return label;
+            case CHALLENGE:
+                return "login".equals(label) ? "Anmeldung nötig: bitte im Firefox anmelden"
+                        : "Prüfseite: bitte im Firefox lösen";
             case LINKS:
                 return step.count() + (step.count() == 1 ? " Link" : " Links")
                         + (label.isEmpty() ? " erkannt" : " passend zu „" + label + "“");

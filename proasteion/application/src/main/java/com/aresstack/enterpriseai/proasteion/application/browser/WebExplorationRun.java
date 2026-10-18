@@ -36,6 +36,7 @@ public final class WebExplorationRun {
     private String currentTitle = "";
     private boolean active;
     private int running;
+    private String challenge = "";
     private Consumer<WebExplorationProgress> listener;
 
     /** Starts a new turn: forgets the previous turn's counts and reports changes to {@code listener} (may be null). */
@@ -51,6 +52,7 @@ public final class WebExplorationRun {
             steps.clear();
             lastLinks.clear();
             lastControls.clear();
+            challenge = "";
             currentPage = null;
             currentTitle = "";
             active = false;
@@ -143,6 +145,25 @@ public final class WebExplorationRun {
         return id == null ? null : lastControls.get(id.trim());
     }
 
+    /**
+     * The page in front of the model is a challenge only the user can solve ({@code kind} captcha or login), or no
+     * longer is one ({@code kind} empty). A pending challenge keeps the browser open after the turn.
+     */
+    public void challenged(String kind) {
+        final String now = kind == null ? "" : kind;
+        change(() -> {
+            if (!now.isEmpty() && !now.equals(challenge)) {
+                step(WebExplorationProgress.StepKind.CHALLENGE, now, 0);
+            }
+            challenge = now;
+        });
+    }
+
+    /** Whether a challenge of this turn is still waiting for the user. */
+    public synchronized boolean challengePending() {
+        return !challenge.isEmpty();
+    }
+
     /** {@code url} was not opened on purpose (policy or user refused it). */
     public void skipped(String url) {
         change(() -> {
@@ -226,7 +247,8 @@ public final class WebExplorationRun {
 
     private WebExplorationProgress snapshot() {
         return new WebExplorationProgress(active, running > 0, discovered.size() + unlisted, examined.size(), visited.size(),
-                skipped.size(), failed.size(), relevant.size(), new ArrayList<WebExplorationProgress.Step>(steps));
+                skipped.size(), failed.size(), relevant.size(), new ArrayList<WebExplorationProgress.Step>(steps),
+                challenge);
     }
 
     private static void addAll(Set<String> into, Collection<String> urls) {

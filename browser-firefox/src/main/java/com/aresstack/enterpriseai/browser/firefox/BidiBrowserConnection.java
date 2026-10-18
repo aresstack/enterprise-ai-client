@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.browser.firefox;
 
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
 import com.aresstack.enterpriseai.browser.api.engine.RawControl;
@@ -102,6 +103,12 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  var ref = gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
             + "  out.push([ref, kind, flat(label), flat(value).slice(0, 200), options, target]); }"
             + " return JSON.stringify(out); })()";
+    /** Starts counting DOM mutations of the document once; the count lives in window.__enterpriseAiMutations. */
+    static final String OBSERVE = " if (!window.__enterpriseAiObserver && window.MutationObserver) {"
+            + "  window.__enterpriseAiMutations = window.__enterpriseAiMutations || 0;"
+            + "  window.__enterpriseAiObserver = new MutationObserver(function (m) { window.__enterpriseAiMutations += m.length; });"
+            + "  window.__enterpriseAiObserver.observe(document.documentElement,"
+            + "   {subtree: true, childList: true, attributes: true, characterData: true}); }";
     /**
      * Performs an action on a tagged control; arguments are (ref, action, value). Before acting it starts counting
      * DOM mutations, so {@link #STATE_SCRIPT} can tell when a single page app has settled. Returns ok, missing,
@@ -111,11 +118,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             + " var e = document.querySelector('[data-eai-control=\"' + ref + '\"]');"
             + " if (!e) return 'missing';"
             + " if (e.disabled || e.getAttribute('aria-disabled') === 'true') return 'disabled';"
-            + " window.__enterpriseAiMutations = 0;"
-            + " if (!window.__enterpriseAiObserver && window.MutationObserver) {"
-            + "  window.__enterpriseAiObserver = new MutationObserver(function (m) { window.__enterpriseAiMutations += m.length; });"
-            + "  window.__enterpriseAiObserver.observe(document.documentElement,"
-            + "   {subtree: true, childList: true, attributes: true, characterData: true}); }"
+            + " window.__enterpriseAiMutations = 0;" + OBSERVE
             + " try { e.scrollIntoView({block: 'center'}); } catch (x) { }"
             + " function fire(type) { e.dispatchEvent(new Event(type, {bubbles: true})); }"
             + " if (action === 'fill' || action === 'submit') {"
@@ -146,8 +149,39 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  e.value = hit.value; fire('input'); fire('change'); return 'ok'; }"
             + " e.click(); return 'ok'; })";
     /** Document token, readiness and the mutation count since the last action, as a JSON array. */
-    static final String STATE_SCRIPT = "JSON.stringify([" + "(" + DOCUMENT_TOKEN_SCRIPT + ")" + ", document.readyState,"
-            + " window.__enterpriseAiMutations || 0])";
+    static final String STATE_SCRIPT = "(function () {" + OBSERVE + " return JSON.stringify([(" + DOCUMENT_TOKEN_SCRIPT
+            + "), document.readyState, window.__enterpriseAiMutations || 0]); })()";
+    /**
+     * Consent banner and challenge of the page as a JSON array [consent, button labels, challenge]. A consent banner
+     * is a visible element named or labelled like one (cookie, consent, Einwilligung; common banner ids) whose text
+     * speaks of cookies or consent; a challenge is a known bot check (captcha frames, interstitial titles) or a
+     * visible password field.
+     */
+    static final String PROBE_SCRIPT = "(function () {"
+            + " function shown(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }"
+            + " var consent = false, labels = [];"
+            + " var boxes = document.querySelectorAll('#onetrust-banner-sdk, #CybotCookiebotDialog, #usercentrics-root,"
+            + " [id*=cookie i], [class*=cookie i], [id*=consent i], [class*=consent i], [aria-label*=cookie i],"
+            + " [aria-label*=consent i], [role=dialog], [aria-modal=true]');"
+            + " for (var i = 0; i < boxes.length && !consent; i++) {"
+            + "  var b = boxes[i]; if (!shown(b)) continue;"
+            + "  var t = (b.innerText || '').slice(0, 3000);"
+            + "  if (!/cookie|einwillig|consent|zustimm|datenschutz|tracking/i.test(t)) continue;"
+            + "  var buttons = b.querySelectorAll('button, [role=button], input[type=button], input[type=submit], a');"
+            + "  for (var j = 0; j < buttons.length && labels.length < 6; j++) {"
+            + "   var l = (buttons[j].innerText || buttons[j].value || '').replace(/\\s+/g, ' ').trim();"
+            + "   if (l && l.length < 60 && shown(buttons[j])) labels.push(l); }"
+            + "  consent = labels.length > 0; if (!consent) labels = []; }"
+            + " var challenge = '';"
+            + " if (document.querySelector('iframe[src*=recaptcha], iframe[src*=hcaptcha], iframe[src*=turnstile],"
+            + " iframe[src*=\"challenges.cloudflare\"], #challenge-form, #cf-challenge-running, .g-recaptcha, .h-captcha')"
+            + "  || /just a moment|attention required|verify you are human|sicherheitsüberprüfung|bist du ein mensch/i"
+            + "  .test(document.title)) challenge = 'captcha';"
+            + " else { var pw = document.querySelectorAll('input[type=password]');"
+            + "  for (var k = 0; k < pw.length; k++) { if (shown(pw[k])) { challenge = 'login'; break; } } }"
+            + " return JSON.stringify([consent, labels.join(' | '), challenge]); })()";
+    /** Upper bound for waiting after a load until scripts stopped changing the page. */
+    static final long LOAD_SETTLE_MILLIS = 5000L;
     /** Upper bound for waiting until the page settled after an action. */
     static final long SETTLE_TIMEOUT_MILLIS = 10000L;
     /** The document counts as settled after this long without a DOM change. */
@@ -251,6 +285,8 @@ final class BidiBrowserConnection implements BrowserConnection {
         } catch (RuntimeException e) {
             throw classify(e);
         }
+        // Complete is not ready: intranets and single page apps render their content after the load event.
+        settle(contextId, null, LOAD_SETTLE_MILLIS);
     }
 
     @Override
@@ -335,15 +371,16 @@ final class BidiBrowserConnection implements BrowserConnection {
             throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                     "Keine passende Option: " + value);
         }
-        return settle(contextId, before);
+        return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
     }
 
     /**
      * Waits until a new document is complete and quiet, or the old one had no DOM change for {@link #QUIET_MILLIS};
-     * at most {@link #SETTLE_TIMEOUT_MILLIS}, after which the page is taken as it is.
+     * at most {@code timeoutMillis}, after which the page is taken as it is. {@code before} is the document token
+     * before an action, {@code null} after a navigation (then only quietness counts).
      */
-    private RawActOutcome settle(String contextId, String before) throws BrowserException {
-        long deadline = System.currentTimeMillis() + SETTLE_TIMEOUT_MILLIS;
+    private RawActOutcome settle(String contextId, String before, long timeoutMillis) throws BrowserException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
         String last = null;
         long quietSince = System.currentTimeMillis();
         boolean navigated = false;
@@ -360,7 +397,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             }
             String token = state.get(0).getAsString();
             boolean complete = "complete".equals(state.get(1).getAsString());
-            navigated |= !token.equals(before);
+            navigated |= before != null && !token.equals(before);
             changed |= state.get(2).getAsLong() > 0;
             String now = state.toString();
             if (!now.equals(last)) {
@@ -379,6 +416,20 @@ final class BidiBrowserConnection implements BrowserConnection {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BrowserException(BrowserException.Kind.FAILED, "Warten auf die Seite unterbrochen", e);
+        }
+    }
+
+    @Override
+    public BrowserProbe probe(String contextId) throws BrowserException {
+        check();
+        try {
+            JsonArray values = JsonParser.parseString(evaluate(contextId, PROBE_SCRIPT)).getAsJsonArray();
+            return new BrowserProbe(values.get(0).getAsBoolean(), values.get(1).getAsString(),
+                    values.get(2).getAsString());
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
         }
     }
 
