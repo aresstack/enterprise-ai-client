@@ -31,8 +31,8 @@ Das Update-System war in 0.71.0 bereits vollständig und ist seitdem unveränder
 Workflow **patch-release** (Actions › patch-release › Run workflow), Eingabe: Basisversion, z. B. `0.71.0`.
 
 - Bricht sofort ab, wenn es kein Release `v<Basisversion>` mit Jar gibt.
-- Ziel ist immer die Version auf `main` (`projectVersion` aus `gradle.properties`) und deren veröffentlichte Jar aus
-  dem Release `v<Version>`, damit Patch-Ziel und ausgelieferte Vollversion inhaltsgleich sind.
+- Ziel ist immer das neueste reguläre Release `v<Version>` und dessen Jar (jeder Push auf `main` legt eins an), damit
+  Patch-Ziel und ausgelieferte Vollversion inhaltsgleich sind.
 - Baut den Patch mit `:proasteion:exedra:fatJarPatch` und legt ihn als Pre-Release
   `patch-<Basis>-to-<Ziel>` ab; Titel und Notizen nennen Basisversion, Zielversion und beide Commits.
 

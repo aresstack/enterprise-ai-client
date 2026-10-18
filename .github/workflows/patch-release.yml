@@ -4,8 +4,8 @@
 # docs/release-candidates.md: ab 0.71.0-rc1 wird nur noch über Patches ausgeliefert).
 #
 #   Basis  -> Jar aus dem Release v<base_version>. Fehlt das Release oder sein Jar, bricht der Lauf sofort ab.
-#   Ziel   -> projectVersion aus gradle.properties auf main und das Jar aus dem Release v<projectVersion>, das
-#             release.yml beim Merge angelegt hat. Patch-Ziel und ausgelieferte Vollversion sind so inhaltsgleich,
+#   Ziel   -> das neueste reguläre Release v<version> (release.yml legt bei jedem Push auf main eins an) und sein
+#             Jar. Patch-Ziel und ausgelieferte Vollversion sind so inhaltsgleich,
 #             und spätere Patches können an diesem Ziel ansetzen.
 #   Patch  -> :proasteion:exedra:fatJarPatch (gradle/fat-jar.gradle) wie im Schritt "Update-Paket zur Vorversion
 #             erzeugen" in release.yml; der Erzeuger spielt den Patch probeweise ein und prüft das Ziel.
@@ -70,10 +70,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          target="$(sed -n 's/^projectVersion=//p' gradle.properties | tr -d '[:space:]')"
+          # Ziel ist das neueste reguläre Release: release.yml legt bei jedem Push auf main eins an.
+          target="$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' | sed 's/^v//')"
           main_commit="$(git rev-parse HEAD)"
           if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error file=gradle.properties::projectVersion muss MAJOR.MINOR.PATCH sein, ist aber '$target'"
+            echo "::error::Neuestes Release muss vMAJOR.MINOR.PATCH sein, ist aber 'v$target'"
             exit 1
           fi
           if [ "$(printf '%s\n%s\n' "$BASE" "$target" | sort -V | tail -n 1)" != "$target" ] || [ "$BASE" = "$target" ]; then

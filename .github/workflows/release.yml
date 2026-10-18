@@ -1,21 +1,23 @@
 # Fat Jar der Swing-Anwendung bauen, prüfen und veröffentlichen.
 #
-#   main              -> Release-Version <projectVersion> aus gradle.properties: Tag v<version> plus GitHub-Release mit
-#                        dem Jar, sofern das Tag noch nicht existiert (sonst nur Workflow-Artefakt und Warnung).
-#   alle anderen      -> rollierender Snapshot <version>-SNAPSHOT: je Branch ein Pre-Release unter dem Tag
-#   Branches             snapshot-<branch>-<hash>, dessen Tag und Jar jeder Push ersetzt; zusätzlich Workflow-Artefakt.
-#   Branch gelöscht   -> Pre-Release und Tag des Branches werden entfernt.
+#   main              -> echtes Release bei jedem Push: Version <MAJOR>.<MINOR>.<PATCH>, Tag v<version> plus
+#                        GitHub-Release mit Jar, Ressourcen-Archiv und Update-Paket zur Vorversion.
+#   alle anderen      -> genau ein rollierender Snapshot für das ganze Repository: Pre-Release unter dem Tag
+#   Branches             "snapshot", dessen Tag und Jar jeder Push (egal von welchem Branch) ersetzt; zusätzlich
+#                        Workflow-Artefakt. Titel und Notizen nennen Branch und Commit.
+#
+# Version auf main: projectVersion aus gradle.properties gibt MAJOR.MINOR und den Start-PATCH vor. Jeder Commit nach
+# dem letzten Commit, der projectVersion geändert hat, erhöht PATCH um eins (git rev-list --count). Damit bekommt jeder
+# Push auf main ohne Handarbeit eine eigene, aufsteigende Version, und parallele Läufe kollidieren nicht. Wer eine
+# neue MINOR- oder MAJOR-Version will, setzt projectVersion; der Commit mit der Änderung wird genau diese Version.
+#
+# Aufräumen: Jeder Lauf löscht Pre-Releases samt Tag aus dem früheren Schema (ein Snapshot je Branch, Tags
+# snapshot-<branch>-<hash>). Reguläre Releases, Patch-Releases (patch-*) und v0.71.0-rc1 bleiben unangetastet.
 #
 # Neben dem Jar liegt das Ressourcen-Archiv enterprise-ai-client-resources-<version>.zip (OpenNLP-Modelle mit
 # Manifest, gradle/nlp-resources.gradle). Legt man es neben das Jar, installiert der Client daraus ohne Download.
 # Ist eine Modellquelle gerade nicht erreichbar, erscheint das Release ohne Archiv (Warnung im Lauf); der Client lädt
 # dann wie bisher selbst herunter.
-#
-# Snapshot-Tag: Branchname mit allen Zeichen außer [A-Za-z0-9._-] als '-' plus die ersten acht Hex-Zeichen von
-# SHA-256 des unveränderten Branchnamens, damit Branches wie feature/foo und feature-foo getrennte Tags bekommen.
-# Push-Job und Cleanup-Job teilen sich je Branch die Concurrency-Gruppe release-refs/heads/<branch>: ein Cleanup
-# wartet, bis ein laufender Snapshot-Lauf fertig ist, und räumt dann auf; der Snapshot-Lauf prüft vor dem
-# Veröffentlichen zusätzlich, ob der Branch noch existiert.
 #
 # Der Build läuft mit JDK 8 (Zielplattform) und umfasst alle Tests sowie verifyFatJar und smokeStartFatJar
 # (gradle/fat-jar.gradle); veröffentlicht wird nur ein grün gebautes Jar. build.yml bleibt der Pull-Request-Check
@@ -27,28 +29,29 @@ name: release
 on:
   push:
     branches: ['**']
-  delete:
   workflow_dispatch:
 
 jobs:
   jar:
     name: Fat Jar bauen und veröffentlichen
-    if: github.event_name != 'delete'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write
     concurrency:
-      # Auf Branches ersetzt ein neuer Push den laufenden Snapshot-Lauf; dieselbe Gruppe nutzt der Cleanup-Job.
+      # Alle Branches teilen sich den einen Snapshot: ein neuer Push ersetzt den laufenden Snapshot-Lauf.
       # Auf main bekommt jeder Commit eine eigene Gruppe: Eine gemeinsame Gruppe hält nur einen wartenden Lauf, und
       # GitHub bricht diesen ab, sobald ein weiterer Push kommt (so gingen die Releases 0.1.25 und 0.1.31 verloren).
-      group: ${{ github.ref == 'refs/heads/main' && format('release-main-{0}', github.sha) || format('release-{0}', github.ref) }}
+      group: ${{ github.ref == 'refs/heads/main' && format('release-main-{0}', github.sha) || 'release-snapshot' }}
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Volle Historie: die PATCH-Nummer auf main zählt die Commits seit der letzten projectVersion-Änderung.
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -67,19 +70,23 @@ jobs:
             exit 1
           fi
           if [ "$GITHUB_REF_NAME" = "main" ]; then
-            version="$base"
+            bump="$(git log -1 --format=%H -G'^projectVersion=' -- gradle.properties)"
+            count=0
+            if [ -n "$bump" ]; then
+              count="$(git rev-list --count "$bump..HEAD")"
+            fi
+            IFS=. read -r major minor patch <<< "$base"
+            version="$major.$minor.$((patch + count))"
             release=true
-            tag="v$base"
+            tag="v$version"
           else
             version="$base-SNAPSHOT"
             release=false
-            # Gleiche Ableitung wie im Job cleanup.
-            safe="$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
-            digest="$(printf '%s' "$GITHUB_REF_NAME" | sha256sum | cut -c1-8)"
-            tag="snapshot-$safe-$digest"
+            tag="snapshot"
           fi
           {
             echo "base=$base"
+            echo "base_effective=${version%-SNAPSHOT}"
             echo "version=$version"
             echo "release=$release"
             echo "tag=$tag"
@@ -92,6 +99,7 @@ jobs:
         run: >
           ./gradlew build --no-daemon --warning-mode all
           -Prelease=${{ steps.version.outputs.release }}
+          -PprojectVersion=${{ steps.version.outputs.base_effective }}
           -PbuildCommit=${{ github.sha }}
 
       - name: Ressourcen-Archiv bauen
@@ -101,7 +109,8 @@ jobs:
           set -uo pipefail
           zip="proasteion/application/build/distributions/enterprise-ai-client-resources-${{ steps.version.outputs.version }}.zip"
           if ./gradlew :proasteion:application:nlpResourcesZip --no-daemon \
-               -Prelease=${{ steps.version.outputs.release }} && [ -f "$zip" ]; then
+               -Prelease=${{ steps.version.outputs.release }} \
+               -PprojectVersion=${{ steps.version.outputs.base_effective }} && [ -f "$zip" ]; then
             unzip -l "$zip"
             echo "zip=$zip" >> "$GITHUB_OUTPUT"
           else
@@ -137,11 +146,11 @@ jobs:
         run: |
           set -euo pipefail
           tag_exists() {
-            echo "::warning title=Kein Release angelegt::Tag $TAG existiert bereits (Commit $(git ls-remote --tags origin "refs/tags/$TAG" | cut -c1-12)). Dieser Lauf für Commit $GITHUB_SHA legt kein Release an, weil projectVersion in gradle.properties nicht erhöht wurde; das Jar liegt nur als Workflow-Artefakt vor."
+            echo "::warning title=Kein Release angelegt::Tag $TAG existiert bereits (Commit $(git ls-remote --tags origin "refs/tags/$TAG" | cut -c1-12)). Dieser Lauf für Commit $GITHUB_SHA legt kein Release an (erneuter Lauf für denselben Commit?); das Jar liegt nur als Workflow-Artefakt vor."
             {
               echo "## Kein Release angelegt"
               echo
-              echo "Tag \`$TAG\` existiert bereits. Die Version in \`gradle.properties\` wurde seit dem letzten Release nicht erhöht."
+              echo "Tag \`$TAG\` existiert bereits (erneuter Lauf für denselben Commit?)."
               echo "Das Jar \`$(basename "$JAR")\` liegt nur als Workflow-Artefakt dieses Laufs vor."
             } >> "$GITHUB_STEP_SUMMARY"
           }
@@ -209,6 +218,7 @@ jobs:
           gh api "repos/$GH_REPO/compare/$previous...$GITHUB_SHA" --jq '.commits[].commit.message | split("\n")[0]' \
             | grep -v '^Version [0-9]' | sed 's/^/- /' > "$changes" || true
           ./gradlew :proasteion:exedra:fatJarPatch --no-daemon -Prelease=${{ steps.version.outputs.release }} \
+            -PprojectVersion=${{ steps.version.outputs.base_effective }} \
             -PpatchBase="$base" -PpatchTarget="$JAR" -PpatchChanges="$changes" \
             || warn "fatJarPatch von $previous nach $VERSION fehlgeschlagen."
           patch="$(ls proasteion/exedra/build/distributions/enterprise-ai-client-patch-*-to-"$VERSION".zip | head -n 1)"
@@ -219,7 +229,7 @@ jobs:
             gh release upload "$TAG" "$patch" || warn "Update-Paket nicht hochgeladen."
           fi
 
-      - name: Rollierenden Snapshot des Branches aktualisieren
+      - name: Rollierenden Snapshot aktualisieren
         if: steps.version.outputs.release != 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
@@ -230,22 +240,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Wurde der Branch inzwischen gelöscht, würde das Veröffentlichen einen verwaisten Snapshot hinterlassen.
-          if ! git ls-remote --exit-code --heads origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
-            echo "::notice::Branch $BRANCH existiert nicht mehr; der Snapshot wird nicht veröffentlicht."
-            exit 0
-          fi
           # Tag auf den aktuellen Commit setzen (neu oder verschoben).
           git push --force origin "$GITHUB_SHA:refs/tags/$TAG"
           notes="$(mktemp)"
           {
-            echo "Rollierender Snapshot des Branches \`$BRANCH\`: jeder Push ersetzt Tag und Jar. Nicht für den produktiven Einsatz."
+            echo "Rollierender Snapshot, zuletzt gebaut vom Branch \`$BRANCH\`: jeder Push auf einen Branch außer main ersetzt Tag und Jar. Nicht für den produktiven Einsatz."
             echo
             echo "Start (Java 8 oder neuer): \`java -jar $(basename "$JAR")\`"
             echo
             echo "Commit: $GITHUB_SHA · Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$notes"
-          title="Snapshot $BRANCH ($VERSION)"
+          title="Snapshot ($VERSION, $BRANCH)"
           if gh release view "$TAG" >/dev/null 2>&1; then
             # Alte Assets entfernen (auch solche mit anderem Dateinamen nach einem Versionswechsel).
             gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
@@ -261,7 +266,7 @@ jobs:
             if [ -n "$ZIP" ]; then
               assets+=("$ZIP")
             fi
-            gh release create "$TAG" "${assets[@]}" --prerelease --title "$title" --notes-file "$notes"
+            gh release create "$TAG" "${assets[@]}" --prerelease --latest=false --title "$title" --notes-file "$notes"
           fi
           {
             echo "## Snapshot $TAG aktualisiert"
@@ -269,36 +274,16 @@ jobs:
             echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  cleanup:
-    name: Snapshot eines gelöschten Branches entfernen
-    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    concurrency:
-      # Gleiche Gruppe wie der Push-Job dieses Branches: Cleanup wartet auf einen laufenden Snapshot-Lauf.
-      group: release-refs/heads/${{ github.event.ref }}
-      cancel-in-progress: false
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      BRANCH: ${{ github.event.ref }}
-    steps:
-      - name: Pre-Release und Tag löschen
+      # Altlast des früheren Schemas (ein Snapshot-Pre-Release je Branch) entfernen. Nur Pre-Releases mit Tag
+      # snapshot-*; der rollierende Snapshot "snapshot", reguläre Releases und patch-* bleiben.
+      - name: Alte Snapshot-Releases je Branch entfernen
         shell: bash
         run: |
-          set -euo pipefail
-          # Gleiche Ableitung wie im Job jar (Schritt "Version und Art des Builds bestimmen").
-          safe="$(printf '%s' "$BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
-          digest="$(printf '%s' "$BRANCH" | sha256sum | cut -c1-8)"
-          tag="snapshot-$safe-$digest"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release delete "$tag" --cleanup-tag --yes
-            echo "Pre-Release und Tag $tag entfernt."
-          elif gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
-            gh api --method DELETE "repos/$GH_REPO/git/refs/tags/$tag"
-            echo "Tag $tag entfernt (kein Pre-Release vorhanden)."
-          else
-            echo "Nichts zu entfernen für $tag."
-          fi
+          set -uo pipefail
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.prerelease and (.tag_name | startswith("snapshot-"))) | .tag_name' \
+          | while read -r old; do
+              [ -n "$old" ] || continue
+              gh release delete "$old" --cleanup-tag --yes && echo "Entfernt: $old" \
+                || echo "::warning::$old ließ sich nicht entfernen."
+            done

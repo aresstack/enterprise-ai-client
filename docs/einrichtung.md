@@ -387,7 +387,7 @@ läuft. Dabei gilt:
 Die Versionsnummer steht als `projectVersion=MAJOR.MINOR.PATCH` in `gradle.properties` (Schlüsselname wie in
 den anderen aresstack-Repositories; `-PprojectVersion=…` überschreibt sie). Lokal und auf allen Branches außer
 `main` baut Gradle `<version>-SNAPSHOT`; mit `-Prelease=true` entfällt das Suffix (so baut die CI auf `main`).
-Vor einem Release wird nur diese Zeile erhöht und gemergt.
+Für eine neue MINOR- oder MAJOR-Version wird nur diese Zeile geändert; PATCH zählt die CI auf `main` selbst hoch.
 
 ### Releases und Snapshots (CI)
 
@@ -397,8 +397,8 @@ und veröffentlicht nur ein grün gebautes Jar:
 
 | Push auf | Version | Veröffentlichung |
 |---|---|---|
-| `main` | `<version>` | Tag `v<version>` und GitHub-Release `enterprise-ai-client <version>` mit dem Jar und generierten Release-Notes, sofern das Tag noch nicht existiert. Existiert es (Version nicht erhöht), gibt es kein Release, nur das Workflow-Artefakt und eine Warnung im Lauf. |
-| anderer Branch | `<version>-SNAPSHOT` | Pre-Release `Snapshot <branch> (<version>-SNAPSHOT)` unter dem Tag `snapshot-<branch>-<hash>` (Sonderzeichen außer `. _ -` werden zu `-`; `<hash>` sind die ersten acht Hex-Zeichen von SHA-256 des Branchnamens, damit etwa `feature/foo` und `feature-foo` getrennte Tags haben). Jeder Push verschiebt das Tag auf den neuen Commit und ersetzt das Jar; der Link des Pre-Release bleibt gleich. Wird der Branch gelöscht, entfernt der Workflow Pre-Release und Tag; ein noch laufender Snapshot-Lauf wird vorher abgewartet. |
+| `main` | `<MAJOR>.<MINOR>.<PATCH>` | Bei jedem Push ein echtes Release: Tag `v<version>` und GitHub-Release `enterprise-ai-client <version>` mit Jar, Ressourcen-Archiv, Update-Paket und generierten Release-Notes. MAJOR.MINOR und Start-PATCH kommen aus `projectVersion`; jeder Commit seit der letzten Änderung dieser Zeile erhöht PATCH um eins. |
+| anderer Branch | `<version>-SNAPSHOT` | Genau ein rollierender Pre-Release `Snapshot (<version>-SNAPSHOT, <branch>)` unter dem Tag `snapshot` für alle Branches: jeder Push verschiebt das Tag und ersetzt das Jar, der Link bleibt gleich. Pre-Releases des früheren Schemas (`snapshot-<branch>-<hash>`) löscht jeder Lauf. |
 
 In beiden Fällen liegt das Jar zusätzlich als Workflow-Artefakt `enterprise-ai-client-<version>` am Lauf. Wie
 die anderen aresstack-Repositories (corenth, keepassrpc-java) veröffentlicht der Workflow über die `gh`-CLI nur
