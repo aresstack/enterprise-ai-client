@@ -146,7 +146,8 @@ public final class ShellAssembly {
         root.onStopIndexing(() -> root.uiExecutor().execute(knowledgeStatus::requestCancel));
         final RagChatBinding chatActions = new RagChatBinding(root.ragChat(), conversation, chatModel,
                 root.uiExecutor(), root.workExecutor(), root.zone(), root.sourceSelection());
-        root.bindAgentConversation(chatActions::conversationId); // #141: agent browser = browser of the open chat
+        // #141: the agent gets the browser of the open chat, only while that chat's browser switch is on.
+        root.bindAgentConversation(chatActions::conversationId, chatActions::browserAllowed);
         // Chat-Historie neben der Konfigurationsdatei: chats/<chatId>.json, Anhänge im Ordner chats/<chatId>/.
         final Path chatsDirectory = AppPaths.configFile().toAbsolutePath().getParent().resolve(CHATS_DIRECTORY);
         if (root.ports().chat() != null) {
@@ -163,16 +164,11 @@ public final class ShellAssembly {
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
                     .withDiagnostics(root.turnDiagnostics())
-                    // #141: with Firefox found and its tools on, every turn may use the chat's browser.
-                    .withToolPathWhen(root::browserReady)
-                    // Tools bound to the turn's chat: memories (#144), project files (#143), browser (#141).
-                    .withChatTools(chatId -> {
-                        List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
-                                new ArrayList<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool>(
-                                        root.chatBoundTools(chatId));
-                        tools.addAll(root.conversationChatTools(new ChatConversationId(chatId)));
-                        return tools;
-                    }));
+                    // Tools bound to the turn's chat: memories (#144), project files (#143).
+                    .withChatTools(root::chatBoundTools)
+                    // The chat's browser (#141): offered only while the chat's composer switch is on.
+                    .withBrowserTools(chatId -> root.conversationChatTools(new ChatConversationId(chatId)),
+                            root::browserReady));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.
@@ -270,6 +266,24 @@ public final class ShellAssembly {
             return bubble::close;
         }, root.uiExecutor()));
         chatShell.composer().setModelName(root.config().chat().model());
+        // Composer switches of the chat (#141): Browser (off) and Wissensquellen (on), saved with the chat.
+        final ChatShellPanel switches = chatShell;
+        final Runnable showSwitches = () -> switches.composer().showCapabilities(chatActions.browserAllowed(),
+                root.browserReady(), chatActions.knowledgeAllowed());
+        chatActions.addCapabilityListener(showSwitches);
+        chatShell.composer().browserButton().addActionListener(event -> {
+            if (root.browserReady()) {
+                chatActions.setCapabilities(!chatActions.browserAllowed(), chatActions.knowledgeAllowed());
+                history.capabilitiesChanged();
+            }
+            showSwitches.run();
+        });
+        chatShell.composer().knowledgeButton().addActionListener(event -> {
+            chatActions.setCapabilities(chatActions.browserAllowed(), !chatActions.knowledgeAllowed());
+            history.capabilitiesChanged();
+            showSwitches.run();
+        });
+        showSwitches.run();
         // Anzeigename über den Antworten: aus den Einstellungen, nach jedem Speichern sofort (ohne Neustart).
         chatShell.transcript().setAssistantName(ChatConfig.assistantDisplayNameOf(root.config()));
         final ChatShellPanel named = chatShell;

@@ -41,6 +41,20 @@ Persistente Cookies, Consent-Entscheidungen, Site-Storage und Einstellungen lieg
 Prozess- und App-Neustarts erhalten. Session-Cookies und offene Tabs bleiben nur, soweit Firefox selbst sie
 wiederherstellt.
 
+## Schalter im Composer
+
+Unten im Composer hat jeder Chat zwei Schalter, gespeichert mit dem Chat:
+
+- **Browser** (Globus, Standard aus): nur wenn er an ist, bekommen der Chat und sein Agent `browser_tabs`,
+  `browser_navigate` und `browser_read`. Ausschalten beendet nichts und löscht kein Profil; Firefox startet erst
+  beim ersten Aufruf. Ohne Firefox oder mit abgeschalteten Browser-Werkzeugen im Reiter „Tools“ ist der Schalter grau.
+- **Wissensquellen** (Buch, Standard an): aus heißt für den Turn keine automatische Wissenssuche und keine
+  `knowledge_*`-Werkzeuge, auch nicht die des Projekts. Anhänge und Erinnerungen bleiben.
+
+Sind beide an, sind beide Schalter orange markiert: Inhalte aus Wissensquellen können in Browseraufrufe einfließen.
+Ein Umschalten gilt ab dem nächsten Turn. Eine Rückfrage vor Seitenaufrufen gibt es nicht; die Freigaben aus #146
+bleiben für spätere schreibende Browseraktionen vorgesehen.
+
 ## Sicherheit
 
 - Die Chat-Identität kommt aus dem Chat (die Werkzeuge werden je Unterhaltung gebunden), nie aus Modellargumenten.

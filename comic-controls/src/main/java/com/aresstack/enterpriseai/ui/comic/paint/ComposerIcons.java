@@ -359,4 +359,16 @@ public final class ComposerIcons {
             }
         };
     }
+
+    /** A globe: circle, meridian and equator (the chat's browser). Own addition. */
+    public static StrokeIcon globe() {
+        return new StrokeIcon() {
+            @Override
+            protected void paint(Graphics2D g2) {
+                g2.drawOval(1, 1, 13, 13);
+                g2.drawOval(4, 1, 7, 13);
+                g2.drawLine(1, 7, 14, 7);
+            }
+        };
+    }
 }

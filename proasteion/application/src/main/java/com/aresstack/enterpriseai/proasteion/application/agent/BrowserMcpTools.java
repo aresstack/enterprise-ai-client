@@ -59,39 +59,6 @@ public final class BrowserMcpTools {
     }
 
     /** The tools with handlers that refuse every call: for listing names, descriptions and schemas only. */
-    /** Approval action of a call that loads a page from outside into the chat's browser. */
-    public static final String OPEN_ACTION = "open";
-
-    /**
-     * Built-in approval rules (#141): loading a page ({@code browser_navigate}, {@code browser_tabs} with
-     * {@code action=new} and a url) is {@code ASK}, because the URL leaves the machine and may carry internal text
-     * from the chat; listing, selecting, closing and reading stay {@code ALLOW}. A rule in {@code tools.approval}
-     * (e.g. {@code browser_navigate:open=ALLOW}) replaces the default.
-     */
-    public static void registerApprovals(com.aresstack.enterpriseai.astu.approval.ToolApprovalGate gate) {
-        java.util.Map<String, com.aresstack.enterpriseai.astu.approval.ApprovalPolicy> open =
-                java.util.Collections.singletonMap(OPEN_ACTION,
-                        com.aresstack.enterpriseai.astu.approval.ApprovalPolicy.ASK);
-        gate.registerResolver(NAVIGATE, (tool, arguments) -> openTarget(arguments), open);
-        gate.registerResolver(TABS, (tool, arguments) -> {
-            Object action = arguments == null ? null : arguments.get(PARAM_ACTION);
-            Object url = arguments == null ? null : arguments.get(PARAM_URL);
-            if ("new".equals(action) && url != null && !String.valueOf(url).trim().isEmpty()) {
-                return openTarget(arguments);
-            }
-            return new com.aresstack.enterpriseai.astu.approval.ApprovalTarget(
-                    action == null ? "list" : String.valueOf(action), null, null, null, "");
-        }, open);
-    }
-
-    private static com.aresstack.enterpriseai.astu.approval.ApprovalTarget openTarget(
-            java.util.Map<String, Object> arguments) {
-        Object url = arguments == null ? null : arguments.get(PARAM_URL);
-        String text = url == null ? "" : String.valueOf(url).trim();
-        return new com.aresstack.enterpriseai.astu.approval.ApprovalTarget(OPEN_ACTION, null, text, null,
-                "Seite im Browser des Chats öffnen: " + text);
-    }
-
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse)));
