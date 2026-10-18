@@ -206,8 +206,13 @@ jobs:
         run: |
           set -uo pipefail
           warn() { echo "::warning title=Kein Update-Paket::$1"; exit 0; }
-          previous="$(gh release list --exclude-pre-releases --exclude-drafts --limit 20 --json tagName \
-            --jq '.[].tagName' | grep -vx "$TAG" | head -n 1)"
+          # Vorgänger ist die höchste reguläre Version unterhalb dieser, nicht das zuletzt veröffentlichte Release:
+          # Läufe auf main laufen parallel, ein späterer Commit kann vor einem früheren veröffentlicht sein.
+          own="${VERSION%-SNAPSHOT}"
+          previous="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select((.prerelease or .draft) | not) | .tag_name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "$TAG" \
+            | { cat; echo "v$own"; } | sort -V -u | sed -n "/^v$own\$/q;p" | tail -n 1)"
           [ -n "$previous" ] || warn "Keine Vorversion gefunden."
           dir="$(mktemp -d)"
           gh release download "$previous" --pattern 'enterprise-ai-client-[0-9]*.jar' --dir "$dir" \
