@@ -63,7 +63,7 @@ final class BidiBrowserConnection implements BrowserConnection {
     static final int MAX_RAW_CONTROLS = 400;
     /**
      * The visible, enabled controls (document order, at most {@value #MAX_RAW_CONTROLS}) as a JSON array of
-     * [ref, kind, label, value, options, form target]. Each element gets a {@code data-eai-control} attribute with a
+     * [ref, kind, label, value, options, form target, form name, required, locator, position]. Each element gets a {@code data-eai-control} attribute with a
      * fresh ref, so {@link #ACT_FUNCTION} finds it again while it is on the page. Password and hidden fields and real
      * links (those belong to the link list) are left out; only plain values leave the page.
      */
@@ -105,7 +105,12 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  else if (role === 'checkbox' || role === 'switch') kind = 'checkbox';"
             + "  else kind = 'button';"
             + "  var label = e.getAttribute('aria-label') || '';"
-            + "  if (!label && e.labels && e.labels.length) label = e.labels[0].innerText;"
+            + "  var byLabel = false;"
+            + "  if (!label && e.labels && e.labels.length) { var lc = e.labels[0].cloneNode(true);"
+            + "   Array.prototype.forEach.call(lc.querySelectorAll('select, input, textarea, button'), function (x) { x.remove(); });"
+            + "   label = lc.textContent; byLabel = true; }"
+            + "  if (!label && e.getAttribute('aria-labelledby')) label = e.getAttribute('aria-labelledby').split(/\\s+/)"
+            + "   .map(function (id) { var l = document.getElementById(id); return l ? l.innerText : ''; }).join(' ');"
             + "  if (!label) label = e.getAttribute('placeholder') || e.getAttribute('title') || '';"
             + "  if (!label && (kind === 'button' || kind === 'menu' || kind === 'tab' || kind === 'toggle' || kind === 'checkbox'))"
             + "   label = e.innerText || e.value || e.getAttribute('alt') || '';"
@@ -122,7 +127,22 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  var form = e.form || (e.closest ? e.closest('form') : null);"
             + "  var target = form && (kind === 'search' || kind === 'input' || kind === 'button') ? String(form.action || '') : '';"
             + "  var ref = gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
-            + "  out.push([ref, kind, flat(label), flat(value).slice(0, 200), options, target]); }"
+            + "  var group = e.form || (e.closest ? e.closest('form, fieldset, [role=form], [role=dialog], [role=search]') : null), formName = '';"
+            + "  if (group) { var legend = group.querySelector('legend, h1, h2, h3, h4, [role=heading]');"
+            + "   var named = group.getAttribute('aria-labelledby') ? document.getElementById(group.getAttribute('aria-labelledby').split(/\\s+/)[0]) : null;"
+            + "   formName = group.getAttribute('aria-label') || (named ? named.innerText : '') || (legend ? legend.innerText : '')"
+            + "    || group.getAttribute('name') || group.getAttribute('title') || ''; }"
+            + "  var required = !!(e.required || e.getAttribute('aria-required') === 'true');"
+            + "  var roles = {search: role === 'combobox' ? 'combobox' : 'searchbox', input: role === 'combobox' ? 'combobox' : 'textbox',"
+            + "   button: 'button', toggle: 'button', select: 'combobox', checkbox: 'checkbox', radio: 'radio', menu: 'menuitem', tab: 'tab'};"
+            + "  var name = flat(label).slice(0, 80).replace(/\"/g, \"'\");"
+            + "  var locator = !name ? '' : byLabel ? 'label=\"' + name + '\"' : 'role=' + (role || roles[kind] || 'button') + ' name=\"' + name + '\"';"
+            + "  var v = r.top + r.height / 2, h = r.left + r.width / 2, position;"
+            + "  if (v > innerHeight) position = 'weiter unten'; else if (v < 0) position = 'weiter oben'; else"
+            + "   position = (v < innerHeight / 3 ? 'oben' : v > innerHeight * 2 / 3 ? 'unten' : 'Mitte')"
+            + "    + (h < innerWidth / 3 ? ' links' : h > innerWidth * 2 / 3 ? ' rechts' : '');"
+            + "  out.push([ref, kind, flat(label), flat(value).slice(0, 200), options, target, flat(formName).slice(0, 80),"
+            + "   required, locator, position]); }"
             + " return JSON.stringify(out); })()";
     /** Starts counting DOM mutations of the document once; the count lives in window.__enterpriseAiMutations. */
     static final String OBSERVE = " if (!window.__enterpriseAiObserver && window.MutationObserver) {"
@@ -466,7 +486,8 @@ final class BidiBrowserConnection implements BrowserConnection {
             for (JsonElement value : values) {
                 JsonArray c = value.getAsJsonArray();
                 controls.add(new RawControl(c.get(0).getAsString(), c.get(1).getAsString(), c.get(2).getAsString(),
-                        c.get(3).getAsString(), c.get(4).getAsString(), c.get(5).getAsString()));
+                        c.get(3).getAsString(), c.get(4).getAsString(), c.get(5).getAsString(), c.get(6).getAsString(),
+                        c.get(7).getAsBoolean(), c.get(8).getAsString(), c.get(9).getAsString()));
             }
             return controls;
         } catch (BrowserException e) {
