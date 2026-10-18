@@ -76,7 +76,7 @@ wird in der Browser-Anwendungsschicht durchgesetzt (`ChatBrowserRuntime` ruft vo
   also jede Website erst nach Rückfrage geöffnet.
 - **Regeln** (`browser.access.allow`, `browser.access.block`, durch Komma getrennt): `example.org` = genau
   dieser Host, `*.example.org` = alle Subdomains (nicht `example.org` selbst). Hosts werden kleingeschrieben,
-  ohne abschließenden Punkt und als IDN (Punycode) verglichen; Einträge mit Schema, Pfad, Port oder Leerzeichen
+  ohne abschließenden Punkt verglichen; Umlaut-Domains nur in Punycode-Schreibweise (`xn--…`), Adressen mit Nicht-ASCII-Host werden gesperrt; Einträge mit Schema, Pfad, Port oder Leerzeichen
   werden ignoriert. `evil-example.org` passt weder auf `example.org` noch auf `*.example.org`.
 - **Die Blacklist gewinnt immer**, auch im Modus `allow` und auch gegen einen Whitelist-Eintrag.
 - Nur `http`/`https` wird geprüft; `about:blank` und ähnliche interne Seiten sind immer erlaubt.

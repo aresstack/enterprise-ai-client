@@ -1,6 +1,5 @@
 package com.aresstack.enterpriseai.browser.api;
 
-import java.net.IDN;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -157,12 +156,13 @@ public final class BrowserAccessPolicy {
         if (host.isEmpty() || host.startsWith(".") || host.contains("..")) {
             return null;
         }
-        try {
-            host = IDN.toASCII(host).toLowerCase(Locale.ROOT);
-        } catch (IllegalArgumentException e) {
-            return null;
+        // Internationalised hosts must be written in their ASCII (punycode) form; anything else is rejected.
+        for (int i = 0; i < host.length(); i++) {
+            if (host.charAt(i) > 0x7e) {
+                return null;
+            }
         }
-        return host.isEmpty() ? null : host;
+        return host;
     }
 
     private static List<String> normalizeRules(Collection<String> rules) {

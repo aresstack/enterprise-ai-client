@@ -47,6 +47,8 @@ public class BrowserAccessPolicyTest {
         assertEquals(BrowserAccessPolicy.Verdict.ALLOWED, p.decide("about:blank"));
         assertEquals(BrowserAccessPolicy.Verdict.UNKNOWN, BrowserAccessPolicy.defaults().decide("https://x.org"));
         assertNull(BrowserAccessPolicy.hostOf("about:blank"));
-        assertEquals("xn--bcher-kva.de", BrowserAccessPolicy.hostOf("https://bücher.de/"));
+        assertEquals("xn--bcher-kva.de", BrowserAccessPolicy.hostOf("https://xn--bcher-kva.de/"));
+        assertNull(BrowserAccessPolicy.hostOf("https://bücher.de/"));
+        assertEquals(BrowserAccessPolicy.Verdict.BLOCKED, p.decide("https://bücher.de/"));
     }
 }
