@@ -16,6 +16,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import de.bund.zrb.WDWebSocketImpl;
 import de.bund.zrb.WebDriver;
+import de.bund.zrb.command.request.parameters.input.sourceActions.SourceActions;
 import de.bund.zrb.command.response.WDBrowsingContextResult;
 import de.bund.zrb.type.browsingContext.WDBrowsingContext;
 import de.bund.zrb.type.browsingContext.WDInfo;
@@ -80,15 +81,25 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  if (e.disabled || e.getAttribute('aria-disabled') === 'true') continue;"
             + "  var r = e.getBoundingClientRect(); if (r.width === 0 && r.height === 0) continue;"
             + "  var hint = ((e.getAttribute('name') || '') + ' ' + (e.id || '') + ' ' + (e.getAttribute('placeholder') || '')"
-            + "   + ' ' + (e.getAttribute('aria-label') || '')).toLowerCase();"
+            + "   + ' ' + (e.getAttribute('aria-label') || '') + ' ' + (e.getAttribute('title') || '')"
+            + "   + ' ' + (typeof e.className === 'string' ? e.className : '')"
+            + "   + ' ' + (e.labels && e.labels.length ? e.labels[0].innerText : '')).toLowerCase();"
+            + "  var icon = e.querySelector ? e.querySelector('svg title, svg[aria-label], img[alt], [class*=icon], [class*=fa-]') : null;"
+            + "  var iconHint = icon ? ((icon.getAttribute('aria-label') || icon.getAttribute('alt') || icon.textContent || '') + ' '"
+            + "   + (typeof icon.className === 'string' ? icon.className : (icon.className && icon.className.baseVal) || '')).toLowerCase() : '';"
+            + "  var inSearch = !!(e.closest && e.closest('[role=search], form[action*=such i], form[action*=search i], [class*=search i], [data-component*=search i]'));"
+            + "  var searchy = inSearch || /such|search|query|recherch|^q\\b|\\bq$|magnif|lupe/.test(hint + ' ' + iconHint);"
             + "  var kind;"
             + "  if (tag === 'select') kind = 'select';"
             + "  else if (tag === 'input' && (type === 'checkbox' || type === 'radio')) kind = type;"
-            + "  else if (e.hasAttribute('aria-expanded') || tag === 'summary') kind = 'toggle';"
-            + "  else if (tag === 'button' || (tag === 'input' && /^(submit|button|reset|image)$/.test(type))) kind = 'button';"
+            + "  else if (tag === 'button' || (tag === 'input' && /^(submit|button|reset|image)$/.test(type))) kind ="
+            + "   e.hasAttribute('aria-expanded') ? 'toggle' : 'button';"
+            // A text field stays a field even when it opens a suggestion list (comboboxes carry aria-expanded).
             + "  else if (type === 'search' || role === 'searchbox' || ((tag === 'input' || tag === 'textarea' || role === 'combobox')"
-            + "   && /such|search|query|recherch|^q\\b|\\bq$/.test(hint))) kind = 'search';"
-            + "  else if (tag === 'input' || tag === 'textarea' || e.isContentEditable || role === 'combobox') kind = 'input';"
+            + "   && searchy)) kind = 'search';"
+            + "  else if (tag === 'input' || tag === 'textarea' || e.isContentEditable) kind = 'input';"
+            + "  else if (e.hasAttribute('aria-expanded') || tag === 'summary') kind = 'toggle';"
+            + "  else if (role === 'combobox') kind = 'input';"
             + "  else if (role === 'menuitem') kind = 'menu';"
             + "  else if (role === 'tab') kind = 'tab';"
             + "  else if (role === 'checkbox' || role === 'switch') kind = 'checkbox';"
@@ -98,6 +109,8 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  if (!label) label = e.getAttribute('placeholder') || e.getAttribute('title') || '';"
             + "  if (!label && (kind === 'button' || kind === 'menu' || kind === 'tab' || kind === 'toggle' || kind === 'checkbox'))"
             + "   label = e.innerText || e.value || e.getAttribute('alt') || '';"
+            + "  if (!label && kind === 'button' && searchy) label = 'Suche (Symbol)';"
+            + "  if (!label && icon) label = icon.getAttribute('aria-label') || icon.getAttribute('alt') || flat(icon.textContent);"
             + "  if (!label) label = e.getAttribute('name') || e.id || '';"
             + "  var value = '';"
             + "  if (kind === 'checkbox' || kind === 'radio') value = (e.checked || e.getAttribute('aria-checked') === 'true') ? 'an' : 'aus';"
@@ -156,6 +169,40 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  if (!hit) return 'nooption';"
             + "  e.value = hit.value; fire('input'); fire('change'); return 'ok'; }"
             + " e.click(); return 'ok'; })";
+    /**
+     * Prepares a real pointer or keyboard action on a tagged control; arguments are (ref). Scrolls it to the middle of
+     * the viewport, starts counting DOM mutations and answers a JSON array [status, x, y, field, cover]: status ok,
+     * missing, disabled or covered; x/y the viewport centre of the element; field whether it takes typed text; cover
+     * the label of an element lying over the centre (a banner, an overlay).
+     */
+    static final String PREPARE_FUNCTION = "(function (ref) {"
+            + " var e = document.querySelector('[data-eai-control=\\\"' + ref + '\\\"]');"
+            + " if (!e) return JSON.stringify(['missing']);"
+            + " if (e.disabled || e.getAttribute('aria-disabled') === 'true') return JSON.stringify(['disabled']);"
+            + " window.__enterpriseAiMutations = 0;" + OBSERVE
+            + " try { e.scrollIntoView({block: 'center', inline: 'center'}); } catch (x) { }"
+            + " var r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;"
+            + " var field = (e.tagName === 'INPUT' && !/^(submit|button|reset|image|checkbox|radio|file)$/i.test(e.type))"
+            + "  || e.tagName === 'TEXTAREA' || e.isContentEditable;"
+            + " if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return JSON.stringify(['offscreen']);"
+            + " var hit = document.elementFromPoint(x, y);"
+            + " var own = hit && (hit === e || e.contains(hit) || hit.contains(e) && hit.tagName === 'LABEL'"
+            + "  || hit.closest && hit.closest('label') && hit.closest('label').control === e);"
+            + " if (!own && hit) { var c = hit.closest('[role=dialog], [aria-modal=true], [id], [class]') || hit;"
+            + "  return JSON.stringify(['covered', x, y, field, (c.getAttribute('aria-label') || c.innerText || c.id || '')"
+            + "   .replace(/\\s+/g, ' ').trim().slice(0, 80)]); }"
+            + " return JSON.stringify(['ok', x, y, field, '']); })";
+    /** The current text of a tagged field, to check that typing arrived. */
+    static final String VALUE_FUNCTION = "(function (ref) {"
+            + " var e = document.querySelector('[data-eai-control=\\\"' + ref + '\\\"]');"
+            + " return e ? String(e.isContentEditable ? e.innerText : e.value || '') : ''; })";
+    /** WebDriver key values (Unicode private use area) of the keys typing needs. */
+    static final String KEY_CONTROL = "\uE009";
+    static final String KEY_BACKSPACE = "\uE003";
+    static final String KEY_ENTER = "\uE007";
+    /** Texts longer than this are set through the field's value instead of typed key by key. */
+    static final int MAX_TYPED_CHARS = 500;
+
     /** Document token, readiness, the mutation count since the last action and the origin, as a JSON array. */
     static final String STATE_SCRIPT = "(function () {" + OBSERVE + " return JSON.stringify([(" + DOCUMENT_TOKEN_SCRIPT
             + "), document.readyState, window.__enterpriseAiMutations || 0, location.origin]); })()";
@@ -434,6 +481,9 @@ final class BidiBrowserConnection implements BrowserConnection {
             throws BrowserException {
         check();
         String before = documentToken(contextId);
+        if (action != BrowserAction.SELECT && actReally(contextId, ref, action, value, before)) {
+            return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
+        }
         String script = ACT_FUNCTION + "(" + GSON.toJson(ref) + ", "
                 + GSON.toJson(action.name().toLowerCase(Locale.ROOT)) + ", " + GSON.toJson(value) + ")";
         String answer;
@@ -461,6 +511,84 @@ final class BidiBrowserConnection implements BrowserConnection {
                     "Keine passende Option: " + value);
         }
         return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * Performs a click, fill or submit as real input, like a person: a pointer click on the element's centre, then
+     * typed keys (select all, delete, the value, Enter for submit). Sites built on frameworks react only to such
+     * trusted events. Answers {@code false} when real input is not possible here (element off screen, input not
+     * supported), so the scripted action runs instead; fails when the element is gone, disabled or covered.
+     */
+    private boolean actReally(String contextId, String ref, BrowserAction action, String value, String before)
+            throws BrowserException {
+        JsonArray prepared;
+        try {
+            prepared = JsonParser.parseString(evaluate(contextId, PREPARE_FUNCTION + "(" + GSON.toJson(ref) + ")"))
+                    .getAsJsonArray();
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+        String status = prepared.get(0).getAsString();
+        if ("missing".equals(status)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Das Bedienelement ist nicht mehr auf der Seite; browser_controls erneut aufrufen");
+        }
+        if ("disabled".equals(status)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Das Bedienelement ist deaktiviert");
+        }
+        if ("covered".equals(status)) {
+            String cover = prepared.get(4).getAsString();
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Das Bedienelement ist verdeckt"
+                    + (cover.isEmpty() ? "" : " von „" + cover + "“")
+                    + "; zuerst das überdeckende Element schließen (z. B. Banner), dann browser_controls erneut");
+        }
+        if (!"ok".equals(status)) {
+            return false;
+        }
+        boolean field = prepared.get(3).getAsBoolean();
+        if (action == BrowserAction.FILL && !field) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Diese Aktion passt nicht zum Bedienelement (fill nur für Eingabefelder, select nur für Auswahllisten)");
+        }
+        long x = Math.round(prepared.get(1).getAsDouble());
+        long y = Math.round(prepared.get(2).getAsDouble());
+        boolean typing = field && action != BrowserAction.CLICK && value != null;
+        try {
+            List<SourceActions> actions = new ArrayList<SourceActions>();
+            actions.add(InputActions.click(x, y));
+            if (typing && value.length() <= MAX_TYPED_CHARS) {
+                actions.add(InputActions.typeReplacing(value));
+            }
+            driver.input().performActions(contextId, actions);
+            driver.input().releaseActions(contextId);
+            if (typing && !value.equals(evaluate(contextId, VALUE_FUNCTION + "(" + GSON.toJson(ref) + ")"))) {
+                // The field rejected or reformatted the keys (masks, long text); set the value as a script would,
+                // then still send Enter as a real key.
+                evaluate(contextId, ACT_FUNCTION + "(" + GSON.toJson(ref) + ", \"fill\", " + GSON.toJson(value) + ")");
+            }
+            if (field && action == BrowserAction.SUBMIT) {
+                driver.input().performActions(contextId,
+                        java.util.Collections.<SourceActions>singletonList(InputActions.press(KEY_ENTER)));
+                driver.input().releaseActions(contextId);
+            }
+        } catch (RuntimeException e) {
+            // A submit may replace the document while the actions are answered; then the settled state shows the
+            // effect. Any other failure means the input may not have happened, so the scripted action runs instead.
+            check();
+            if (!documentReplaced(contextId, before)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Whether the tab shows another document than {@code before}, or is between two documents right now. */
+    private boolean documentReplaced(String contextId, String before) {
+        try {
+            return !before.equals(evaluate(contextId, DOCUMENT_TOKEN_SCRIPT));
+        } catch (BrowserException | RuntimeException e) {
+            return true;
+        }
     }
 
     /**

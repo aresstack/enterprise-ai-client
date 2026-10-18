@@ -157,6 +157,15 @@ public final class WebExplorationRun {
         });
     }
 
+    /**
+     * Controls the runtime looked at on its own (the search hint after a load): id to label for describing later
+     * actions, without a progress step, since the model did not ask for a list.
+     */
+    public synchronized void controlsNoted(java.util.Map<String, String> labelsById) {
+        lastControls.clear();
+        lastControls.putAll(labelsById);
+    }
+
     /** The label of control {@code id} in the last control list shown, or {@code null}. */
     public synchronized String controlLabel(String id) {
         return id == null ? null : lastControls.get(id.trim());

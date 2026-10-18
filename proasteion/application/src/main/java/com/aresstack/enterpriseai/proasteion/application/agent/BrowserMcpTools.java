@@ -65,6 +65,8 @@ public final class BrowserMcpTools {
     static final String PARAM_VALUE = "value";
     static final String PARAM_MAX_CONTROLS = "max_controls";
     static final int DEFAULT_MAX_CONTROLS = 60;
+    /** Controls taken after a load to look for the site's search (search fields come first, buttons follow). */
+    static final int SEARCH_HINT_CONTROLS = 40;
     private static final List<String> ACT_ACTIONS = Arrays.asList("click", "fill", "submit", "select");
     static final String PARAM_RELEVANT = "relevant";
     static final String PARAM_LINK = "link";
@@ -176,7 +178,9 @@ public final class BrowserMcpTools {
     private static McpToolContribution navigate(McpToolHandler handler) {
         return McpToolContribution.of(NAVIGATE,
                 "Open an http(s) address in this chat's browser (current tab unless tab is given) and return the "
-                        + "page title and the beginning of its text. Opens no new tab.",
+                        + "page title and the beginning of its text. Opens no new tab. Use it for addresses the user "
+                        + "gave or that a page showed; never construct search or subpage addresses yourself: use the "
+                        + "site's own search field and links (" + CONTROLS + ", " + ACT + ", " + LINKS + ").",
                 handler,
                 McpToolParameter.string(PARAM_URL, true, "The http(s) address."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
@@ -427,15 +431,17 @@ public final class BrowserMcpTools {
             BrowserActResult result = browser.act(blankToNull(call.getString(PARAM_TAB)), control, action, value);
             run.acted(description);
             BrowserPage page = result.page();
+            String search = "";
             if (result.navigated()) {
                 run.opened(page.url(), page.title(), false);
+                search = searchHint(browser, run, page.tabId());
             }
             String outcome = result.navigated() ? "Neue Seite geladen."
                     : result.changed() ? "Die Seite hat sich geändert (gleiche Seite). Neue Einträge zeigt "
                     + CONTROLS + " bzw. " + LINKS + "."
                     : "Keine sichtbare Änderung der Seite.";
             return McpToolResult.ok(description + ". " + outcome + "\n\n" + render(page, DEFAULT_MAX_CHARS)
-                    + hints(browser, run, page.tabId()));
+                    + hints(browser, run, page.tabId()) + search);
         } catch (BrowserException e) {
             return refused(run, null, e);
         }
@@ -472,7 +478,48 @@ public final class BrowserMcpTools {
 
     private static McpToolResult opened(ChatBrowser browser, WebExplorationRun run, BrowserPage page, boolean back) {
         run.opened(page.url(), page.title(), back);
-        return McpToolResult.ok(render(page, DEFAULT_MAX_CHARS) + hints(browser, run, page.tabId()));
+        return McpToolResult.ok(render(page, DEFAULT_MAX_CHARS) + hints(browser, run, page.tabId())
+                + searchHint(browser, run, page.tabId()));
+    }
+
+    /**
+     * Points the model to the site's own search on a freshly loaded page, so it types into the field instead of
+     * guessing a search address. Takes a small control snapshot (the page is new, so no earlier ids are lost); a page
+     * without search or a failing snapshot adds nothing.
+     */
+    static String searchHint(ChatBrowser browser, WebExplorationRun run, String tabId) {
+        BrowserControls controls;
+        try {
+            controls = browser.controls(tabId, SEARCH_HINT_CONTROLS, null);
+        } catch (BrowserException e) {
+            return "";
+        }
+        BrowserControl field = null;
+        BrowserControl opener = null;
+        for (BrowserControl control : controls.controls()) {
+            if (field == null && "search".equals(control.kind())) {
+                field = control;
+            } else if (opener == null && "button".equals(control.kind())
+                    && control.label().toLowerCase(Locale.ROOT).matches(".*(such|search).*")) {
+                opener = control;
+            }
+        }
+        if (field == null && opener == null) {
+            return "";
+        }
+        Map<String, String> labels = new LinkedHashMap<String, String>();
+        for (BrowserControl control : controls.controls()) {
+            labels.put(control.id(), control.label());
+        }
+        run.controlsNoted(labels);
+        if (field != null) {
+            return "\n\n[Hinweis: Die Seite hat ein eigenes Suchfeld " + field.id() + " „" + field.label()
+                    + "“. Suche damit (" + ACT + " control=\"" + field.id() + "\" action=\"submit\" value=\"…\") "
+                    + "statt eine Such-Adresse zu raten.]";
+        }
+        return "\n\n[Hinweis: Die Seite hat eine Such-Schaltfläche " + opener.id() + " „" + opener.label()
+                + "“. Öffne die Suche mit " + ACT + " action=\"click\", danach " + CONTROLS
+                + " für das Suchfeld, statt eine Such-Adresse zu raten.]";
     }
 
     /**
