@@ -61,6 +61,17 @@ Ziel von `follow` und `back` geht **vor** dem Laden durch die Zugriffsrichtlinie
 Weiterleitungen erneut; ein gesperrtes Ziel wird nie geladen bzw. endet auf `about:blank`. Den eigenen Verlauf des
 Browsers (der vom Benutzer geöffnete Seiten enthalten kann) spielt `back` bewusst nicht ab.
 
+### Regionen und Dokumente
+
+Jeder Link trägt die Landmarke, in der er steht (`{Navigation}`, `{Kopfbereich}`, `{Inhalt}`, `{Seitenleiste}`,
+`{Fußbereich}`; nächstes `nav`/`header`/`main`/`aside`/`footer`/`article` bzw. ARIA-Rolle), damit das Modell Menüs von
+Inhalt unterscheidet. Links auf Dokumente (`.pdf`, Office, `.txt`, `.csv`) sind als „Dokument → browser_document“
+markiert: `browser_document(link)` lädt die Datei **in der Seite** (mit Cookies und Anmeldung des Chats, nur was die
+Seite selbst laden dürfte, also keine fremden Origins), höchstens 10 MB, und liest den Text über dieselbe
+Dokument-Pipeline wie Anhänge (Tika). Die Seite bleibt dabei offen, die Link-Ids gelten weiter. Ziel und erreichte
+Adresse gehen durch die Zugriffsrichtlinie; ein gelesenes Dokument zählt als besucht und kann mit `browser_mark` als
+relevant markiert werden.
+
 ## Bedienelemente und Seitensuche
 
 `browser_controls` liefert die sichtbaren, aktivierten Bedienelemente der Seite, die keine reinen Links sind:

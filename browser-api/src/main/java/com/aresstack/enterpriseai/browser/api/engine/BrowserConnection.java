@@ -49,6 +49,12 @@ public interface BrowserConnection {
      */
     RawActOutcome act(String contextId, String ref, BrowserAction action, String value) throws BrowserException;
 
+    /**
+     * Fetches {@code url} inside the tab's document with its cookies (same rules as a script of the page), at most
+     * {@code maxBytes}; fails with {@code FAILED} for HTTP errors, too large or blocked (cross-origin) responses.
+     */
+    RawDownload fetch(String contextId, String url, int maxBytes) throws BrowserException;
+
     /** Consent banner and challenge of the rendered page; see {@code ChatBrowser#probe}. */
     BrowserProbe probe(String contextId) throws BrowserException;
 

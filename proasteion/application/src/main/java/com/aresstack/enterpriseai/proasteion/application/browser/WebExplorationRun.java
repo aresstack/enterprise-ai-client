@@ -106,6 +106,23 @@ public final class WebExplorationRun {
     }
 
     /**
+     * A linked document was read without leaving the page: it counts as visited and becomes the page {@code mark}
+     * refers to, while the link list of the page stays valid.
+     */
+    public void documentRead(String url, String name) {
+        change(() -> {
+            String page = canonical(url);
+            if (page != null) {
+                visited.add(page);
+                failed.remove(page);
+            }
+            currentPage = page;
+            currentTitle = name == null ? "" : name;
+            step(WebExplorationProgress.StepKind.OPENED, label(name, url), 0);
+        });
+    }
+
+    /**
      * A link list was shown to the model: its targets are discovered and examined (the model decides on each one it
      * sees); {@code total} is the number of links the page offers for the request.
      */

@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
 import com.aresstack.enterpriseai.browser.api.engine.RawActOutcome;
 import com.aresstack.enterpriseai.browser.api.engine.RawControl;
+import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
@@ -39,6 +40,8 @@ final class FakeEngine implements BrowserEngine {
     final Map<String, String> actionTargets = new java.util.concurrent.ConcurrentHashMap<String, String>();
     /** Page url to what a probe finds there; other pages are clear. */
     final Map<String, BrowserProbe> probes = new java.util.concurrent.ConcurrentHashMap<String, BrowserProbe>();
+    /** Every url fetched inside a page, in order; {@link #redirects} apply. */
+    final List<String> fetches = new CopyOnWriteArrayList<String>();
     /** Every action as "ref action value", in order. */
     final List<String> actions = new CopyOnWriteArrayList<String>();
 
@@ -208,6 +211,15 @@ final class FakeEngine implements BrowserEngine {
             }
             navigate(contextId, target);
             return new RawActOutcome(true, false);
+        }
+
+        @Override
+        public RawDownload fetch(String contextId, String url, int maxBytes) throws BrowserException {
+            check();
+            process.engine.fetches.add(url);
+            String target = process.engine.redirects.containsKey(url) ? process.engine.redirects.get(url) : url;
+            return new RawDownload(target, "application/pdf", ("%PDF " + target).getBytes(
+                    java.nio.charset.StandardCharsets.UTF_8));
         }
 
         @Override

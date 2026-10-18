@@ -5,6 +5,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
 import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
+import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
@@ -211,6 +212,25 @@ public class BrowserMcpToolsTest {
         assertFalse(tools.keepsBrowserOpen(a));
     }
 
+    @Test
+    public void linkedDocumentsAreMarkedAndReadThroughTheDocumentPipeline() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        BrowserMcpTools withDocuments = new BrowserMcpTools(port, (name, bytes) ->
+                name + ": " + new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        withDocuments.beginTurn(a, null);
+        List<McpToolContribution> bound = withDocuments.contributionsFor(a);
+
+        McpToolResult read = invoke(bound, BrowserMcpTools.DOCUMENT, "link", "link-1");
+
+        assertFalse(read.getText(), read.isError());
+        assertTrue(read.getText(), read.getText().contains("reise.pdf: Reisekostenrichtlinie 2026"));
+        assertTrue(BrowserMcpTools.isDocument("https://intranet.example/a/Richtlinie.PDF?x=1"));
+        assertFalse(BrowserMcpTools.isDocument("https://intranet.example/pdf/"));
+        assertTrue(invoke(bound, BrowserMcpTools.MARK).getText().contains("relevant"));
+        assertEquals(1, withDocuments.endTurn(a).relevant());
+        assertTrue(invoke(tools.contributionsFor(a), BrowserMcpTools.DOCUMENT, "link", "link-1").isError());
+    }
+
     private static final class RecordingPort implements ChatBrowserPort {
 
         private final Map<ChatConversationId, RecordingBrowser> browsers =
@@ -338,6 +358,14 @@ public class BrowserMcpToolsTest {
             boolean submit = action == BrowserAction.SUBMIT;
             return new BrowserActResult(new BrowserPage("tab-1", submit ? "https://intranet.example/suche?q=" + value
                     : "https://intranet.example/", submit ? "Treffer" : "Intranet", "text"), submit, !submit);
+        }
+
+        @Override
+        public BrowserDocument download(String tabId, String linkId) throws BrowserException {
+            check();
+            calls.add("download " + linkId);
+            return new BrowserDocument("https://intranet.example/reise.pdf", "reise.pdf", "application/pdf",
+                    "Reisekostenrichtlinie 2026".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         @Override
