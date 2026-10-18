@@ -221,6 +221,21 @@ final class BidiBrowserConnection implements BrowserConnection {
     static final String VALUE_FUNCTION = "(function (ref) {"
             + " var e = document.querySelector('[data-eai-control=\\\"' + ref + '\\\"]');"
             + " return e ? String(e.isContentEditable ? e.innerText : e.value || '') : ''; })";
+    /**
+     * Finds the visible option of an opened list box best matching (ref, value): exact text first, then containing
+     * text; tags it as {@code <ref>-option} and answers that ref, or an empty string.
+     */
+    static final String OPTION_FUNCTION = "(function (ref, value) {"
+            + " var wanted = String(value || '').toLowerCase().trim(), exact = null, part = null;"
+            + " var opts = document.querySelectorAll('[role=option], [role=menuitemradio], [role=menuitem], [role=treeitem]');"
+            + " for (var i = 0; i < opts.length; i++) { var o = opts[i], r = o.getBoundingClientRect();"
+            + "  if (r.width === 0 && r.height === 0) continue;"
+            + "  var t = (o.innerText || o.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();"
+            + "  if (!exact && t === wanted) exact = o; if (!part && t.indexOf(wanted) >= 0) part = o; }"
+            + " var hit = exact || part; if (!hit) return '';"
+            + " hit.setAttribute('data-eai-control', ref + '-option'); return ref + '-option'; })";
+    /** Upper bound for waiting until an opened list box shows its options. */
+    static final long OPTION_WAIT_MILLIS = 2000L;
     /** WebDriver key values (Unicode private use area) of the keys typing needs. */
     static final String KEY_CONTROL = "\uE009";
     static final String KEY_BACKSPACE = "\uE003";
@@ -259,7 +274,19 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  .test(document.title)) challenge = 'captcha';"
             + " else { var pw = document.querySelectorAll('input[type=password]');"
             + "  for (var k = 0; k < pw.length; k++) { if (shown(pw[k])) { challenge = 'login'; break; } } }"
-            + " return JSON.stringify([consent, labels.join(' | '), challenge]); })()";
+            + " var errors = [];"
+            + " function note(t) { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t && t.length < 200 && errors.indexOf(t) < 0"
+            + "  && errors.length < 6) errors.push(t); }"
+            + " var bad = document.querySelectorAll('[aria-invalid=true]');"
+            + " for (var m = 0; m < bad.length; m++) { var f = bad[m]; if (!shown(f)) continue;"
+            + "  var name = f.getAttribute('aria-label') || (f.labels && f.labels.length ? f.labels[0].textContent : '')"
+            + "   || f.getAttribute('placeholder') || f.getAttribute('name') || '';"
+            + "  var said = (f.getAttribute('aria-errormessage') || f.getAttribute('aria-describedby') || '').split(/\\s+/)"
+            + "   .map(function (id) { var d = id && document.getElementById(id); return d ? d.innerText : ''; }).join(' ');"
+            + "  note((name ? name.replace(/\\s+/g, ' ').trim() + ': ' : '') + (said || f.validationMessage || 'ungültig')); }"
+            + " var alerts = document.querySelectorAll('[role=alert], .invalid-feedback, .error-message, .field-error, .form-error');"
+            + " for (var n = 0; n < alerts.length; n++) { if (shown(alerts[n])) note(alerts[n].innerText); }"
+            + " return JSON.stringify([consent, labels.join(' | '), challenge, errors.join(' | ')]); })()";
     /**
      * Fetches (url, maxBytes) inside the page with its cookies and answers a JSON array: ["ok", final url, content
      * type, base64 bytes] or ["error", reason]. Same-origin rules of the page apply.
@@ -528,6 +555,9 @@ final class BidiBrowserConnection implements BrowserConnection {
         if ("disabled".equals(answer)) {
             throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Das Bedienelement ist deaktiviert");
         }
+        if ("nofield".equals(answer) && action == BrowserAction.SELECT) {
+            return selectCustom(contextId, ref, value, before);
+        }
         if ("nofield".equals(answer)) {
             throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                     "Diese Aktion passt nicht zum Bedienelement (fill nur für Eingabefelder, select nur für Auswahllisten)");
@@ -535,6 +565,33 @@ final class BidiBrowserConnection implements BrowserConnection {
         if ("nooption".equals(answer)) {
             throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                     "Keine passende Option: " + value);
+        }
+        return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
+    }
+
+    /**
+     * Chooses {@code value} in a list box that is not a native select (ARIA combobox, menu button): opens it like a
+     * person, by typing the value into it when it takes text or by clicking it otherwise, then clicks the visible
+     * option whose text matches best.
+     */
+    private RawActOutcome selectCustom(String contextId, String ref, String value, String before)
+            throws BrowserException {
+        if (!actReally(contextId, ref, BrowserAction.SELECT, value, before)) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                    "Die Auswahlliste lässt sich nicht öffnen; browser_controls erneut aufrufen");
+        }
+        settle(contextId, before, OPTION_WAIT_MILLIS);
+        String option;
+        try {
+            option = evaluate(contextId, OPTION_FUNCTION + "(" + GSON.toJson(ref) + ", " + GSON.toJson(value) + ")");
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+        if (option.isEmpty()) {
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Keine passende Option: " + value);
+        }
+        if (!actReally(contextId, option, BrowserAction.CLICK, null, before)) {
+            evaluate(contextId, ACT_FUNCTION + "(" + GSON.toJson(option) + ", \"click\", null)");
         }
         return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
     }
@@ -712,7 +769,7 @@ final class BidiBrowserConnection implements BrowserConnection {
         try {
             JsonArray values = JsonParser.parseString(evaluate(contextId, PROBE_SCRIPT)).getAsJsonArray();
             return new BrowserProbe(values.get(0).getAsBoolean(), values.get(1).getAsString(),
-                    values.get(2).getAsString());
+                    values.get(2).getAsString(), values.get(3).getAsString());
         } catch (BrowserException e) {
             throw e;
         } catch (RuntimeException e) {
