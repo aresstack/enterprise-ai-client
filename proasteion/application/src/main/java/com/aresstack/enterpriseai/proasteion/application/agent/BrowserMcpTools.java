@@ -26,6 +26,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Collections;
@@ -710,31 +711,39 @@ public final class BrowserMcpTools {
             out.append(" passend zu \"").append(filter).append('"');
         }
         out.append(" · Ids gelten bis zum Laden einer neuen Seite · * Pflichtfeld\n");
-        String form = null;
+        // One block per form in order of first appearance, so a search field listed first stays with its button.
+        Map<String, List<BrowserControl>> forms = new LinkedHashMap<String, List<BrowserControl>>();
         for (BrowserControl control : shown) {
-            // Controls of one form follow each other on the page; a heading per run shows the form as one mask.
-            if (!control.form().equals(form)) {
-                form = control.form();
-                out.append('\n').append(form.isEmpty() ? "Ohne Formular:" : "Formular „" + form + "“:").append('\n');
+            List<BrowserControl> block = forms.get(control.form());
+            if (block == null) {
+                block = new ArrayList<BrowserControl>();
+                forms.put(control.form(), block);
             }
-            out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
-                    .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
-            if (control.required()) {
-                out.append(" *");
+            block.add(control);
+        }
+        for (Map.Entry<String, List<BrowserControl>> block : forms.entrySet()) {
+            String form = block.getKey();
+            out.append('\n').append(form.isEmpty() ? "Ohne Formular:" : "Formular „" + form + "“:").append('\n');
+            for (BrowserControl control : block.getValue()) {
+                out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
+                        .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
+                if (control.required()) {
+                    out.append(" *");
+                }
+                if (!control.value().isEmpty()) {
+                    out.append(" | Wert: ").append(control.value());
+                }
+                if (!control.options().isEmpty()) {
+                    out.append(" | Optionen: ").append(control.options());
+                }
+                if (!control.locator().isEmpty()) {
+                    out.append(" | ").append(control.locator());
+                }
+                if (!control.position().isEmpty()) {
+                    out.append(" | ").append(control.position());
+                }
+                out.append('\n');
             }
-            if (!control.value().isEmpty()) {
-                out.append(" | Wert: ").append(control.value());
-            }
-            if (!control.options().isEmpty()) {
-                out.append(" | Optionen: ").append(control.options());
-            }
-            if (!control.locator().isEmpty()) {
-                out.append(" | ").append(control.locator());
-            }
-            if (!control.position().isEmpty()) {
-                out.append(" | ").append(control.position());
-            }
-            out.append('\n');
         }
         if (shown.isEmpty()) {
             out.append("Keine Bedienelemente gefunden.\n");
