@@ -54,15 +54,15 @@ public final class ManualCredentials {
         return AskedSecretProvider.SCHEME + label(ref).toLowerCase(Locale.ROOT);
     }
 
-    /** Merkt Benutzer und Geheimnis für diese Sitzung; {@code secret} bleibt beim Aufrufer (er löscht es). */
+    /**
+     * Merkt Benutzer und Geheimnis für diese Sitzung; {@code secret} bleibt beim Aufrufer (er löscht es). Ein leeres
+     * Geheimnis ist eine gültige, bestätigte Eingabe (Quelle ohne Anmeldung) und wird ebenso gemerkt.
+     */
     public synchronized void remember(String ref, String user, char[] secret) {
-        if (secret == null || secret.length == 0) {
-            throw new IllegalArgumentException("secret must not be empty");
-        }
         String key = key(ref);
         wipe(secrets.remove(key));
         users.put(key, user == null ? "" : user.trim());
-        secrets.put(key, Arrays.copyOf(secret, secret.length));
+        secrets.put(key, secret == null ? new char[0] : Arrays.copyOf(secret, secret.length));
     }
 
     /** Vergisst die Eingabe dieser Sitzung (z. B. nach einem gescheiterten Test); das Geheimnis wird überschrieben. */
