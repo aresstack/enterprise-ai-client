@@ -172,6 +172,8 @@ public final class CompositionRoot {
     private com.aresstack.enterpriseai.research.runtime.team.MainModelChat researchChat;
     private volatile OneTimeCodePrompt oneTimeCodePrompt;
     private volatile ApprovalPromptPort approvalPrompt;
+    /** Where "always" answers of the browser prompt go; {@code null}: they apply only to the current call. */
+    private volatile com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore browserPolicyStore;
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
     private final ToolCatalog toolCatalog;
@@ -211,6 +213,24 @@ public final class CompositionRoot {
                 }, ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS));
         AppConfig config = settings.current();
         this.ports = ports;
+        if (ports.browserGuard() != null) {
+            // Browser access policy (#141): browser.access.* of the current settings on every navigation; unknown
+            // hosts are asked through the same prompt as tool approvals.
+            ports.browserGuard().delegateTo(new com.aresstack.enterpriseai.proasteion.application.browser
+                    .BrowserAccessService(() -> com.aresstack.enterpriseai.proasteion.application.browser
+                    .BrowserAccessService.policyOf(settings.current().browserAccess()), () -> approvalPrompt,
+                    new com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore() {
+                        @Override
+                        public void allow(String host) throws java.io.IOException {
+                            store().allow(host);
+                        }
+
+                        @Override
+                        public void block(String host) throws java.io.IOException {
+                            store().block(host);
+                        }
+                    }));
+        }
         this.uiExecutor = uiExecutor;
         this.clock = clock;
         this.zone = zone;
@@ -1068,6 +1088,20 @@ public final class CompositionRoot {
      */
     public void askToolApprovalsWith(ApprovalPromptPort prompt) {
         this.approvalPrompt = prompt;
+    }
+
+    /** Remember "always" answers of the browser prompt in this configuration file (then reload the settings). */
+    public void persistBrowserPolicyIn(com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile file) {
+        this.browserPolicyStore = file == null ? null : new FileBrowserPolicyStore(file, settings);
+    }
+
+    private com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore store()
+            throws java.io.IOException {
+        com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore store = browserPolicyStore;
+        if (store == null) {
+            throw new java.io.IOException("no configuration file to remember browser answers in");
+        }
+        return store;
     }
 
     /** Bildbeschreibung für Bildanhänge, beim ersten Bild angelegt; derselbe Zwischenspeicher wie im Lesebereich. */

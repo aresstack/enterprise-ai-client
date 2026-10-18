@@ -1,10 +1,14 @@
 package com.aresstack.enterpriseai.astu.approval;
 
-/** The answer to one {@link ApprovalRequest}. Only {@link Outcome#APPROVED} for the same request id runs the tool. */
+/** The answer to one {@link ApprovalRequest}. Only {@link Outcome#APPROVED} or {@link Outcome#APPROVED_ALWAYS} for the same request id runs the tool. */
 public final class ApprovalDecision {
 
     public enum Outcome {
-        APPROVED, REJECTED, TIMEOUT, CANCELLED, UNAVAILABLE
+        APPROVED, REJECTED, TIMEOUT, CANCELLED, UNAVAILABLE,
+        /** Approved, and the user wants the same answer remembered (only for requests that offer it). */
+        APPROVED_ALWAYS,
+        /** Rejected, and the user wants the same answer remembered; otherwise behaves like REJECTED. */
+        REJECTED_ALWAYS
     }
 
     private final String requestId;
@@ -32,7 +36,7 @@ public final class ApprovalDecision {
 
     /** Does this decision approve exactly {@code request}? */
     public boolean approves(ApprovalRequest request) {
-        return outcome == Outcome.APPROVED && request != null && request.id().equals(requestId);
+        return (outcome == Outcome.APPROVED || outcome == Outcome.APPROVED_ALWAYS) && request != null && request.id().equals(requestId);
     }
 
     @Override

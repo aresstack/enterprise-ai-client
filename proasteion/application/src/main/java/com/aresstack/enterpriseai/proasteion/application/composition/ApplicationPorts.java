@@ -45,6 +45,7 @@ public final class ApplicationPorts implements Closeable {
     private final RawKnowledgeIndexPort rawIndex;
     private final FactStorePort facts;
     private final com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
+    private final com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard browserGuard;
     private final com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
     private final com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
     private final KnowledgeSourceCatalog sources;
@@ -76,6 +77,7 @@ public final class ApplicationPorts implements Closeable {
         this.rawIndex = builder.rawIndex == null ? new InMemoryRawKnowledgeIndex() : builder.rawIndex;
         this.facts = builder.facts == null ? new UnavailableFactStore() : builder.facts;
         this.browsers = builder.browsers;
+        this.browserGuard = builder.browserGuard;
         this.memories = builder.memories;
         this.searchRuns = builder.searchRuns;
         this.sources = builder.sources == null ? KnowledgeSourceCatalog.empty() : builder.sources;
@@ -143,6 +145,11 @@ public final class ApplicationPorts implements Closeable {
      */
     public FactStorePort facts() {
         return facts;
+    }
+
+    /** The access guard of the chat browsers, completed by the composition root; {@code null} without browsers. */
+    public com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard browserGuard() {
+        return browserGuard;
     }
 
     /** The browsers of the chats (#141), or {@code null} when no browser engine is available. */
@@ -273,6 +280,7 @@ public final class ApplicationPorts implements Closeable {
         private RawKnowledgeIndexPort rawIndex;
         private FactStorePort facts;
         private com.aresstack.enterpriseai.browser.api.ChatBrowserPort browsers;
+        private com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard browserGuard;
         private com.aresstack.enterpriseai.memory.api.MemoryStorePort memories;
         private com.aresstack.enterpriseai.searchrun.api.KnowledgeSearchRunPort searchRuns;
         private KnowledgeSourceCatalog sources;
@@ -337,6 +345,13 @@ public final class ApplicationPorts implements Closeable {
 
         public Builder facts(FactStorePort value) {
             this.facts = value;
+            return this;
+        }
+
+        /** The guard the chat browsers check every address with; the composition root sets its delegate. */
+        public Builder browserGuard(
+                com.aresstack.enterpriseai.proasteion.application.browser.DelegatingBrowserAccessGuard value) {
+            this.browserGuard = value;
             return this;
         }
 

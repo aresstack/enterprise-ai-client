@@ -30,6 +30,7 @@ public final class AppConfig {
     private final FactStoreConfig facts;
     private final TextMiningConfig textMining;
     private final FileAccessConfig fileAccess;
+    private final BrowserAccessConfig browserAccess;
     private final List<String> warnings;
 
     AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
@@ -69,6 +70,16 @@ public final class AppConfig {
               ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
               TextMiningConfig textMining, FileAccessConfig fileAccess, ApprovalRules toolApprovals,
               List<String> warnings) {
+        this(windowTitle, chat, embedding, knowledge, sources, keePass, network, agent, models, disabledTools,
+                bubbleColors, facts, textMining, fileAccess, toolApprovals, BrowserAccessConfig.defaults(), warnings);
+    }
+
+    AppConfig(String windowTitle, ChatConfig chat, EmbeddingConfig embedding, KnowledgeConfig knowledge,
+              List<SourceDefinition> sources, KeePassConfig keePass, NetworkConfig network, AgentConfig agent,
+              ModelsConfig models, Set<String> disabledTools, BubbleColorsConfig bubbleColors, FactStoreConfig facts,
+              TextMiningConfig textMining, FileAccessConfig fileAccess, ApprovalRules toolApprovals,
+              BrowserAccessConfig browserAccess, List<String> warnings) {
+        this.browserAccess = browserAccess == null ? BrowserAccessConfig.defaults() : browserAccess;
         this.toolApprovals = toolApprovals == null ? ApprovalRules.none() : toolApprovals;
         this.windowTitle = windowTitle;
         this.chat = chat;
@@ -161,6 +172,11 @@ public final class AppConfig {
         return fileAccess;
     }
 
+    /** Global access policy of the chat browsers ({@code browser.access.*}). */
+    public BrowserAccessConfig browserAccess() {
+        return browserAccess;
+    }
+
     public List<String> warnings() {
         return warnings;
     }
@@ -168,6 +184,7 @@ public final class AppConfig {
     @Override
     public String toString() {
         return "AppConfig[" + chat + ", " + embedding + ", " + knowledge + ", sources=" + sources + ", " + keePass
-                + ", " + network + ", " + agent + ", " + models + ", " + facts + ", " + textMining + ", " + fileAccess + "]";
+                + ", " + network + ", " + agent + ", " + models + ", " + facts + ", " + textMining + ", " + fileAccess + ", "
+                + browserAccess + "]";
     }
 }

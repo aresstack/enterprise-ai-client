@@ -65,6 +65,31 @@ bleiben für spätere schreibende Browseraktionen vorgesehen.
 - Der Debugging-Port bindet nur an Loopback und wird dem Modell nie genannt; Cookies und Tokens werden nicht
   protokolliert.
 
+## Zugriffsrichtlinie
+
+Eine globale Richtlinie (Einstellungen → Browser, Schlüssel `browser.access.*`) gilt für alle Chat-Browser. Sie
+wird in der Browser-Anwendungsschicht durchgesetzt (`ChatBrowserRuntime` ruft vor jeder Navigation den
+`BrowserAccessGuard`, umgesetzt von `BrowserAccessService`), nicht im Modell-Prompt.
+
+- **Modi:** `browser.access.mode=block` (Standard) – nur Hosts der Whitelist sind ohne Rückfrage erreichbar;
+  `allow` – alles ist erreichbar außer den Hosts der Blacklist. Mit leerer Whitelist und Modus `block` wird
+  also jede Website erst nach Rückfrage geöffnet.
+- **Regeln** (`browser.access.allow`, `browser.access.block`, durch Komma getrennt): `example.org` = genau
+  dieser Host, `*.example.org` = alle Subdomains (nicht `example.org` selbst). Hosts werden kleingeschrieben,
+  ohne abschließenden Punkt und als IDN (Punycode) verglichen; Einträge mit Schema, Pfad, Port oder Leerzeichen
+  werden ignoriert. `evil-example.org` passt weder auf `example.org` noch auf `*.example.org`.
+- **Die Blacklist gewinnt immer**, auch im Modus `allow` und auch gegen einen Whitelist-Eintrag.
+- Nur `http`/`https` wird geprüft; `about:blank` und ähnliche interne Seiten sind immer erlaubt.
+- **Weiterleitungen:** Nach dem Laden wird die endgültige Adresse erneut geprüft. Ist sie gesperrt, landet der
+  Tab auf `about:blank` und das Werkzeug meldet die Sperre (Fehlerart `BLOCKED`, wird nie wiederholt).
+- **Rückfrage bei unbekannten Hosts** (Modus `block`): Im Verlauf erscheint eine Blase mit vier Antworten:
+  *Einmal erlauben* (nur diese Navigation), *Immer erlauben* (Host wird exakt, ohne Platzhalter, in die
+  Whitelist geschrieben), *Immer verbieten* (Host kommt in die Blacklist) und *Abbrechen*. Keine Antwort
+  (Zeitüberschreitung), ein abgebrochener Turn oder fehlende Oberfläche gelten als nicht freigegeben.
+
+Noch nicht gefiltert werden Anfragen, die eine erlaubte Seite selbst an Drittanbieter stellt (Skripte, Bilder,
+XHR). Das folgt später über das Abfangen von Netzwerkanfragen per WebDriver BiDi (`network.addIntercept`).
+
 ## Firefox finden und starten
 
 - Firefox kommt aus `-Denterpriseai.firefox=<Pfad>` oder vom üblichen Installationsort (Windows: `Program Files`,

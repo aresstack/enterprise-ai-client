@@ -21,6 +21,10 @@ final class FakeEngine implements BrowserEngine {
     final List<Path> starts = new CopyOnWriteArrayList<Path>();
     final List<FakeProcess> processes = new CopyOnWriteArrayList<FakeProcess>();
     volatile long startDelayMillis;
+    /** Requested url to the url the fake server redirects to. */
+    final Map<String, String> redirects = new java.util.concurrent.ConcurrentHashMap<String, String>();
+    /** Every url handed to a connection's navigate, in order. */
+    final List<String> navigations = new CopyOnWriteArrayList<String>();
 
     @Override
     public BrowserInstance start(Path profileDirectory) throws BrowserException {
@@ -32,7 +36,7 @@ final class FakeEngine implements BrowserEngine {
                 Thread.currentThread().interrupt();
             }
         }
-        FakeProcess process = new FakeProcess(processes.size());
+        FakeProcess process = new FakeProcess(this, processes.size());
         processes.add(process);
         return process;
     }
@@ -43,6 +47,7 @@ final class FakeEngine implements BrowserEngine {
 
     static final class FakeProcess implements BrowserInstance {
 
+        final FakeEngine engine;
         final int number;
         final Map<String, String[]> tabs = new LinkedHashMap<String, String[]>();
         final AtomicInteger connects = new AtomicInteger();
@@ -51,7 +56,8 @@ final class FakeEngine implements BrowserEngine {
         volatile FakeConnection connection;
         private int nextContext = 1;
 
-        FakeProcess(int number) {
+        FakeProcess(FakeEngine engine, int number) {
+            this.engine = engine;
             this.number = number;
             createTab();
         }
@@ -147,8 +153,10 @@ final class FakeEngine implements BrowserEngine {
         @Override
         public void navigate(String contextId, String url) throws BrowserException {
             check();
+            process.engine.navigations.add(url);
+            String target = process.engine.redirects.containsKey(url) ? process.engine.redirects.get(url) : url;
             synchronized (process) {
-                process.tabs.put(contextId, new String[]{url, "Title of " + url});
+                process.tabs.put(contextId, new String[]{target, "Title of " + target});
             }
         }
 

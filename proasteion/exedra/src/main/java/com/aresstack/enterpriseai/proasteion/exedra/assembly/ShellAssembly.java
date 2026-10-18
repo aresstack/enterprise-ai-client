@@ -260,9 +260,9 @@ public final class ShellAssembly {
         // Tool approvals (tools.approval = ASK): an amber bubble with Bestätigen/Abbrechen in the transcript; chat,
         // agent and research tool calls wait for it.
         final ChatShellPanel approvals = chatShell;
-        root.askToolApprovalsWith(new ChatApprovalPrompt((title, description, answer) -> {
+        root.askToolApprovalsWith(new ChatApprovalPrompt((title, description, offersAlways, answer) -> {
             final ChatTranscriptPanel.ApprovalBubble bubble = approvals.transcript().showApproval(title, description,
-                    answer);
+                    offersAlways, answer);
             return bubble::close;
         }, root.uiExecutor()));
         chatShell.composer().setModelName(root.config().chat().model());

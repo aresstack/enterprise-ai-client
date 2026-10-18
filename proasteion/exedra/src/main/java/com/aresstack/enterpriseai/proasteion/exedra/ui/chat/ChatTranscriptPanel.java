@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DiagramOverlayHost;
@@ -59,6 +60,7 @@ import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -417,13 +419,21 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     public static final String APPROVE_TEXT = "Bestätigen";
     /** Label of the reject button in a tool approval bubble. */
     public static final String REJECT_TEXT = "Abbrechen";
+    /** Label of the allow-once button when remembered answers are offered. */
+    public static final String APPROVE_ONCE_TEXT = "Einmal erlauben";
+    /** Label of the allow-always button when remembered answers are offered. */
+    public static final String APPROVE_ALWAYS_TEXT = "Immer erlauben";
+    /** Label of the forbid-always button when remembered answers are offered. */
+    public static final String REJECT_ALWAYS_TEXT = "Immer verbieten";
 
     /**
-     * Shows a waiting tool approval as an amber activity bubble with "Bestätigen" and "Abbrechen" below it. The
-     * first click wins: both buttons are disabled at once and {@code answer} gets {@code true} (approved) or
-     * {@code false}; later clicks do nothing. Close the returned handle with the actual outcome. Only on the EDT.
+     * Shows a waiting tool approval as an amber activity bubble with "Bestätigen" and "Abbrechen" below it, or with
+     * "Einmal erlauben", "Immer erlauben", "Immer verbieten" and "Abbrechen" when {@code offersAlways}. The first
+     * click wins: all buttons are disabled at once and {@code answer} gets the chosen outcome; later clicks do
+     * nothing. Close the returned handle with the actual outcome. Only on the EDT.
      */
-    public ApprovalBubble showApproval(String title, String description, final Consumer<Boolean> answer) {
+    public ApprovalBubble showApproval(String title, String description, boolean offersAlways,
+                                       final Consumer<ApprovalDecision.Outcome> answer) {
         flushPendingUpdates();
         messageList.remove(emptyState);
         final AgentActivityBubblePanel thought = new AgentActivityBubblePanel(BubbleSide.LEFT, bubblePalette,
@@ -436,13 +446,28 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
         BubbleMessageRow bubbleRow = new BubbleMessageRow(thought, BubbleSide.LEFT);
         bubbleRow.setAlignmentX(LEFT_ALIGNMENT);
         row.add(bubbleRow);
-        final JButton approve = new JButton(APPROVE_TEXT);
+        final JButton approve = new JButton(offersAlways ? APPROVE_ONCE_TEXT : APPROVE_TEXT);
         final JButton reject = new JButton(REJECT_TEXT);
+        final List<JButton> all = new ArrayList<JButton>();
+        final Map<JButton, ApprovalDecision.Outcome> outcomes = new HashMap<JButton, ApprovalDecision.Outcome>();
+        all.add(approve);
+        outcomes.put(approve, ApprovalDecision.Outcome.APPROVED);
+        if (offersAlways) {
+            JButton approveAlways = new JButton(APPROVE_ALWAYS_TEXT);
+            JButton rejectAlways = new JButton(REJECT_ALWAYS_TEXT);
+            all.add(approveAlways);
+            outcomes.put(approveAlways, ApprovalDecision.Outcome.APPROVED_ALWAYS);
+            all.add(rejectAlways);
+            outcomes.put(rejectAlways, ApprovalDecision.Outcome.REJECTED_ALWAYS);
+        }
+        all.add(reject);
+        outcomes.put(reject, ApprovalDecision.Outcome.REJECTED);
         final JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
         buttons.setOpaque(false);
         buttons.setBorder(BorderFactory.createEmptyBorder(0, 22, 0, 12));
-        buttons.add(approve);
-        buttons.add(reject);
+        for (JButton button : all) {
+            buttons.add(button);
+        }
         buttons.setAlignmentX(LEFT_ALIGNMENT);
         buttons.setMaximumSize(new Dimension(Integer.MAX_VALUE, buttons.getPreferredSize().height));
         row.add(buttons);
@@ -452,12 +477,15 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
                 return;
             }
             answered[0] = true;
-            approve.setEnabled(false);
-            reject.setEnabled(false);
-            answer.accept(event.getSource() == approve);
+            for (JButton button : all) {
+                button.setEnabled(false);
+            }
+            ApprovalDecision.Outcome chosen = outcomes.get(event.getSource());
+            answer.accept(chosen == null ? ApprovalDecision.Outcome.REJECTED : chosen);
         };
-        approve.addActionListener(click);
-        reject.addActionListener(click);
+        for (JButton button : all) {
+            button.addActionListener(click);
+        }
         row.setAlignmentX(LEFT_ALIGNMENT);
         messageList.add(row);
         messageList.add(spacer());
@@ -466,8 +494,9 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             @Override
             public void close(boolean approved, String outcome) {
                 answered[0] = true;
-                approve.setEnabled(false);
-                reject.setEnabled(false);
+                for (JButton button : all) {
+                    button.setEnabled(false);
+                }
                 row.remove(buttons);
                 if (thought.getVisualState() == AnimatedThoughtBubblePanel.VisualState.RUNNING) {
                     Runnable remove = () -> {

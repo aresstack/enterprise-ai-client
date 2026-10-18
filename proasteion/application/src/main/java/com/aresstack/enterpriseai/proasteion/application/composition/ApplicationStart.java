@@ -109,6 +109,7 @@ public final class ApplicationStart {
         adoptSourceAddresses(file, ports, settings);
         applyProxyAuthentication(null, config, ports, localVoices);
         final CompositionRoot root = CompositionRoot.compose(settings, ports, uiExecutor, clock, zone);
+        root.persistBrowserPolicyIn(file);
         final ApplicationStart started = new ApplicationStart(network, settings, ports, root);
         started.refreshModelsInBackground(modelCatalogs);
         // Beobachter auf dem Settings-Service (wie SettingsHelper.addChangeListener in MainframeMate): Adapter,
