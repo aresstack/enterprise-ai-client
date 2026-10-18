@@ -44,4 +44,20 @@ public class ToolSupportBrowserToolsTest {
         assertFalse("the browser alone does not open the tool path", tools.alwaysOn());
         assertEquals(0, tools.browserTools("chat-1").size());
     }
+
+    @Test
+    public void turnEndReachesTheBrowserLifecycleAndSurvivesCopies() throws Exception {
+        java.util.List<String> closed = new java.util.ArrayList<String>();
+        ToolSupport tools = new ToolSupport(new FakeChatCompletionPort(),
+                new FileAttachmentStore(folder.getRoot().toPath()), (name, content) -> "",
+                Collections.emptyList(), false)
+                .withBrowserTurnEnd(closed::add)
+                .withMaxRounds(() -> 3)
+                .withChatTools(chatId -> Collections.emptyList())
+                .withBrowserTools(chatId -> Collections.emptyList(), () -> true);
+
+        tools.browserTurnEnded("chat-1");
+
+        assertEquals(Collections.singletonList("chat-1"), closed);
+    }
 }

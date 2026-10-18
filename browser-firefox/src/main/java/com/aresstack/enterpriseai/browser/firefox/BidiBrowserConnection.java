@@ -2,9 +2,11 @@ package com.aresstack.enterpriseai.browser.firefox;
 
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
+import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import de.bund.zrb.WDWebSocketImpl;
 import de.bund.zrb.WebDriver;
@@ -31,6 +33,18 @@ final class BidiBrowserConnection implements BrowserConnection {
     /** Url, title and visible text in one evaluation, as a JSON array. */
     static final String READ_SCRIPT = "JSON.stringify([location.href, document.title, "
             + "document.body ? document.body.innerText : ''])";
+    static final int MAX_RAW_LINKS = 2000;
+    /**
+     * The anchors of the rendered page (document order, at most {@value #MAX_RAW_LINKS}) as a JSON array of
+     * [text, resolved href, title, aria-label]; {@code a.href} is already absolute. Only plain values leave the page.
+     */
+    static final String LINKS_SCRIPT = "JSON.stringify(Array.prototype.slice.call("
+            + "document.querySelectorAll('a[href], area[href]'), 0, " + MAX_RAW_LINKS + ").map(function (a) {"
+            + " var t = (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim();"
+            + " if (!t) { var img = a.querySelector('img[alt]'); t = img ? img.getAttribute('alt') : ''; }"
+            + " return [t, String(a.href || ''), a.getAttribute('title') || '', a.getAttribute('aria-label') || '']; }))";
+    private static final long BACK_TIMEOUT_MILLIS = 20000L;
+    private static final long BACK_POLL_MILLIS = 100L;
     private static final double CONNECT_TIMEOUT_MILLIS = 30000.0;
 
     private final WDWebSocketImpl socket;
@@ -139,6 +153,65 @@ final class BidiBrowserConnection implements BrowserConnection {
         } catch (BrowserException e) {
             throw e;
         } catch (RuntimeException e) {
+            throw classify(e);
+        }
+    }
+
+    @Override
+    public List<RawLink> links(String contextId) throws BrowserException {
+        check();
+        try {
+            JsonArray values = JsonParser.parseString(evaluate(contextId, LINKS_SCRIPT)).getAsJsonArray();
+            List<RawLink> links = new ArrayList<RawLink>(values.size());
+            for (JsonElement value : values) {
+                JsonArray link = value.getAsJsonArray();
+                links.add(new RawLink(link.get(0).getAsString(), link.get(1).getAsString(), link.get(2).getAsString(),
+                        link.get(3).getAsString()));
+            }
+            return links;
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
+        }
+    }
+
+    @Override
+    public void back(String contextId) throws BrowserException {
+        check();
+        try {
+            String before = evaluate(contextId, "location.href");
+            driver.browsingContext().traverseHistory(contextId, -1);
+            // traverseHistory does not wait for the load: wait until the document left the old address and is complete.
+            long deadline = System.currentTimeMillis() + BACK_TIMEOUT_MILLIS;
+            while (System.currentTimeMillis() < deadline) {
+                check();
+                String state;
+                try {
+                    state = evaluate(contextId, "location.href + '\\n' + document.readyState");
+                } catch (BrowserException | RuntimeException loading) {
+                    // The old document is being replaced; ask again.
+                    state = "";
+                }
+                int split = state.lastIndexOf('\n');
+                if (split > 0 && !state.substring(0, split).equals(before)
+                        && "complete".equals(state.substring(split + 1))) {
+                    return;
+                }
+                Thread.sleep(BACK_POLL_MILLIS);
+            }
+            throw new BrowserException(BrowserException.Kind.TIMEOUT, "Zurück: Seite wurde nicht rechtzeitig geladen");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BrowserException(BrowserException.Kind.FAILED, "Zurück unterbrochen", e);
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            String message = String.valueOf(e.getMessage()).toLowerCase(Locale.ROOT);
+            if (message.contains("history") || message.contains("no such")) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        "Kein vorheriger Eintrag im Verlauf dieses Tabs", e);
+            }
             throw classify(e);
         }
     }

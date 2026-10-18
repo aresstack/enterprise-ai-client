@@ -505,6 +505,10 @@ public final class RagChatBinding implements ChatShellActions {
         final String answerModel = chatModel;
         final Request request = new Request(answer, listener, toolPath, ++activitySeries);
         listener.request = request;
+        if (support != null && browserOn) {
+            request.browserSupport = support;
+            request.browserConversation = conversation;
+        }
         // Arbeit des Clients steht in Wolken, nie in der Antwortblase: zuerst das Ablegen neuer Anhänge, dann die
         // Recherchekarte der Wissenssuche.
         final String storingKey = newFiles.isEmpty() ? null : "chat-store-" + request.series;
@@ -1261,12 +1265,33 @@ public final class RagChatBinding implements ChatShellActions {
         RagChatTurn ragTurn;
         boolean ended;
         boolean noticed;
+        /** Set when this turn offered the chat's browser: the browser is closed again when the turn ends. */
+        ToolSupport browserSupport;
+        ChatConversationId browserConversation;
 
         Request(TranscriptEntry answer, TurnListener listener, boolean toolPath, int series) {
             this.answer = answer;
             this.listener = listener;
             this.toolPath = toolPath;
             this.series = series;
+        }
+    }
+
+    /** Ends the browser a finished turn used, off the UI thread (stopping Firefox may take a moment). */
+    private void closeBrowserAfter(Request request) {
+        final ToolSupport support = request.browserSupport;
+        final String chatId = request.browserConversation.value();
+        request.browserSupport = null;
+        try {
+            workExecutor.execute(() -> {
+                try {
+                    support.browserTurnEnded(chatId);
+                } catch (RuntimeException e) {
+                    LOG.log(Level.WARNING, "Browser nach der Antwort nicht beendet: " + e.getMessage(), e);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            // Shutting down: the application closes every browser anyway.
         }
     }
 
@@ -1343,6 +1368,9 @@ public final class RagChatBinding implements ChatShellActions {
                     if (request != null && request.toolPath) {
                         request.ended = true;
                         addNotice(request);
+                    }
+                    if (request != null && request.browserSupport != null) {
+                        closeBrowserAfter(request);
                     }
                 }
             });

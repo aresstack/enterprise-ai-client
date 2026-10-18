@@ -3,6 +3,8 @@ package com.aresstack.enterpriseai.browser.runtime;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserLink;
+import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
@@ -10,13 +12,18 @@ import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
+import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +44,11 @@ import java.util.concurrent.ConcurrentMap;
  *         address after redirects passes it again; a blocked redirect target leaves the tab on about:blank.
  *         The guard is called while holding only the per-chat slot monitor (it may wait for the user), so
  *         other chats and the UI are never blocked by it. Blocked calls are never retried.</li>
+ *     <li>Links are snapshots per tab: {@link ChatBrowser#links} numbers the anchors of the current page, and every
+ *         navigation of the tab (navigate, follow, back, closing, a restart, a page change by the user) invalidates
+ *         them. {@link ChatBrowser#follow} only opens addresses of that snapshot, through the guard.</li>
+ *     <li>{@link ChatBrowser#closeBrowser} ends process and connection but keeps the slot: the next operation starts
+ *         the browser again on the same profile.</li>
  * </ul>
  */
 public final class ChatBrowserRuntime implements ChatBrowserPort {
@@ -44,6 +56,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
     private final BrowserEngine engine;
     private final BrowserProfileStore profiles;
     private final BrowserAccessGuard guard;
+    private static final int MAX_LINK_TEXT = 160;
+
     private final ConcurrentMap<ChatConversationId, Slot> slots = new ConcurrentHashMap<ChatConversationId, Slot>();
 
     public ChatBrowserRuntime(BrowserEngine engine, BrowserProfileStore profiles) {
@@ -111,6 +125,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         private int nextTab = 1;
         private String currentRaw;
         private boolean closed;
+        /** Raw context id to the tab's current link snapshot. */
+        private final Map<String, LinkSnapshot> snapshots = new HashMap<String, LinkSnapshot>();
 
         Slot(ChatConversationId conversation) {
             this.conversation = conversation;
@@ -154,6 +170,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 String raw = rawOf(connection, tabId);
                 connection.close(raw);
                 tabIds.remove(raw);
+                snapshots.remove(raw);
                 if (raw.equals(currentRaw)) {
                     currentRaw = null;
                 }
@@ -166,6 +183,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             guard.admit(conversation, url);
             return call(connection -> {
                 String raw = tabId == null ? currentOrNew(connection) : rawOf(connection, tabId);
+                snapshots.remove(raw);
                 connection.navigate(raw, url);
                 BrowserPage page = page(connection, raw);
                 checkFinal(connection, raw, page.url());
@@ -179,6 +197,105 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
                 return page(connection, raw);
             }, true);
+        }
+
+        @Override
+        public synchronized BrowserLinks links(final String tabId, final int maxLinks) throws BrowserException {
+            final int limit = Math.max(1, Math.min(BrowserLinks.MAX_LINKS, maxLinks));
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                RawTab tab = rawTab(connection, raw);
+                List<RawLink> anchors = connection.links(raw);
+                String page = withoutFragment(tab.url());
+                Map<String, String[]> usable = new LinkedHashMap<String, String[]>();
+                for (RawLink anchor : anchors) {
+                    String url = usableUrl(anchor.href());
+                    if (url == null || withoutFragment(url).equals(page)) {
+                        continue;
+                    }
+                    String text = clip(anchor.text());
+                    String label = clip(anchor.title().isEmpty() ? anchor.ariaLabel() : anchor.title());
+                    String[] known = usable.get(url);
+                    if (known == null) {
+                        usable.put(url, new String[]{text, label.equals(text) ? "" : label});
+                    } else if (known[0].isEmpty()) {
+                        known[0] = text;
+                    }
+                }
+                LinkSnapshot snapshot = new LinkSnapshot(page);
+                List<BrowserLink> links = new ArrayList<BrowserLink>(Math.min(limit, usable.size()));
+                for (Map.Entry<String, String[]> entry : usable.entrySet()) {
+                    if (links.size() >= limit) {
+                        break;
+                    }
+                    String id = "link-" + (links.size() + 1);
+                    snapshot.urls.put(id, entry.getKey());
+                    links.add(new BrowserLink(id, entry.getValue()[0], entry.getKey(), entry.getValue()[1]));
+                }
+                snapshots.put(raw, snapshot);
+                return new BrowserLinks(idOf(raw), tab.url(), tab.title(), links, usable.size());
+            }, true);
+        }
+
+        @Override
+        public synchronized BrowserPage follow(final String tabId, final String linkId) throws BrowserException {
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                LinkSnapshot snapshot = snapshots.get(raw);
+                if (snapshot == null) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                            "Keine gültige Linkliste für diesen Tab; zuerst browser_links aufrufen");
+                }
+                if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)) {
+                    snapshots.remove(raw);
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                            "Die Seite hat sich seit browser_links geändert; die Link-Ids gelten nicht mehr. "
+                                    + "browser_links erneut aufrufen");
+                }
+                String url = linkId == null ? null : snapshot.urls.get(linkId.trim());
+                if (url == null) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Link-Id " + linkId
+                            + "; Link-Ids gelten nur für die zuletzt mit browser_links gelieferte Liste");
+                }
+                guard.admit(conversation, url);
+                snapshots.remove(raw);
+                connection.navigate(raw, url);
+                BrowserPage page = page(connection, raw);
+                checkFinal(connection, raw, page.url());
+                return page;
+            }, false);
+        }
+
+        @Override
+        public synchronized BrowserPage back(final String tabId) throws BrowserException {
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                snapshots.remove(raw);
+                connection.back(raw);
+                BrowserPage page = page(connection, raw);
+                checkFinal(connection, raw, page.url());
+                return page;
+            }, false);
+        }
+
+        @Override
+        public synchronized void closeBrowser() {
+            dropConnection();
+            stopInstance();
+        }
+
+        @Override
+        public synchronized boolean isRunning() {
+            return instance != null && instance.isAlive();
+        }
+
+        private RawTab rawTab(BrowserConnection connection, String raw) throws BrowserException {
+            for (RawTab tab : connection.tabs()) {
+                if (tab.contextId().equals(raw)) {
+                    return tab;
+                }
+            }
+            throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Der Tab ist nicht mehr offen");
         }
 
         /** Admits the address reached after redirects; a refused one leaves the tab on about:blank. */
@@ -275,6 +392,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             }
             // New process, new raw context ids: the old tab ids no longer mean anything.
             tabIds.clear();
+            snapshots.clear();
             currentRaw = null;
         }
 
@@ -355,5 +473,46 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             RawPage page = connection.read(raw);
             return new BrowserPage(idOf(raw), page.url(), page.title(), page.text());
         }
+    }
+
+    /** The link ids of one page of one tab. */
+    private static final class LinkSnapshot {
+
+        final String pageUrl;
+        final Map<String, String> urls = new HashMap<String, String>();
+
+        LinkSnapshot(String pageUrl) {
+            this.pageUrl = pageUrl;
+        }
+    }
+
+    /** The address if it is an absolute http(s) address with a host, else {@code null} (mailto:, javascript:, ...). */
+    static String usableUrl(String href) {
+        if (href == null || href.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            URI uri = new URI(href.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!("http".equals(scheme) || "https".equals(scheme)) || uri.getHost() == null) {
+                return null;
+            }
+            return uri.toString();
+        } catch (URISyntaxException e) {
+            return null;
+        }
+    }
+
+    static String withoutFragment(String url) {
+        if (url == null) {
+            return "";
+        }
+        int hash = url.indexOf('#');
+        return hash < 0 ? url : url.substring(0, hash);
+    }
+
+    private static String clip(String text) {
+        String flat = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return flat.length() <= MAX_LINK_TEXT ? flat : flat.substring(0, MAX_LINK_TEXT - 1) + "…";
     }
 }

@@ -3,9 +3,11 @@ package com.aresstack.enterpriseai.browser.runtime;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
+import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -13,6 +15,7 @@ import org.junit.rules.TemporaryFolder;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -258,5 +261,179 @@ public class ChatBrowserRuntimeTest {
         BrowserPage page = browser.navigate(null, "https://ok.example/");
 
         assertEquals("https://ok.example/", page.url());
+    }
+
+    private static final String HOME = "https://intranet.example/";
+
+    private void homeWithLinks() {
+        engine.anchors.put(HOME, Arrays.asList(
+                new RawLink("Reisekosten", "https://intranet.example/reise", "", ""),
+                new RawLink("", "https://intranet.example/reise", "Reisekosten", ""),
+                new RawLink("Nach oben", "https://intranet.example/#top", "", ""),
+                new RawLink("Mail", "mailto:it@intranet.example", "", ""),
+                new RawLink("Skript", "javascript:void(0)", "", ""),
+                new RawLink("  KI   im\n Haus ", "https://intranet.example/ki", "", "KI-Portal"),
+                new RawLink("Extern", "https://blocked.example/x", "", "")));
+    }
+
+    @Test
+    public void linksAreRealAbsoluteDeduplicatedAnchorsWithSnapshotIds() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+
+        BrowserLinks links = browser.links(null, 100);
+
+        assertEquals(3, links.total());
+        assertEquals("link-1", links.links().get(0).id());
+        assertEquals("Reisekosten", links.links().get(0).text());
+        assertEquals("https://intranet.example/reise", links.links().get(0).url());
+        assertEquals("KI im Haus", links.links().get(1).text());
+        assertEquals("KI-Portal", links.links().get(1).label());
+        assertEquals(HOME, links.pageUrl());
+    }
+
+    @Test
+    public void maxLinksLimitsTheListButNotTheTotal() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+
+        BrowserLinks links = browser.links(null, 1);
+
+        assertEquals(1, links.links().size());
+        assertEquals(3, links.total());
+        try {
+            browser.follow(null, "link-2");
+            fail("link-2 was not handed out");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+    }
+
+    @Test
+    public void followOpensTheLinkAndInvalidatesTheOldIds() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100);
+
+        BrowserPage page = browser.follow(null, "link-2");
+
+        assertEquals("https://intranet.example/ki", page.url());
+        try {
+            browser.follow(null, "link-1");
+            fail("ids of the previous page must be invalid");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+    }
+
+    @Test
+    public void navigateInvalidatesTheLinkIds() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100);
+        browser.navigate(null, "https://other.example/");
+
+        try {
+            browser.follow(null, "link-1");
+            fail("expected INVALID_REQUEST");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+    }
+
+    @Test
+    public void pageChangedByTheUserInvalidatesTheLinkIds() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100);
+        String raw = engine.last().tabs.keySet().iterator().next();
+        engine.last().connection.userNavigates(raw, "https://intranet.example/elsewhere");
+
+        try {
+            browser.follow(null, "link-1");
+            fail("expected INVALID_REQUEST");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        assertEquals(1, engine.navigations.size());
+    }
+
+    @Test
+    public void followPassesTheGuardAndABlockedLinkIsNeverOpened() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, HOME);
+        BrowserLinks links = browser.links(null, 100);
+        assertEquals("https://blocked.example/x", links.links().get(2).url());
+
+        try {
+            browser.follow(null, "link-3");
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals(Arrays.asList(HOME), engine.navigations);
+    }
+
+    @Test
+    public void followRedirectToBlockedHostEndsOnAboutBlank() throws Exception {
+        homeWithLinks();
+        engine.redirects.put("https://intranet.example/reise", "https://blocked.example/landing");
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100);
+
+        try {
+            browser.follow(null, "link-1");
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertEquals("about:blank", browser.read(null).url());
+    }
+
+    @Test
+    public void backReturnsToThePreviousPage() throws Exception {
+        homeWithLinks();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, HOME);
+        browser.links(null, 100);
+        browser.follow(null, "link-1");
+
+        BrowserPage page = browser.back(null);
+
+        assertEquals(HOME, page.url());
+        assertEquals("link-1", browser.links(null, 100).links().get(0).id());
+    }
+
+    @Test
+    public void closeBrowserStopsTheProcessAndTheNextCallRestartsOnTheSameProfile() throws Exception {
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, "https://example.org/");
+        assertTrue(browser.isRunning());
+
+        browser.closeBrowser();
+
+        assertFalse(browser.isRunning());
+        assertFalse(engine.last().alive);
+        browser.navigate(null, "https://example.org/");
+        assertEquals(2, engine.starts.size());
+        assertEquals(engine.starts.get(0), engine.starts.get(1));
+        assertTrue(browser.isRunning());
+    }
+
+    @Test
+    public void closeBrowserWithoutRunningBrowserDoesNothing() {
+        ChatBrowser browser = runtime.browserOf(chatA);
+
+        browser.closeBrowser();
+
+        assertFalse(browser.isRunning());
+        assertTrue(engine.starts.isEmpty());
     }
 }

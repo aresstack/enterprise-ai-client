@@ -168,7 +168,9 @@ public final class ShellAssembly {
                     .withChatTools(root::chatBoundTools)
                     // The chat's browser (#141): offered only while the chat's composer switch is on.
                     .withBrowserTools(chatId -> root.conversationChatTools(new ChatConversationId(chatId)),
-                            root::browserReady));
+                            root::browserReady)
+                    // Like askai: a finished turn does not leave the chat's Firefox open; the profile stays.
+                    .withBrowserTurnEnd(chatId -> root.closeChatBrowser(new ChatConversationId(chatId))));
         }
         final FileChatHistoryStore chatStore = new FileChatHistoryStore(chatsDirectory);
         // Chat projects (#143): tree and assignment in their own file next to the chats; the chat files stay put.

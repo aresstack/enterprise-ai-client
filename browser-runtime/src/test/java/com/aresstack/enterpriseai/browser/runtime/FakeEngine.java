@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserConnection;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserEngine;
 import com.aresstack.enterpriseai.browser.api.engine.BrowserInstance;
+import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 
@@ -25,6 +26,8 @@ final class FakeEngine implements BrowserEngine {
     final Map<String, String> redirects = new java.util.concurrent.ConcurrentHashMap<String, String>();
     /** Every url handed to a connection's navigate, in order. */
     final List<String> navigations = new CopyOnWriteArrayList<String>();
+    /** Page url to the anchors the fake page shows. */
+    final Map<String, List<RawLink>> anchors = new java.util.concurrent.ConcurrentHashMap<String, List<RawLink>>();
 
     @Override
     public BrowserInstance start(Path profileDirectory) throws BrowserException {
@@ -50,6 +53,8 @@ final class FakeEngine implements BrowserEngine {
         final FakeEngine engine;
         final int number;
         final Map<String, String[]> tabs = new LinkedHashMap<String, String[]>();
+        /** Per tab the urls visited before the current one. */
+        final Map<String, java.util.Deque<String>> history = new java.util.HashMap<String, java.util.Deque<String>>();
         final AtomicInteger connects = new AtomicInteger();
         final List<String> activated = new CopyOnWriteArrayList<String>();
         volatile boolean alive = true;
@@ -156,7 +161,40 @@ final class FakeEngine implements BrowserEngine {
             process.engine.navigations.add(url);
             String target = process.engine.redirects.containsKey(url) ? process.engine.redirects.get(url) : url;
             synchronized (process) {
+                String[] old = process.tabs.get(contextId);
+                if (old != null && !"about:blank".equals(old[0])) {
+                    process.history.computeIfAbsent(contextId, k -> new java.util.ArrayDeque<String>()).push(old[0]);
+                }
                 process.tabs.put(contextId, new String[]{target, "Title of " + target});
+            }
+        }
+
+        @Override
+        public List<RawLink> links(String contextId) throws BrowserException {
+            check();
+            synchronized (process) {
+                List<RawLink> links = process.engine.anchors.get(process.tabs.get(contextId)[0]);
+                return links == null ? new ArrayList<RawLink>() : links;
+            }
+        }
+
+        @Override
+        public void back(String contextId) throws BrowserException {
+            check();
+            synchronized (process) {
+                java.util.Deque<String> past = process.history.get(contextId);
+                if (past == null || past.isEmpty()) {
+                    throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "no history");
+                }
+                String url = past.pop();
+                process.tabs.put(contextId, new String[]{url, "Title of " + url});
+            }
+        }
+
+        /** The user clicks something in the visible browser. */
+        void userNavigates(String contextId, String url) {
+            synchronized (process) {
+                process.tabs.put(contextId, new String[]{url, "Title of " + url});
             }
         }
 
