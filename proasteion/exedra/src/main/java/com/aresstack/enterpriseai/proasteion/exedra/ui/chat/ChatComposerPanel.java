@@ -95,7 +95,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     static final String FAILED_STATUS = "Spracheingabe fehlgeschlagen: ";
     /** Denkaufwand: Anzeige und Wert ({@code null} = Standard des Modells), wie arch „Think: …“. */
     private static final List<String> REASONING_LABELS = Collections.unmodifiableList(Arrays.asList(
-            "Denken: Standard", "Denken: niedrig", "Denken: mittel", "Denken: hoch"));
+            "Standard", "niedrig", "mittel", "hoch"));
     private static final List<String> REASONING_EFFORTS = Collections.unmodifiableList(Arrays.asList(
             null, "low", "medium", "high"));
 
@@ -221,12 +221,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.modelButton = new ComposerButton(ComposerIcons.chevronDown(), MODEL_PLACEHOLDER, false,
                 "Chat-Modell (Einstellungen → KI-Dienst)");
         modelButton.setHorizontalTextPosition(SwingConstants.LEFT); // Name zuerst, Chevron danach (arch)
-        this.reasoningButton = new ComposerButton(ComposerIcons.chevronDown(), REASONING_LABELS.get(0), false,
+        // Compact: thought bubble plus the current value only; the full label is the tooltip.
+        this.reasoningButton = new ComposerButton(ComposerIcons.thoughtBubble(), REASONING_LABELS.get(0), false,
                 "Denkaufwand (nur für Modelle, die ihn unterstützen)");
-        reasoningButton.setHorizontalTextPosition(SwingConstants.LEFT);
-        this.resourcesButton = new ComposerButton(ComposerIcons.chevronDown(), RESOURCES_PREFIX + "0", false,
-                RESOURCES_TOOLTIP);
-        resourcesButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        // Icon only; the count lives in the tooltip and the accessible name.
+        this.resourcesButton = ComposerButton.iconButton(ComposerIcons.document(), RESOURCES_PREFIX + "0");
+        showResourceCount(0);
         this.phaseButton = new ComposerButton(ComposerIcons.chevronDown(), PHASE_PREFIX + "Konzept", false,
                 PHASE_TOOLTIP);
         phaseButton.setHorizontalTextPosition(SwingConstants.LEFT);
@@ -299,16 +299,17 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return resources == null ? Collections.<ChatResource>emptyList() : resources;
     }
 
+    private void showResourceCount(int count) {
+        String label = RESOURCES_PREFIX + count;
+        resourcesButton.getAccessibleContext().setAccessibleName(label);
+        resourcesButton.setToolTipText(label + ": " + RESOURCES_TOOLTIP);
+    }
+
     /** Zählt die Ressourcen des Chats neu („Ressourcen n“); ohne Ressourcen ist der Knopf inaktiv. */
     public void refreshResources() {
         int count = resources().size();
         resourceCount = count;
-        String text = RESOURCES_PREFIX + count;
-        if (!text.equals(resourcesButton.getText())) {
-            resourcesButton.setText(text);
-            revalidate();
-            repaint();
-        }
+        showResourceCount(count);
         resourcesButton.setEnabled(count > 0 && !model.canStop());
     }
 
