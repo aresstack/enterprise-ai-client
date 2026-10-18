@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.browser.api.engine;
 
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 
 import java.util.List;
 
@@ -23,7 +24,10 @@ public interface BrowserConnection {
 
     void close(String contextId) throws BrowserException;
 
-    /** Navigates and waits for the document to be complete. */
+    /**
+     * Navigates and waits for the document to be complete and then quiet (scripts that render the content after the
+     * load event, as single page apps do, had their time), within an upper bound.
+     */
     void navigate(String contextId, String url) throws BrowserException;
 
     /** Url, title and visible text of the tab. */
@@ -44,6 +48,9 @@ public interface BrowserConnection {
      * disabled or does not fit the action (no such option, not a field).
      */
     RawActOutcome act(String contextId, String ref, BrowserAction action, String value) throws BrowserException;
+
+    /** Consent banner and challenge of the rendered page; see {@code ChatBrowser#probe}. */
+    BrowserProbe probe(String contextId) throws BrowserException;
 
     /**
      * An identity of the tab's current document: the same value while the document lives, a new one after any load

@@ -35,4 +35,14 @@ public class ChatBrowserCardTest {
                 + "„extern.example“ übersprungen (nicht freigegeben)\n"
                 + ChatBrowserCard.WORKING, body);
     }
+
+    @Test
+    public void pendingChallengeIsShownAndNamedInTheSummary() {
+        WebExplorationProgress login = new WebExplorationProgress(true, false, 0, 0, 1, 0, 0, 0, Arrays.asList(
+                new WebExplorationProgress.Step(WebExplorationProgress.StepKind.CHALLENGE, "login", 0)), "login");
+
+        assertTrue(ChatBrowserCard.body(login), ChatBrowserCard.body(login)
+                .contains("Anmeldung nötig: bitte im Firefox anmelden"));
+        assertTrue(ChatBrowserCard.summary(login, false).endsWith(" · Browser bleibt offen (Anmeldung)"));
+    }
 }

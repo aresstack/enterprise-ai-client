@@ -20,7 +20,7 @@ public final class WebExplorationProgress {
 
     /** What happened in one step of the exploration. */
     public enum StepKind {
-        OPENED, LINKS, BACK, ACTED, SKIPPED, FAILED, MARKED_RELEVANT, MARKED_IRRELEVANT, CLOSED
+        OPENED, LINKS, BACK, ACTED, CHALLENGE, SKIPPED, FAILED, MARKED_RELEVANT, MARKED_IRRELEVANT, CLOSED
     }
 
     /** One event: kind, a label (page title, host, filter word or error) and a count where the kind has one. */
@@ -62,9 +62,16 @@ public final class WebExplorationProgress {
     private final int failed;
     private final int relevant;
     private final List<Step> steps;
+    private final String challenge;
 
     public WebExplorationProgress(boolean active, boolean running, int discovered, int examined, int visited,
                                   int skipped, int failed, int relevant, List<Step> steps) {
+        this(active, running, discovered, examined, visited, skipped, failed, relevant, steps, "");
+    }
+
+    public WebExplorationProgress(boolean active, boolean running, int discovered, int examined, int visited,
+                                  int skipped, int failed, int relevant, List<Step> steps, String challenge) {
+        this.challenge = challenge == null ? "" : challenge;
         this.active = active;
         this.running = running;
         this.discovered = discovered;
@@ -118,5 +125,13 @@ public final class WebExplorationProgress {
 
     public List<Step> steps() {
         return steps;
+    }
+
+    /**
+     * The challenge the user still has to solve in the visible browser ({@code captcha}, {@code login}), else empty;
+     * while one is pending the browser stays open after the turn.
+     */
+    public String challenge() {
+        return challenge;
     }
 }

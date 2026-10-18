@@ -10,6 +10,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -405,6 +406,12 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 }
                 return new BrowserActResult(page, outcome.navigated(), outcome.changed());
             }, false);
+        }
+
+        @Override
+        public synchronized BrowserProbe probe(final String tabId) throws BrowserException {
+            return call(connection -> connection.probe(tabId == null ? currentOrFail(connection)
+                    : rawOf(connection, tabId)), true);
         }
 
         @Override

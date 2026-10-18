@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
+import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.engine.RawControl;
@@ -631,5 +632,16 @@ public class ChatBrowserRuntimeTest {
             assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
         }
         assertTrue(engine.actions.isEmpty());
+    }
+
+    @Test
+    public void probeReportsTheCurrentPageOfTheTab() throws Exception {
+        engine.probes.put("https://login.example/", new BrowserProbe(false, "", BrowserProbe.LOGIN));
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, "https://example.org/");
+        assertFalse(browser.probe(null).hasChallenge());
+
+        browser.navigate(null, "https://login.example/");
+        assertEquals(BrowserProbe.LOGIN, browser.probe(null).challenge());
     }
 }
