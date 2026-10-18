@@ -26,6 +26,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Collections;
@@ -243,7 +244,9 @@ public final class BrowserMcpTools {
         return McpToolContribution.of(CONTROLS,
                 "List the controls of the page in a tab of this chat's browser that are not plain links: search and "
                         + "text fields, buttons, select boxes, menu entries, tabs and toggles (id | kind | label | "
-                        + "value). Search fields come first: when the site has its own search, prefer it over clicking "
+                        + "value | locator | position), grouped by the form they belong to; * marks mandatory fields. "
+                        + "To fill in a mask, find its form here, fill every mandatory field, then press its submit "
+                        + "button. Search fields come first: when the site has its own search, prefer it over clicking "
                         + "through menus. Operate a control with " + ACT + ". The ids stay valid until a new page is "
                         + "loaded; after an action that only changed the page (menu opened), call " + CONTROLS
                         + " again to see new entries.",
@@ -707,17 +710,40 @@ public final class BrowserMcpTools {
         if (filter != null) {
             out.append(" passend zu \"").append(filter).append('"');
         }
-        out.append(" · Ids gelten bis zum Laden einer neuen Seite\n\n");
+        out.append(" · Ids gelten bis zum Laden einer neuen Seite · * Pflichtfeld\n");
+        // One block per form in order of first appearance, so a search field listed first stays with its button.
+        Map<String, List<BrowserControl>> forms = new LinkedHashMap<String, List<BrowserControl>>();
         for (BrowserControl control : shown) {
-            out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
-                    .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
-            if (!control.value().isEmpty()) {
-                out.append(" | Wert: ").append(control.value());
+            List<BrowserControl> block = forms.get(control.form());
+            if (block == null) {
+                block = new ArrayList<BrowserControl>();
+                forms.put(control.form(), block);
             }
-            if (!control.options().isEmpty()) {
-                out.append(" | Optionen: ").append(control.options());
+            block.add(control);
+        }
+        for (Map.Entry<String, List<BrowserControl>> block : forms.entrySet()) {
+            String form = block.getKey();
+            out.append('\n').append(form.isEmpty() ? "Ohne Formular:" : "Formular „" + form + "“:").append('\n');
+            for (BrowserControl control : block.getValue()) {
+                out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
+                        .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
+                if (control.required()) {
+                    out.append(" *");
+                }
+                if (!control.value().isEmpty()) {
+                    out.append(" | Wert: ").append(control.value());
+                }
+                if (!control.options().isEmpty()) {
+                    out.append(" | Optionen: ").append(control.options());
+                }
+                if (!control.locator().isEmpty()) {
+                    out.append(" | ").append(control.locator());
+                }
+                if (!control.position().isEmpty()) {
+                    out.append(" | ").append(control.position());
+                }
+                out.append('\n');
             }
-            out.append('\n');
         }
         if (shown.isEmpty()) {
             out.append("Keine Bedienelemente gefunden.\n");

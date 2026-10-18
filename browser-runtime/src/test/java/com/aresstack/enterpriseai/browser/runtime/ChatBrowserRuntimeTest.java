@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
@@ -543,6 +544,24 @@ public class ChatBrowserRuntimeTest {
         BrowserControls filtered = browser.controls(null, 100, "sprache");
         assertEquals(1, filtered.controls().size());
         assertEquals("Deutsch | English", filtered.controls().get(0).options());
+    }
+
+    @Test
+    public void controlsCarryTheirFormLocatorAndPositionAndTheFormNameFilters() throws Exception {
+        engine.controls.put(PORTAL, Arrays.asList(
+                new RawControl("r-menu", "toggle", "Menü", "zu", "", ""),
+                new RawControl("r-amount", "input", "Betrag", "", "", "", "Neue eRechnung", true,
+                        "label=\"Betrag\"", "Mitte links")));
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+
+        BrowserControls mask = browser.controls(null, 100, "erechnung");
+        assertEquals(1, mask.controls().size());
+        BrowserControl amount = mask.controls().get(0);
+        assertEquals("Neue eRechnung", amount.form());
+        assertTrue(amount.required());
+        assertEquals("label=\"Betrag\"", amount.locator());
+        assertEquals("Mitte links", amount.position());
     }
 
     @Test

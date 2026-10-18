@@ -356,7 +356,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 List<RawControl> rest = new ArrayList<RawControl>();
                 for (RawControl control : connection.controls(raw)) {
                     String label = clip(control.label());
-                    if (needle != null && !(label + " " + control.kind() + " " + control.value())
+                    if (needle != null && !(label + " " + control.kind() + " " + control.value() + " " + control.form())
                             .toLowerCase(Locale.ROOT).contains(needle)) {
                         continue;
                     }
@@ -372,9 +372,11 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     String id = "ctl-" + (controls.size() + 1);
                     String target = usableUrl(control.target());
                     snapshot.controls.put(id, new RawControl(control.ref(), control.kind(), control.label(),
-                            control.value(), control.options(), target == null ? "" : target));
+                            control.value(), control.options(), target == null ? "" : target, control.form(),
+                            control.required(), control.locator(), control.position()));
                     controls.add(new BrowserControl(id, control.kind(), clip(control.label()), clip(control.value()),
-                            control.options(), target));
+                            control.options(), target, clip(control.form()), control.required(), control.locator(),
+                            control.position()));
                 }
                 controlSnapshots.put(raw, snapshot);
                 return new BrowserControls(idOf(raw), tab.url(), tab.title(), controls, search.size());

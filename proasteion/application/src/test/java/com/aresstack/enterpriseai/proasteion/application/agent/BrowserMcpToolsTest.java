@@ -177,6 +177,8 @@ public class BrowserMcpToolsTest {
         McpToolResult listed = invoke(bound, BrowserMcpTools.CONTROLS);
         assertTrue(listed.getText(), listed.getText().contains("ctl-1 | search | Suche"));
         assertTrue(listed.getText(), listed.getText().contains("Optionen: Deutsch | English"));
+        assertTrue(listed.getText(), listed.getText().contains("Formular „Neue eRechnung“:\n"
+                + "ctl-3 | input | Betrag (EUR) * | label=\"Betrag (EUR)\" | Mitte"));
 
         McpToolResult searched = invoke(bound, BrowserMcpTools.ACT, "control", "ctl-1", "action", "submit",
                 "value", "Reisekosten");
@@ -365,7 +367,9 @@ public class BrowserMcpToolsTest {
             calls.add("controls " + maxControls + " " + filter);
             return new BrowserControls("tab-1", "https://intranet.example/", "Intranet", java.util.Arrays.asList(
                     new BrowserControl("ctl-1", "search", "Suche", "", "", "https://intranet.example/suche"),
-                    new BrowserControl("ctl-2", "select", "Sprache", "Deutsch", "Deutsch | English", "")), 2);
+                    new BrowserControl("ctl-2", "select", "Sprache", "Deutsch", "Deutsch | English", ""),
+                    new BrowserControl("ctl-3", "input", "Betrag (EUR)", "", "", "https://intranet.example/rechnung",
+                            "Neue eRechnung", true, "label=\"Betrag (EUR)\"", "Mitte")), 3);
         }
 
         @Override
