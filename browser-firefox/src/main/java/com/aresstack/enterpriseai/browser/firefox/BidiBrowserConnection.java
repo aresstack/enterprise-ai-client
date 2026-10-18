@@ -60,16 +60,41 @@ final class BidiBrowserConnection implements BrowserConnection {
     /** A random id stored on the window: it lives exactly as long as the document. */
     static final String DOCUMENT_TOKEN_SCRIPT = "window.__enterpriseAiDocument || (window.__enterpriseAiDocument = "
             + "String(Date.now()) + '-' + Math.random().toString(36).slice(2))";
+    static final int MAX_ROOTS = 200;
+    /**
+     * Helpers shared by the control scripts: {@code eaiAll(selector)} queries the document, its open shadow roots
+     * and same-origin frames (at most {@value #MAX_ROOTS} roots), {@code eaiFind(ref)} finds a tagged control in any
+     * of them, {@code eaiOffset(e)} is the top-left of e's frame in the top window's viewport and
+     * {@code eaiScope(e)} the root that resolves ids next to e (its shadow root or document).
+     */
+    static final String DEEP = " function eaiRoots() { var roots = [], queue = [document];"
+            + "  while (queue.length && roots.length < " + MAX_ROOTS + ") { var root = queue.shift(); roots.push(root);"
+            + "   var all = root.querySelectorAll('*');"
+            + "   for (var q = 0; q < all.length; q++) { var el = all[q]; if (el.shadowRoot) queue.push(el.shadowRoot);"
+            + "    if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') { try { var fd = el.contentDocument;"
+            + "     if (fd && fd.documentElement) queue.push(fd); } catch (x) { } } } }"
+            + "  return roots; }"
+            + " function eaiAll(sel) { var found = []; eaiRoots().forEach(function (root) {"
+            + "  Array.prototype.push.apply(found, root.querySelectorAll(sel)); }); return found; }"
+            + " function eaiFind(ref) { var sel = '[data-eai-control=' + JSON.stringify(String(ref)) + ']';"
+            + "  var hit = document.querySelector(sel); if (hit) return hit; var roots = eaiRoots();"
+            + "  for (var q = 1; q < roots.length; q++) { hit = roots[q].querySelector(sel); if (hit) return hit; } return null; }"
+            + " function eaiOffset(e) { var ox = 0, oy = 0, w = e.ownerDocument.defaultView;"
+            + "  while (w && w !== window && w.frameElement) { var fe = w.frameElement, fr = fe.getBoundingClientRect();"
+            + "   ox += fr.left + fe.clientLeft; oy += fr.top + fe.clientTop; w = w.parent; } return [ox, oy]; }"
+            + " function eaiScope(e) { var root = e.getRootNode ? e.getRootNode() : null;"
+            + "  return root && root.getElementById ? root : e.ownerDocument; }";
     static final int MAX_RAW_CONTROLS = 400;
     /**
-     * The visible, enabled controls (document order, at most {@value #MAX_RAW_CONTROLS}) as a JSON array of
+     * The visible, enabled controls of the page, its open shadow roots and same-origin frames (at most
+     * {@value #MAX_RAW_CONTROLS}) as a JSON array of
      * [ref, kind, label, value, options, form target, form name, required, locator, position]. Each element gets a {@code data-eai-control} attribute with a
      * ref (kept from an earlier list), so {@link #ACT_FUNCTION} finds it again while it is on the page. Password and hidden fields and real
      * links (those belong to the link list) are left out; only plain values leave the page.
      */
-    static final String CONTROLS_SCRIPT = "(function () {"
+    static final String CONTROLS_SCRIPT = "(function () {" + DEEP
             + " var gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 6), out = [];"
-            + " var els = document.querySelectorAll('input, textarea, select, button, summary, [contenteditable=\"true\"],"
+            + " var els = eaiAll('input, textarea, select, button, summary, [contenteditable=\"true\"],"
             + " [role=button], [role=menuitem], [role=tab], [role=searchbox], [role=combobox], [role=switch],"
             + " [role=checkbox], [aria-expanded], [onclick]');"
             + " function flat(t) { return (t || '').replace(/\\s+/g, ' ').trim(); }"
@@ -80,6 +105,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  if (tag === 'a' && !/^\\s*(javascript:|#|$)/i.test(e.getAttribute('href') || '')) continue;"
             + "  if (e.disabled || e.getAttribute('aria-disabled') === 'true') continue;"
             + "  var r = e.getBoundingClientRect(); if (r.width === 0 && r.height === 0) continue;"
+            + "  var scope = eaiScope(e), off = eaiOffset(e);"
             + "  var hint = ((e.getAttribute('name') || '') + ' ' + (e.id || '') + ' ' + (e.getAttribute('placeholder') || '')"
             + "   + ' ' + (e.getAttribute('aria-label') || '') + ' ' + (e.getAttribute('title') || '')"
             + "   + ' ' + (typeof e.className === 'string' ? e.className : '')"
@@ -110,7 +136,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "   Array.prototype.forEach.call(lc.querySelectorAll('select, input, textarea, button'), function (x) { x.remove(); });"
             + "   label = lc.textContent; byLabel = true; }"
             + "  if (!label && e.getAttribute('aria-labelledby')) label = e.getAttribute('aria-labelledby').split(/\\s+/)"
-            + "   .map(function (id) { var l = document.getElementById(id); return l ? l.innerText : ''; }).join(' ');"
+            + "   .map(function (id) { var l = scope.getElementById(id); return l ? l.innerText : ''; }).join(' ');"
             + "  if (!label) label = e.getAttribute('placeholder') || e.getAttribute('title') || '';"
             + "  if (!label && (kind === 'button' || kind === 'menu' || kind === 'tab' || kind === 'toggle' || kind === 'checkbox'))"
             + "   label = e.innerText || e.value || e.getAttribute('alt') || '';"
@@ -130,7 +156,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  var ref = e.getAttribute('data-eai-control') || gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
             // The nearest named group wins (a fieldset inside a form), then the form itself.
             + "  function groupName(g) { if (!g) return '';"
-            + "   var named = g.getAttribute('aria-labelledby') ? document.getElementById(g.getAttribute('aria-labelledby').split(/\\s+/)[0]) : null;"
+            + "   var named = g.getAttribute('aria-labelledby') ? scope.getElementById(g.getAttribute('aria-labelledby').split(/\\s+/)[0]) : null;"
             + "   var legend = g.tagName === 'FIELDSET' ? g.querySelector(':scope > legend') : g.querySelector('h1, h2, h3, h4, [role=heading]');"
             + "   return g.getAttribute('aria-label') || (named ? named.innerText : '') || (legend ? legend.innerText : '')"
             + "    || g.getAttribute('name') || g.getAttribute('title') || ''; }"
@@ -143,7 +169,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "   button: 'button', toggle: 'button', select: 'combobox', checkbox: 'checkbox', radio: 'radio', menu: 'menuitem', tab: 'tab'};"
             + "  var name = flat(label).slice(0, 80).replace(/\"/g, \"'\");"
             + "  var locator = !name ? '' : byLabel ? 'label=\"' + name + '\"' : 'role=' + (role || roles[kind] || 'button') + ' name=\"' + name + '\"';"
-            + "  var v = r.top + r.height / 2, h = r.left + r.width / 2, position;"
+            + "  var v = off[1] + r.top + r.height / 2, h = off[0] + r.left + r.width / 2, position;"
             + "  if (v > innerHeight) position = 'weiter unten'; else if (v < 0) position = 'weiter oben'; else"
             + "   position = (v < innerHeight / 3 ? 'oben' : v > innerHeight * 2 / 3 ? 'unten' : 'Mitte')"
             + "    + (h < innerWidth / 3 ? ' links' : h > innerWidth * 2 / 3 ? ' rechts' : '');"
@@ -161,8 +187,8 @@ final class BidiBrowserConnection implements BrowserConnection {
      * DOM mutations, so {@link #STATE_SCRIPT} can tell when a single page app has settled. Returns ok, missing,
      * disabled, nofield or nooption.
      */
-    static final String ACT_FUNCTION = "(function (ref, action, value) {"
-            + " var e = document.querySelector('[data-eai-control=\"' + ref + '\"]');"
+    static final String ACT_FUNCTION = "(function (ref, action, value) {" + DEEP
+            + " var e = eaiFind(ref);"
             + " if (!e) return 'missing';"
             + " if (e.disabled || e.getAttribute('aria-disabled') === 'true') return 'disabled';"
             + " window.__enterpriseAiMutations = 0;" + OBSERVE
@@ -174,7 +200,8 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "  e.focus();"
             + "  if (value !== null) {"
             + "   if (e.isContentEditable) { e.textContent = value; } else {"
-            + "    var proto = e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;"
+            + "    var ew = e.ownerDocument.defaultView || window;"
+            + "    var proto = e.tagName === 'TEXTAREA' ? ew.HTMLTextAreaElement.prototype : ew.HTMLInputElement.prototype;"
             + "    var d = Object.getOwnPropertyDescriptor(proto, 'value');"
             + "    if (d && d.set) { d.set.call(e, value); } else { e.value = value; } }"
             + "   fire('input'); fire('change'); }"
@@ -201,17 +228,21 @@ final class BidiBrowserConnection implements BrowserConnection {
      * missing, disabled or covered; x/y the viewport centre of the element; field whether it takes typed text; cover
      * the label of an element lying over the centre (a banner, an overlay).
      */
-    static final String PREPARE_FUNCTION = "(function (ref) {"
-            + " var e = document.querySelector('[data-eai-control=\\\"' + ref + '\\\"]');"
+    static final String PREPARE_FUNCTION = "(function (ref) {" + DEEP
+            + " var e = eaiFind(ref);"
             + " if (!e) return JSON.stringify(['missing']);"
             + " if (e.disabled || e.getAttribute('aria-disabled') === 'true') return JSON.stringify(['disabled']);"
             + " window.__enterpriseAiMutations = 0;" + OBSERVE
             + " try { e.scrollIntoView({block: 'center', inline: 'center'}); } catch (x) { }"
-            + " var r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;"
+            // Local centre for the hit test inside e's own frame or shadow root, global centre for the pointer.
+            + " var r = e.getBoundingClientRect(), lx = r.left + r.width / 2, ly = r.top + r.height / 2;"
+            + " var off = eaiOffset(e), x = off[0] + lx, y = off[1] + ly, lw = e.ownerDocument.defaultView || window;"
             + " var field = (e.tagName === 'INPUT' && !/^(submit|button|reset|image|checkbox|radio|file)$/i.test(e.type))"
             + "  || e.tagName === 'TEXTAREA' || e.isContentEditable;"
-            + " if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return JSON.stringify(['offscreen']);"
-            + " var hit = document.elementFromPoint(x, y);"
+            + " if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || lx < 0 || ly < 0 || lx >= lw.innerWidth"
+            + "  || ly >= lw.innerHeight) return JSON.stringify(['offscreen']);"
+            + " var root = e.getRootNode && e.getRootNode().elementFromPoint ? e.getRootNode() : e.ownerDocument;"
+            + " var hit = root.elementFromPoint(lx, ly);"
             + " var own = hit && (hit === e || e.contains(hit) || hit.contains(e) && hit.tagName === 'LABEL'"
             + "  || hit.closest && hit.closest('label') && hit.closest('label').control === e);"
             + " if (!own && hit) { var c = hit.closest('[role=dialog], [aria-modal=true], [id], [class]') || hit;"
@@ -219,16 +250,16 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "   .replace(/\\s+/g, ' ').trim().slice(0, 80)]); }"
             + " return JSON.stringify(['ok', x, y, field, '']); })";
     /** The current text of a tagged field, to check that typing arrived. */
-    static final String VALUE_FUNCTION = "(function (ref) {"
-            + " var e = document.querySelector('[data-eai-control=\\\"' + ref + '\\\"]');"
+    static final String VALUE_FUNCTION = "(function (ref) {" + DEEP
+            + " var e = eaiFind(ref);"
             + " return e ? String(e.isContentEditable ? e.innerText : e.value || '') : ''; })";
     /**
      * Finds the visible option of an opened list box best matching (ref, value): exact text first, then containing
      * text; tags it as {@code <ref>-option} and answers that ref, or an empty string.
      */
-    static final String OPTION_FUNCTION = "(function (ref, value) {"
+    static final String OPTION_FUNCTION = "(function (ref, value) {" + DEEP
             + " var wanted = String(value || '').toLowerCase().trim(), exact = null, part = null;"
-            + " var opts = document.querySelectorAll('[role=option], [role=menuitemradio], [role=menuitem], [role=treeitem]');"
+            + " var opts = eaiAll('[role=option], [role=menuitemradio], [role=menuitem], [role=treeitem]');"
             + " for (var i = 0; i < opts.length; i++) { var o = opts[i], r = o.getBoundingClientRect();"
             + "  if (r.width === 0 && r.height === 0) continue;"
             + "  var t = (o.innerText || o.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();"
@@ -253,7 +284,7 @@ final class BidiBrowserConnection implements BrowserConnection {
      * speaks of cookies or consent; a challenge is a known bot check (captcha frames, interstitial titles) or a
      * visible password field.
      */
-    static final String PROBE_SCRIPT = "(function () {"
+    static final String PROBE_SCRIPT = "(function () {" + DEEP
             + " function shown(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }"
             + " var consent = false, labels = [];"
             + " var boxes = document.querySelectorAll('#onetrust-banner-sdk, #CybotCookiebotDialog, #usercentrics-root,"
@@ -278,14 +309,14 @@ final class BidiBrowserConnection implements BrowserConnection {
             + " var errors = [];"
             + " function note(t) { t = (t || '').replace(/\\s+/g, ' ').trim(); if (t && t.length < 200 && errors.indexOf(t) < 0"
             + "  && errors.length < 6) errors.push(t); }"
-            + " var bad = document.querySelectorAll('[aria-invalid=true]');"
+            + " var bad = eaiAll('[aria-invalid=true]');"
             + " for (var m = 0; m < bad.length; m++) { var f = bad[m]; if (!shown(f)) continue;"
             + "  var name = f.getAttribute('aria-label') || (f.labels && f.labels.length ? f.labels[0].textContent : '')"
             + "   || f.getAttribute('placeholder') || f.getAttribute('name') || '';"
             + "  var said = (f.getAttribute('aria-errormessage') || f.getAttribute('aria-describedby') || '').split(/\\s+/)"
-            + "   .map(function (id) { var d = id && document.getElementById(id); return d ? d.innerText : ''; }).join(' ');"
+            + "   .map(function (id) { var d = id && eaiScope(f).getElementById(id); return d ? d.innerText : ''; }).join(' ');"
             + "  note((name ? name.replace(/\\s+/g, ' ').trim() + ': ' : '') + (said || f.validationMessage || 'ungültig')); }"
-            + " var alerts = document.querySelectorAll('[role=alert], .invalid-feedback, .error-message, .field-error, .form-error');"
+            + " var alerts = eaiAll('[role=alert], .invalid-feedback, .error-message, .field-error, .form-error');"
             + " for (var n = 0; n < alerts.length; n++) { if (shown(alerts[n])) note(alerts[n].innerText); }"
             + " return JSON.stringify([consent, labels.join(' | '), challenge, errors.join(' | ')]); })()";
     /**
