@@ -66,6 +66,7 @@ public final class BrowserMcpTools {
     public static final String ACT = "browser_act";
     static final String PARAM_CONTROL = "control";
     static final String PARAM_VALUE = "value";
+    static final String PARAM_LOCATOR = "locator";
     static final String PARAM_MAX_CONTROLS = "max_controls";
     static final int DEFAULT_MAX_CONTROLS = 60;
     /** Controls taken after a load to look for the site's search (search fields come first, buttons follow). */
@@ -276,14 +277,18 @@ public final class BrowserMcpTools {
 
     private static McpToolContribution act(McpToolHandler handler) {
         return McpToolContribution.of(ACT,
-                "Operate a control of the last " + CONTROLS + " list and return the page once it settled (new page "
+                "Operate a control of the last " + CONTROLS + " list (by id, or by locator when the list is old or "
+                        + "the page re-rendered) and return the page once it settled (new page "
                         + "loaded or content changed). action: click (button, menu entry, tab, toggle, checkbox), "
                         + "fill (type value into a field), submit (type value into a search field and send it like "
                         + "Enter), select (choose the option named in value; works for native select boxes and for list boxes that open "
                         + "on click or typing). After every action the result shows error messages the form reports. Example: control=\"ctl-1\", "
                         + "action=\"submit\", value=\"Reisekostenabrechnung\".",
                 handler,
-                McpToolParameter.string(PARAM_CONTROL, true, "Control id from " + CONTROLS + "."),
+                McpToolParameter.string(PARAM_CONTROL, false, "Control id from " + CONTROLS + "."),
+                McpToolParameter.string(PARAM_LOCATOR, false, "Instead of control: the control as the page names "
+                        + "it, e.g. role=button name=\"Speichern\" or label=\"Betrag\" (the locator column of "
+                        + CONTROLS + ") or its visible text. No CSS or XPath."),
                 McpToolParameter.enumeration(PARAM_ACTION, true, "click, fill, submit or select.", ACT_ACTIONS),
                 McpToolParameter.string(PARAM_VALUE, false, "Text for fill and submit, option for select."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
@@ -442,8 +447,9 @@ public final class BrowserMcpTools {
      */
     static McpToolResult act(ChatBrowser browser, WebExplorationRun run, ToolApprovalGate approvals, McpToolCall call) {
         String control = blankToNull(call.getString(PARAM_CONTROL));
-        if (control == null) {
-            return McpToolResult.error("control fehlt; Ids liefert " + CONTROLS);
+        String locator = blankToNull(call.getString(PARAM_LOCATOR));
+        if (control == null && locator == null) {
+            return McpToolResult.error("control oder locator fehlt; Ids und Locator liefert " + CONTROLS);
         }
         String name = call.getString(PARAM_ACTION);
         name = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
@@ -455,18 +461,22 @@ public final class BrowserMcpTools {
         if (value != null && value.trim().isEmpty() && action != BrowserAction.FILL) {
             value = null;
         }
-        String label = run.controlLabel(control);
+        // By locator the action is judged by the listed control it names; an unknown one counts as unknown.
+        BrowserControl known = control != null ? run.control(control) : run.controlByLocator(locator);
+        String label = control != null ? run.controlLabel(control) : known == null ? locator : known.label();
         String description = describe(action, label == null ? control : label, value);
         if (approvals != null) {
             ToolApprovalGate.Verdict verdict = approvals.check(ACT,
-                    BrowserActApproval.request(control, run.control(control), action, run.currentPage()));
+                    BrowserActApproval.request(control != null ? control : locator, known, action, run.currentPage()));
             if (!verdict.permitted()) {
                 return McpToolResult.error("Nicht ausgeführt: " + description + " – " + verdict.reason()
                         + ". Die Aktion kann Daten auf der Seite ändern und braucht die Freigabe des Benutzers.");
             }
         }
         try {
-            BrowserActResult result = browser.act(blankToNull(call.getString(PARAM_TAB)), control, action, value);
+            String tab = blankToNull(call.getString(PARAM_TAB));
+            BrowserActResult result = control != null ? browser.act(tab, control, action, value)
+                    : browser.actLocated(tab, locator, action, value);
             run.acted(description);
             BrowserPage page = result.page();
             String search = "";

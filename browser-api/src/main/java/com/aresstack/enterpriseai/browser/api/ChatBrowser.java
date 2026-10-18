@@ -71,6 +71,15 @@ public interface ChatBrowser {
     BrowserActResult act(String tabId, String controlId, BrowserAction action, String value) throws BrowserException;
 
     /**
+     * Performs {@code action} on the control the page names {@code locator}, without a control list: {@code
+     * role=button name="Speichern"}, {@code label="Betrag"} or a plain visible text. Exact matches win over partial
+     * ones; the same guards apply as for {@link #act}. Fails with {@code INVALID_REQUEST} when nothing matches or
+     * several controls match equally well (their labels are named).
+     */
+    BrowserActResult actLocated(String tabId, String locator, BrowserAction action, String value)
+            throws BrowserException;
+
+    /**
      * Looks for what keeps the content of {@code tabId} (or the current tab if {@code null}) out of reach: a consent
      * banner or a challenge (captcha, login) the user has to solve in the visible browser. Does not change the page.
      */

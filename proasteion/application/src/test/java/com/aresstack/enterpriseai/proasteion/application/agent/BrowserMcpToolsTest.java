@@ -201,6 +201,32 @@ public class BrowserMcpToolsTest {
         assertFalse(invoke(free, BrowserMcpTools.ACT, "control", "ctl-3", "action", "submit").isError());
     }
 
+    @Test
+    public void locatorActsByNameAndStillAsksTheGate() {
+        final List<String> asked = new ArrayList<String>();
+        ToolApprovalGate gate = new ToolApprovalGate(ApprovalRules::none, (request, timeout) -> {
+            asked.add(request.target().description());
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.REJECTED);
+        }, 1000);
+        ChatConversationId a = new ChatConversationId("chat-locator");
+        List<McpToolContribution> bound = new BrowserMcpTools(port, null, gate).contributionsFor(a);
+        invoke(bound, BrowserMcpTools.CONTROLS);
+
+        McpToolResult filled = invoke(bound, BrowserMcpTools.ACT, "locator", "label=\"Betrag (EUR)\"",
+                "action", "fill", "value", "42");
+        assertFalse(filled.getText(), filled.isError());
+        assertTrue(port.browser(a).calls.contains("actLocated label=\"Betrag (EUR)\" FILL 42"));
+
+        McpToolResult sent = invoke(bound, BrowserMcpTools.ACT, "locator", "role=button name=\"Speichern\"",
+                "action", "click");
+        assertTrue(sent.getText(), sent.isError());
+        assertEquals(1, asked.size());
+        assertFalse(port.browser(a).calls.toString(), port.browser(a).calls.toString().contains("Speichern"));
+
+        McpToolResult missing = invoke(bound, BrowserMcpTools.ACT, "action", "click");
+        assertTrue(missing.getText(), missing.getText().contains("control oder locator fehlt"));
+    }
+
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
         Map<String, Object> values = new HashMap<String, Object>();
         for (int i = 0; i + 1 < args.length; i += 2) {
@@ -442,6 +468,15 @@ public class BrowserMcpToolsTest {
             boolean submit = action == BrowserAction.SUBMIT;
             return new BrowserActResult(new BrowserPage("tab-1", submit ? "https://intranet.example/suche?q=" + value
                     : "https://intranet.example/", submit ? "Treffer" : "Intranet", "text"), submit, !submit);
+        }
+
+        @Override
+        public BrowserActResult actLocated(String tabId, String locator, BrowserAction action, String value)
+                throws BrowserException {
+            check();
+            calls.add("actLocated " + locator + " " + action + " " + value);
+            return new BrowserActResult(new BrowserPage("tab-1", "https://intranet.example/", "Intranet", "text"),
+                    false, true);
         }
 
         @Override
