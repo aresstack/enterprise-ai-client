@@ -304,21 +304,78 @@ final class BidiBrowserConnection implements BrowserConnection {
     @Override
     public void navigate(String contextId, String url) throws BrowserException {
         check();
-        boolean redirected = false;
+        String before = tokenOrNull(contextId);
         try {
             driver.browsingContext().navigate(url, contextId, WDReadinessState.COMPLETE);
         } catch (RuntimeException e) {
             if (!isAbortedByRedirect(e)) {
                 throw classify(e);
             }
-            // A script or meta redirect (SAML/SSO bounce, login round trip) replaced the requested load: the browser
-            // is on its way to the final page, which the settle wait below lets arrive.
+            // Possibly a script or form redirect (SAML/SSO bounce) that replaced the requested load: wait for the
+            // final page; a stop without replacement still fails.
             check();
-            redirected = true;
+            settleRedirect(contextId, before, originOf(url), e);
+            return;
         }
         // Complete is not ready: intranets and single page apps render their content after the load event.
-        settle(contextId, null, redirected ? REDIRECT_SETTLE_MILLIS : LOAD_SETTLE_MILLIS,
-                redirected ? originOf(url) : null);
+        settle(contextId, null, LOAD_SETTLE_MILLIS);
+    }
+
+    private String tokenOrNull(String contextId) {
+        try {
+            return evaluate(contextId, DOCUMENT_TOKEN_SCRIPT);
+        } catch (BrowserException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Waits after an aborted load until a replacement navigation arrived: the tab left {@code returnOrigin} (SSO
+     * provider) or showed at least two new documents (launch page plus target), and is then quiet and complete back
+     * on {@code returnOrigin}. A launch page that is quiet while the provider still answers is not taken. A tab that
+     * left and stays away (login page) is taken after {@link #REDIRECT_SETTLE_MILLIS}; one that never saw a
+     * replacement (the user pressed Stop) fails with the original abort.
+     */
+    private void settleRedirect(String contextId, String before, String returnOrigin, RuntimeException abort)
+            throws BrowserException {
+        long deadline = System.currentTimeMillis() + REDIRECT_SETTLE_MILLIS;
+        java.util.Set<String> documents = new java.util.HashSet<String>();
+        boolean left = false;
+        String last = null;
+        long quietSince = System.currentTimeMillis();
+        while (System.currentTimeMillis() < deadline) {
+            pause();
+            JsonArray state;
+            try {
+                state = JsonParser.parseString(evaluate(contextId, STATE_SCRIPT)).getAsJsonArray();
+            } catch (BrowserException | RuntimeException e) {
+                check();
+                continue;
+            }
+            String token = state.get(0).getAsString();
+            String origin = state.get(3).getAsString();
+            if (!token.equals(before)) {
+                documents.add(token);
+            }
+            left |= returnOrigin != null && !returnOrigin.equals(origin);
+            String now = state.toString();
+            if (!now.equals(last)) {
+                last = now;
+                quietSince = System.currentTimeMillis();
+            } else if (isRedirectSettled(left, documents.size(), "complete".equals(state.get(1).getAsString()),
+                    System.currentTimeMillis() - quietSince, returnOrigin == null || returnOrigin.equals(origin))) {
+                return;
+            }
+        }
+        if (!left && documents.size() < 2) {
+            throw classify(abort);
+        }
+    }
+
+    /** The decision of {@link #settleRedirect}: a replacement arrived and the page is quiet back on the origin. */
+    static boolean isRedirectSettled(boolean left, int newDocuments, boolean complete, long quietMillis,
+                                     boolean onReturnOrigin) {
+        return (left || newDocuments >= 2) && complete && quietMillis >= QUIET_MILLIS && onReturnOrigin;
     }
 
     @Override
@@ -403,18 +460,15 @@ final class BidiBrowserConnection implements BrowserConnection {
             throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
                     "Keine passende Option: " + value);
         }
-        return settle(contextId, before, SETTLE_TIMEOUT_MILLIS, null);
+        return settle(contextId, before, SETTLE_TIMEOUT_MILLIS);
     }
 
     /**
      * Waits until a new document is complete and quiet, or the old one had no DOM change for {@link #QUIET_MILLIS};
      * at most {@code timeoutMillis}, after which the page is taken as it is. {@code before} is the document token
-     * before an action, {@code null} after a navigation (then only quietness counts). With {@code returnOrigin} a quiet
-     * page counts only once the tab is back on that origin (the end of an SSO round trip); a login page that stays
-     * elsewhere is taken as it is after the timeout.
+     * before an action, {@code null} after a navigation (then only quietness counts).
      */
-    private RawActOutcome settle(String contextId, String before, long timeoutMillis, String returnOrigin)
-            throws BrowserException {
+    private RawActOutcome settle(String contextId, String before, long timeoutMillis) throws BrowserException {
         long deadline = System.currentTimeMillis() + timeoutMillis;
         String last = null;
         long quietSince = System.currentTimeMillis();
@@ -438,8 +492,7 @@ final class BidiBrowserConnection implements BrowserConnection {
             if (!now.equals(last)) {
                 last = now;
                 quietSince = System.currentTimeMillis();
-            } else if (complete && System.currentTimeMillis() - quietSince >= QUIET_MILLIS
-                    && (returnOrigin == null || returnOrigin.equals(state.get(3).getAsString()))) {
+            } else if (complete && System.currentTimeMillis() - quietSince >= QUIET_MILLIS) {
                 break;
             }
         }
