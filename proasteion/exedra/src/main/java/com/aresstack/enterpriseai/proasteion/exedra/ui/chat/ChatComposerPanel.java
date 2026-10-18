@@ -231,10 +231,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 PHASE_TOOLTIP);
         phaseButton.setHorizontalTextPosition(SwingConstants.LEFT);
         phaseButton.setVisible(false);
-        this.browserButton = new ComposerButton(ComposerIcons.globe(), BROWSER_LABEL, false, BROWSER_OFF_TOOLTIP);
+        this.browserButton = ComposerButton.iconButton(ComposerIcons.globe(), BROWSER_OFF_TOOLTIP);
         browserButton.getAccessibleContext().setAccessibleName(BROWSER_LABEL);
-        this.knowledgeButton = new ComposerButton(ComposerIcons.openBook(), KNOWLEDGE_LABEL, false,
-                KNOWLEDGE_ON_TOOLTIP);
+        this.knowledgeButton = ComposerButton.iconButton(ComposerIcons.openBook(), KNOWLEDGE_ON_TOOLTIP);
         knowledgeButton.getAccessibleContext().setAccessibleName(KNOWLEDGE_LABEL);
         showCapabilities(false, false, true);
         this.editor = new PlaceholderTextArea(PLACEHOLDER, 2, 40);
@@ -979,8 +978,6 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         west.add(reasoningButton);
         west.add(resourcesButton);
         west.add(phaseButton);
-        west.add(knowledgeButton);
-        west.add(browserButton);
         JPanel dictationActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
         dictationActions.setOpaque(false);
         dictationActions.add(discardButton);
@@ -993,6 +990,10 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         east.setLayout(new BoxLayout(east, BoxLayout.X_AXIS));
         east.add(Box.createHorizontalGlue());
         east.add(levelBar);
+        east.add(Box.createHorizontalStrut(4));
+        east.add(knowledgeButton);
+        east.add(Box.createHorizontalStrut(4));
+        east.add(browserButton);
         east.add(Box.createHorizontalStrut(4));
         east.add(attachButton);
         east.add(Box.createHorizontalStrut(4));
@@ -1446,10 +1447,11 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         boolean browserShown = browserOn && browserAvailable;
         boolean both = browserShown && knowledgeOn;
         browserButton.setEnabled(browserAvailable);
-        browserButton.setEmphasized(browserShown);
-        knowledgeButton.setEmphasized(knowledgeOn);
-        browserButton.setAccent(both ? WARNING_ACCENT : null);
-        knowledgeButton.setAccent(both ? WARNING_ACCENT : null);
+        // Icon-only like attach/mic: the state shows in the glyph color only (on = accent, off = muted).
+        browserButton.setGlyphTint(both ? WARNING_ACCENT : browserShown ? ResearchUiPalette.ACCENT_BLUE
+                : ResearchUiPalette.LIGHT_TEXT_MUTED);
+        knowledgeButton.setGlyphTint(both ? WARNING_ACCENT : knowledgeOn ? ResearchUiPalette.ACCENT_BLUE
+                : ResearchUiPalette.LIGHT_TEXT_MUTED);
         browserButton.setToolTipText(!browserAvailable ? BROWSER_UNAVAILABLE_TOOLTIP
                 : both ? BOTH_ON_WARNING : browserShown ? BROWSER_ON_TOOLTIP : BROWSER_OFF_TOOLTIP);
         knowledgeButton.setToolTipText(both ? BOTH_ON_WARNING
