@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.adyton.SecretProvider;
 import com.aresstack.enterpriseai.adyton.SecretUnavailableException;
 import com.aresstack.enterpriseai.source.api.AddressableKnowledgeSource;
 import com.aresstack.enterpriseai.source.api.AttachmentListSource;
+import com.aresstack.enterpriseai.source.api.ChangeListingSource;
 import com.aresstack.enterpriseai.source.api.CrossReferences;
 import com.aresstack.enterpriseai.source.api.DownloadAccess;
 import com.aresstack.enterpriseai.source.api.NavigationChildren;
@@ -46,6 +47,7 @@ import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.Confluen
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -99,7 +101,8 @@ import java.util.regex.Pattern;
  * Ohne {@link ConfluenceConfig#credentialRef()} fragt er keine an (z. B. reine mTLS-Anmeldung).
  */
 public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, ImageSource, PageViewSource,
-        AddressableKnowledgeSource, PageNavigationSource, PartitionListingSource, ResourceMetadataSource,
+        AddressableKnowledgeSource, PageNavigationSource, PartitionListingSource, ChangeListingSource,
+        ResourceMetadataSource,
         StoredContentSource, AttachmentListSource {
 
     static final String PAGE_CONTENT_TYPE = "text/html";
@@ -132,6 +135,9 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
             + sortedExpand(ConfluenceRestClient.ATTACHMENT_LIST_EXPAND);
     private static final String PARTITION_CURSOR_PREFIX = "p1.";
     private static final Pattern PARTITION_CURSOR = Pattern.compile("p1\\.([A-Za-z0-9_-]{1,400})\\.([0-9]{1,9})");
+    private static final String CHANGES_CURSOR_PREFIX = "c1.";
+    private static final String TRASH_CURSOR_PREFIX = "t1.";
+    private static final Pattern LINK_CURSOR = Pattern.compile("[ct]1\\.([A-Za-z0-9_-]{1,400})\\.([A-Za-z0-9_-]{1,8000})");
 
     /** Key and start point prefix of a space ({@link ConfluenceIds#startPoint}). */
     static final String SPACE_PREFIX = "space:";
@@ -626,6 +632,135 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
         }
         return new PartitionResources(resources,
                 batch.nextStart < 0 ? "" : partitionCursor(partitionKey, batch.nextStart));
+    }
+
+    /**
+     * Seiten des Space, die innerhalb von {@code within} angelegt oder geändert wurden: eine CQL-Anfrage
+     * {@code lastmodified >= now("-Nm")}, auf volle Minuten aufgerundet. Der Cursor trägt den Folgelink von Confluence
+     * und damit das Zeitfenster des ersten Stapels.
+     */
+    @Override
+    public PartitionResources changedResources(final String partitionKey, Duration within, String cursor,
+                                               final int limit) throws KnowledgeSourceException {
+        final boolean first = cursor == null || cursor.isEmpty();
+        if (first && (within == null || within.isNegative() || within.isZero())) {
+            throw new IllegalArgumentException("within must be positive");
+        }
+        long minutes = 0L;
+        if (first) {
+            long seconds = within.getSeconds() + (within.getNano() > 0 ? 1L : 0L);
+            minutes = Math.max(1L, (seconds + 59L) / 60L);
+        }
+        String path = first ? ConfluenceRestClient.changedPagesPath(partitionKey, minutes, batchSize(limit))
+                : linkCursorPath(CHANGES_CURSOR_PREFIX, partitionKey, cursor);
+        return linkedResources(partitionKey, first, path, CHANGES_CURSOR_PREFIX, "Geänderte Seiten des Space");
+    }
+
+    /** Seiten im Papierkorb des Space ({@code status=trashed}); in Confluence für alle Benutzer gelöscht. */
+    @Override
+    public PartitionResources removedResources(String partitionKey, String cursor, int limit)
+            throws KnowledgeSourceException {
+        boolean first = cursor == null || cursor.isEmpty();
+        String path = first ? ConfluenceRestClient.trashedPagesPath(partitionKey, batchSize(limit))
+                : linkCursorPath(TRASH_CURSOR_PREFIX, partitionKey, cursor);
+        return linkedResources(partitionKey, first, path, TRASH_CURSOR_PREFIX, "Papierkorb des Space");
+    }
+
+    private static int batchSize(int limit) {
+        if (limit < 1) {
+            throw new IllegalArgumentException("limit must be at least 1");
+        }
+        return Math.min(limit, MAX_PARTITION_BATCH);
+    }
+
+    private PartitionResources linkedResources(final String partitionKey, final boolean first, final String path,
+                                               String cursorPrefix, final String what)
+            throws KnowledgeSourceException {
+        if (!ConfluenceIds.isSpaceKey(partitionKey)) {
+            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Kein Space dieser Quelle: " + partitionKey);
+        }
+        ConfluenceRestClient.LinkedPageBatch batch = withSession(
+                new Operation<ConfluenceRestClient.LinkedPageBatch>() {
+                    @Override
+                    public ConfluenceRestClient.LinkedPageBatch run(Session session) throws KnowledgeSourceException {
+                        // Ein unbekannter Space liefert eine leere Liste; nur am Anfang eigens nachfragen.
+                        if (first && client.space(session, partitionKey) == null) {
+                            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Space nicht gefunden: " + partitionKey);
+                        }
+                        return client.linkedPageBatch(session, path, what);
+                    }
+                });
+        List<KnowledgeResource> resources = new ArrayList<KnowledgeResource>();
+        for (Page page : batch.pages) {
+            resources.add(pageResource(page, page.parentId));
+        }
+        return new PartitionResources(resources,
+                batch.next == null ? "" : linkCursor(cursorPrefix, partitionKey, batch.next));
+    }
+
+    /** Cursor {@code <Präfix><Space-Key Base64url>.<Folgelink Base64url>}; der Space-Key bindet ihn an seine Partition. */
+    static String linkCursor(String prefix, String spaceKey, String next) {
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        return prefix + encoder.encodeToString(spaceKey.getBytes(StandardCharsets.UTF_8)) + "."
+                + encoder.encodeToString(next.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Folgelink aus einem Cursor von {@link #linkCursor}; {@code UNSUPPORTED}, wenn er nicht von dieser Art Liste und
+     * nicht aus diesem Space stammt. Geprüft werden Space-Key und Folgelink: er muss dieselbe Anfrage für denselben
+     * Space stellen, sonst könnte ein manipulierter Cursor beliebige REST-Pfade abrufen.
+     */
+    private static String linkCursorPath(String prefix, String spaceKey, String cursor)
+            throws KnowledgeSourceException {
+        Matcher matcher = LINK_CURSOR.matcher(cursor);
+        if (cursor.startsWith(prefix) && matcher.matches()) {
+            try {
+                Base64.Decoder decoder = Base64.getUrlDecoder();
+                String key = new String(decoder.decode(matcher.group(1)), StandardCharsets.UTF_8);
+                String next = new String(decoder.decode(matcher.group(2)), StandardCharsets.UTF_8);
+                if (spaceKey.equals(key) && sameListing(prefix, spaceKey, next)) {
+                    return next;
+                }
+            } catch (IllegalArgumentException e) {
+                // fällt auf UNSUPPORTED durch
+            }
+        }
+        throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Cursor gehört nicht zu Space " + spaceKey);
+    }
+
+    private static boolean sameListing(String prefix, String spaceKey, String next) {
+        if (next.contains("//") || next.indexOf('#') >= 0) {
+            return false;
+        }
+        int question = next.indexOf('?');
+        if (question < 0) {
+            return false;
+        }
+        String path = next.substring(0, question);
+        Map<String, String> query = new LinkedHashMap<String, String>();
+        for (String pair : next.substring(question + 1).split("&")) {
+            int equals = pair.indexOf('=');
+            String name = decode(equals < 0 ? pair : pair.substring(0, equals));
+            if (query.put(name, equals < 0 ? "" : decode(pair.substring(equals + 1))) != null) {
+                return false; // doppelte Parameter: nicht eindeutig
+            }
+        }
+        if (CHANGES_CURSOR_PREFIX.equals(prefix)) {
+            String cql = query.get("cql");
+            return "/rest/api/content/search".equals(path) && cql != null
+                    && cql.startsWith("space=\"" + spaceKey + "\" AND type=page AND lastmodified >= now(\"-")
+                    && cql.endsWith("m\") ORDER BY lastmodified");
+        }
+        return "/rest/api/content".equals(path) && spaceKey.equals(query.get("spaceKey"))
+                && "trashed".equals(query.get("status")) && "page".equals(query.get("type"));
+    }
+
+    private static String decode(String value) {
+        try {
+            return java.net.URLDecoder.decode(value, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**
