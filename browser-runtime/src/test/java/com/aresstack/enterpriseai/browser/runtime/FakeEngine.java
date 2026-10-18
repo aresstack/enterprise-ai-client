@@ -11,6 +11,7 @@ import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
+import com.aresstack.enterpriseai.browser.api.engine.RawScreenshot;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 
 import java.nio.file.Path;
@@ -42,6 +43,10 @@ final class FakeEngine implements BrowserEngine {
     final Map<String, BrowserProbe> probes = new java.util.concurrent.ConcurrentHashMap<String, BrowserProbe>();
     /** Every url fetched inside a page, in order; {@link #redirects} apply. */
     final List<String> fetches = new CopyOnWriteArrayList<String>();
+    /** Every screenshot as "marks clipRef maxBytes", in order. */
+    final List<String> screenshots = new CopyOnWriteArrayList<String>();
+    /** Control refs outside the visible part of the page: never reported as visible in a screenshot. */
+    final java.util.Set<String> offscreen = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** Every action as "ref action value", in order. */
     final List<String> actions = new CopyOnWriteArrayList<String>();
 
@@ -211,6 +216,20 @@ final class FakeEngine implements BrowserEngine {
             }
             navigate(contextId, target);
             return new RawActOutcome(true, false);
+        }
+
+        @Override
+        public RawScreenshot screenshot(String contextId, Map<String, String> marks, String clipRef, int maxBytes)
+                throws BrowserException {
+            check();
+            process.engine.screenshots.add(marks + " " + clipRef + " " + maxBytes);
+            List<String> visible = new ArrayList<String>();
+            for (String ref : marks.keySet()) {
+                if (!process.engine.offscreen.contains(ref)) {
+                    visible.add(ref);
+                }
+            }
+            return new RawScreenshot("image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, 7}, visible);
         }
 
         @Override

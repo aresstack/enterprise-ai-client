@@ -80,6 +80,15 @@ public interface ChatBrowser {
             throws BrowserException;
 
     /**
+     * A picture of {@code tabId} (or the current tab if {@code null}): the visible part of the page, or with
+     * {@code controlId} the region around that control of the control snapshot (scrolled into view). With
+     * {@code marks} the ids of the snapshot's controls visible in the picture are drawn next to them; without a valid
+     * snapshot a new one is taken first, which replaces the previous one. The current address passes the access
+     * guard before the picture is taken; password fields are masked. Does not navigate.
+     */
+    BrowserScreenshot screenshot(String tabId, String controlId, boolean marks) throws BrowserException;
+
+    /**
      * Looks for what keeps the content of {@code tabId} (or the current tab if {@code null}) out of reach: a consent
      * banner or a challenge (captcha, login) the user has to solve in the visible browser. Does not change the page.
      */

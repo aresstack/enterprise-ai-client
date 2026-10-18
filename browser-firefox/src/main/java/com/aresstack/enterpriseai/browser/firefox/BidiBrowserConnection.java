@@ -9,6 +9,7 @@ import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
+import com.aresstack.enterpriseai.browser.api.engine.RawScreenshot;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 import com.google.gson.JsonArray;
 import com.google.gson.Gson;
@@ -17,6 +18,7 @@ import com.google.gson.JsonParser;
 import de.bund.zrb.WDWebSocketImpl;
 import de.bund.zrb.WebDriver;
 import de.bund.zrb.command.request.parameters.input.sourceActions.SourceActions;
+import de.bund.zrb.command.request.parameters.browsingContext.CaptureScreenshotParameters;
 import de.bund.zrb.command.response.WDBrowsingContextResult;
 import de.bund.zrb.type.browsingContext.WDBrowsingContext;
 import de.bund.zrb.type.browsingContext.WDInfo;
@@ -28,8 +30,10 @@ import de.bund.zrb.type.script.WDTarget;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * One WebDriver BiDi connection (one WebSocket, one session) to a Firefox of this application, through WD4J.
@@ -773,6 +777,112 @@ final class BidiBrowserConnection implements BrowserConnection {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BrowserException(BrowserException.Kind.FAILED, "Warten auf die Seite unterbrochen", e);
+        }
+    }
+
+    /** Id of the layer drawn over the page while a screenshot is taken. */
+    static final String SHOT_LAYER = "__enterprise-ai-shot";
+    /** Margin around a control when only its region is taken, in CSS pixels. */
+    static final int SHOT_CLIP_MARGIN = 120;
+    /** JPEG qualities tried in turn until the picture fits. */
+    private static final java.util.List<Float> SHOT_QUALITIES =
+            java.util.Collections.unmodifiableList(java.util.Arrays.asList(0.75f, 0.55f, 0.35f, 0.2f));
+    /**
+     * Prepares a screenshot; arguments are (marks: ref to label, clipRef or null, margin). Draws a fixed layer that
+     * covers visible password fields and labels every marked control inside the picture, scrolls a clip control into
+     * view first. Returns JSON [visible refs, clip box [x, y, width, height] in viewport CSS pixels or null] or
+     * "missing" when the clip control is gone. Only plain values leave the page.
+     */
+    static final String SHOT_PREPARE_FUNCTION = "(function (marks, clipRef, margin) {"
+            + " var old = document.getElementById('" + SHOT_LAYER + "'); if (old) old.remove();"
+            + " var box = null, vw = document.documentElement.clientWidth || innerWidth,"
+            + "  vh = document.documentElement.clientHeight || innerHeight;"
+            + " if (clipRef) { var c = document.querySelector('[data-eai-control=\"' + clipRef + '\"]');"
+            + "  if (!c) return 'missing';"
+            + "  try { c.scrollIntoView({block: 'center', inline: 'center'}); } catch (x) { }"
+            + "  var q = c.getBoundingClientRect(), x0 = Math.max(0, Math.floor(q.left - margin)),"
+            + "   y0 = Math.max(0, Math.floor(q.top - margin)), x1 = Math.min(vw, Math.ceil(q.right + margin)),"
+            + "   y1 = Math.min(vh, Math.ceil(q.bottom + margin));"
+            + "  if (x1 > x0 && y1 > y0) box = [x0, y0, x1 - x0, y1 - y0]; }"
+            + " var area = box ? {l: box[0], t: box[1], r: box[0] + box[2], b: box[1] + box[3]}"
+            + "  : {l: 0, t: 0, r: vw, b: vh};"
+            + " function inside(r) { return r.width > 0 && r.height > 0 && r.right > area.l && r.left < area.r"
+            + "  && r.bottom > area.t && r.top < area.b; }"
+            + " var layer = document.createElement('div'); layer.id = '" + SHOT_LAYER + "';"
+            + " layer.setAttribute('style', 'position:fixed;left:0;top:0;width:0;height:0;overflow:visible;"
+            + "z-index:2147483647;pointer-events:none;');"
+            + " function add(style, text) { var d = document.createElement('div');"
+            + "  d.setAttribute('style', 'position:fixed;box-sizing:border-box;' + style);"
+            + "  if (text) d.textContent = text; layer.appendChild(d); }"
+            + " var pw = document.querySelectorAll('input[type=password]');"
+            + " for (var i = 0; i < pw.length; i++) { var p = pw[i].getBoundingClientRect(); if (!inside(p)) continue;"
+            + "  add('left:' + p.left + 'px;top:' + p.top + 'px;width:' + p.width + 'px;height:' + p.height"
+            + "   + 'px;background:#555;'); }"
+            + " var seen = [];"
+            + " for (var ref in marks) { if (!Object.prototype.hasOwnProperty.call(marks, ref)) continue;"
+            + "  var e = document.querySelector('[data-eai-control=\"' + ref + '\"]'); if (!e) continue;"
+            + "  var r = e.getBoundingClientRect(); if (!inside(r)) continue; seen.push(ref);"
+            + "  var label = marks[ref]; if (!label) continue;"
+            + "  add('left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height"
+            + "   + 'px;border:2px solid #e8590c;');"
+            + "  add('left:' + Math.max(area.l, r.left) + 'px;top:' + Math.max(area.t, r.top - 16) + 'px;"
+            + "padding:0 3px;font:bold 12px/16px sans-serif;color:#fff;background:#e8590c;border-radius:3px;"
+            + "white-space:nowrap;', label); }"
+            + " (document.body || document.documentElement).appendChild(layer);"
+            + " return JSON.stringify([seen, box]); })";
+    static final String SHOT_CLEANUP_SCRIPT = "(function () { var l = document.getElementById('" + SHOT_LAYER + "');"
+            + " if (l) l.remove(); return ''; })()";
+
+    @Override
+    public RawScreenshot screenshot(String contextId, Map<String, String> marks, String clipRef, int maxBytes)
+            throws BrowserException {
+        check();
+        try {
+            String prepared = evaluate(contextId, SHOT_PREPARE_FUNCTION + "("
+                    + GSON.toJson(marks == null ? new LinkedHashMap<String, String>() : marks) + ", "
+                    + GSON.toJson(clipRef) + ", " + SHOT_CLIP_MARGIN + ")");
+            if ("missing".equals(prepared)) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        "Das Bedienelement ist nicht mehr auf der Seite; browser_controls erneut aufrufen");
+            }
+            JsonArray values = JsonParser.parseString(prepared).getAsJsonArray();
+            List<String> visible = new ArrayList<String>();
+            for (JsonElement ref : values.get(0).getAsJsonArray()) {
+                visible.add(ref.getAsString());
+            }
+            CaptureScreenshotParameters.ClipRectangle clip = null;
+            if (!values.get(1).isJsonNull()) {
+                JsonArray box = values.get(1).getAsJsonArray();
+                clip = new CaptureScreenshotParameters.ClipRectangle.BoxClipRectangle(box.get(0).getAsInt(),
+                        box.get(1).getAsInt(), box.get(2).getAsInt(), box.get(3).getAsInt());
+            }
+            try {
+                // JPEG keeps a page picture small; a busy page on a high-density screen gets lower quality steps.
+                for (float quality : SHOT_QUALITIES) {
+                    WDBrowsingContextResult.CaptureScreenshotResult shot = driver.browsingContext().captureScreenshot(
+                            new WDBrowsingContext(contextId), CaptureScreenshotParameters.Origin.VIEWPORT,
+                            new CaptureScreenshotParameters.ImageFormat("image/jpeg", quality), clip);
+                    if (shot == null || shot.getData() == null || shot.getData().isEmpty()) {
+                        throw new BrowserException(BrowserException.Kind.FAILED, "Firefox lieferte kein Bild");
+                    }
+                    byte[] image = java.util.Base64.getDecoder().decode(shot.getData());
+                    if (image.length <= maxBytes) {
+                        return new RawScreenshot("image/jpeg", image, visible);
+                    }
+                }
+                throw new BrowserException(BrowserException.Kind.FAILED, "Bildschirmfoto zu groß (über "
+                        + maxBytes / 1024 + " KB); einen Ausschnitt um ein Bedienelement anfordern");
+            } finally {
+                try {
+                    evaluate(contextId, SHOT_CLEANUP_SCRIPT);
+                } catch (BrowserException | RuntimeException ignored) {
+                    // The layer is pointer-transparent and goes with the document anyway.
+                }
+            }
+        } catch (BrowserException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw classify(e);
         }
     }
 

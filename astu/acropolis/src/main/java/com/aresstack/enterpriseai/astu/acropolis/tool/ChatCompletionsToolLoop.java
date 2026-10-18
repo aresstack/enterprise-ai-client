@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.chat.api.ChatStreamListener;
 import com.aresstack.enterpriseai.chat.api.ChatTask;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
+import com.aresstack.enterpriseai.astu.chat.ChatImage;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
@@ -52,6 +53,13 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
             + "Verwende ausschließlich die bereits vorliegenden Werkzeugergebnisse. Führe keine weiteren Recherchen "
             + "durch und gib jetzt die bestmögliche abschließende Antwort auf die ursprüngliche Benutzerfrage. Weise auf "
             + "fehlende Informationen hin, statt weitere Werkzeuge anzufordern.";
+
+    /** Text of the user message that shows the images of tool results to the model. */
+    static final String IMAGE_NOTE = "[Hinweis des Clients] Bild aus dem letzten Werkzeugergebnis (Bildschirmfoto). "
+            + "Markierte Bedienelemente tragen ihre Id (z. B. ctl-3); bediene sie über diese Id.";
+    static final String IMAGE_REPLACED_NOTE = "[Hinweis des Clients] Älteres Bildschirmfoto entfernt; es gilt das neueste.";
+    static final String IMAGE_REFUSED_NOTE = "[Hinweis des Clients] Das Modell nimmt keine Bilder an; das "
+            + "Bildschirmfoto ist entfernt. Nutze die Beschreibung im Werkzeugergebnis.";
 
     private final ChatCompletionPort chat;
     private final ToolRegistry tools;
@@ -121,6 +129,47 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
         return definitions;
     }
 
+    /**
+     * Shows the images of a round's tool results (screenshots) to the model: tool messages carry only text, so they
+     * follow as one user message right after the results. Only the newest images stay in the request; earlier ones
+     * are replaced by a short note, so a series of screenshots does not grow every following round.
+     */
+    private static void showImages(List<ChatMessage> messages, List<ChatImage> images) {
+        dropImages(messages, IMAGE_REPLACED_NOTE);
+        messages.add(ChatMessage.userWithImages(IMAGE_NOTE, images));
+    }
+
+    /** Replaces every image message of {@code messages} after the original request by {@code note}. */
+    private static boolean dropImages(List<ChatMessage> messages, String note) {
+        boolean dropped = false;
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
+            if (IMAGE_NOTE.equals(message.content()) && !message.images().isEmpty()) {
+                messages.set(i, ChatMessage.user(note));
+                dropped = true;
+            }
+        }
+        return dropped;
+    }
+
+    /**
+     * Asks the next round. When it carries tool images and the server rejects the request as invalid (a model
+     * without image input), the images are replaced by a note and the round is asked once more; images stay off for
+     * the rest of this request, the tool texts describe what they showed.
+     */
+    private ChatResponse askShowingImages(List<ChatMessage> messages, ChatRequest request, ToolLoopTask task,
+                                          boolean[] imagesRefused) {
+        try {
+            return ask(new ChatRequest(messages, request.options(), definitions()), task);
+        } catch (ChatCompletionException e) {
+            if (e.kind() != ChatErrorKind.INVALID_REQUEST || !dropImages(messages, IMAGE_REFUSED_NOTE)) {
+                throw e;
+            }
+            imagesRefused[0] = true;
+            return ask(new ChatRequest(messages, request.options(), definitions()), task);
+        }
+    }
+
     private ChatResponse run(ChatRequest request, ToolLoopTask task) {
         List<ChatMessage> messages = new ArrayList<ChatMessage>(request.messages());
         ChatResponse response = ask(new ChatRequest(messages, request.options(), definitions()), task);
@@ -128,6 +177,7 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
             return null;
         }
         int round = 0;
+        boolean[] imagesRefused = new boolean[1];
         while (response.message().hasToolCalls()) {
             if (task != null && task.isCancelRequested()) {
                 return null;
@@ -148,14 +198,20 @@ public final class ChatCompletionsToolLoop implements ChatCompletionPort {
                         ? new ChatToolCall("call_" + round + "_" + i, call.name(), call.argumentsJson()) : call);
             }
             messages.add(ChatMessage.assistantToolCalls(response.message().content(), calls));
+            List<ChatImage> images = new ArrayList<ChatImage>();
             for (ChatToolCall call : calls) {
-                messages.add(ChatMessage.tool(call.id(), tools.execute(call.name(), call.argumentsJson(), activity)));
+                ToolOutput output = tools.run(call.name(), call.argumentsJson(), activity);
+                messages.add(ChatMessage.tool(call.id(), output.text()));
+                images.addAll(output.images());
+            }
+            if (!images.isEmpty() && !imagesRefused[0]) {
+                showImages(messages, images);
             }
             if (task != null && task.isCancelRequested()) {
                 return null;
             }
             // Je Runde neu: ein inzwischen abgeschaltetes Werkzeug wird nicht mehr angeboten.
-            response = ask(new ChatRequest(messages, request.options(), definitions()), task);
+            response = askShowingImages(messages, request, task, imagesRefused);
             if (response == null) {
                 return null;
             }

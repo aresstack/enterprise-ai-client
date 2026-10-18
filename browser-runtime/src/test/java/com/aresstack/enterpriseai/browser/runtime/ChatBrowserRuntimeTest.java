@@ -8,6 +8,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserDocument;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
+import com.aresstack.enterpriseai.browser.api.BrowserScreenshot;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserProbe;
@@ -22,6 +23,7 @@ import org.junit.rules.TemporaryFolder;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -598,6 +600,80 @@ public class ChatBrowserRuntimeTest {
         browser.act(null, "ctl-3", BrowserAction.SELECT, "English");
 
         assertEquals(Arrays.asList("r-menu CLICK null", "r-lang SELECT English"), engine.actions);
+    }
+
+    @Test
+    public void screenshotMarksTheVisibleControlsWithTheirSnapshotIds() throws Exception {
+        portalWithControls();
+        engine.offscreen.add("r-ext");
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+
+        // Without a control list the runtime takes one first, so the marks are the ids browser_act accepts.
+        BrowserScreenshot shot = browser.screenshot(null, null, true);
+
+        assertEquals("image/jpeg", shot.mediaType());
+        assertTrue(shot.marked());
+        assertEquals(PORTAL, shot.pageUrl());
+        assertEquals(Arrays.asList("ctl-1", "ctl-2", "ctl-3"), idsOf(shot.visible()));
+        assertEquals("search", shot.visible().get(0).kind());
+        assertEquals(Arrays.asList("{r-search=ctl-1, r-menu=ctl-2, r-lang=ctl-3, r-ext=ctl-4} null "
+                + BrowserScreenshot.MAX_BYTES), engine.screenshots);
+        browser.act(null, "ctl-1", BrowserAction.SUBMIT, "Reise");
+        assertEquals(Arrays.asList("r-search SUBMIT Reise"), engine.actions);
+    }
+
+    @Test
+    public void screenshotOfAControlRegionNeedsACurrentControlList() throws Exception {
+        portalWithControls();
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        try {
+            browser.screenshot(null, "ctl-1", true);
+            fail("expected INVALID_REQUEST without control list");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+        browser.controls(null, 100, null);
+
+        BrowserScreenshot region = browser.screenshot(null, "ctl-3", false);
+
+        assertFalse(region.marked());
+        assertEquals("{r-search=, r-menu=, r-lang=, r-ext=} r-lang " + BrowserScreenshot.MAX_BYTES,
+                engine.screenshots.get(0));
+        try {
+            browser.screenshot(null, "ctl-9", false);
+            fail("expected INVALID_REQUEST for an unknown id");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
+        }
+    }
+
+    @Test
+    public void screenshotOfAPageOnABlockedHostIsRefused() throws Exception {
+        ChatBrowser browser = guarded().browserOf(chatA);
+        browser.navigate(null, PORTAL);
+        FakeEngine.FakeProcess process = engine.last();
+        synchronized (process) {
+            // The user opened a refused page by hand; its picture must not reach the model.
+            String tab = process.tabs.keySet().iterator().next();
+            process.tabs.put(tab, new String[]{"https://blocked.example/geheim", "Geheim"});
+        }
+        try {
+            browser.screenshot(null, null, false);
+            fail("expected BLOCKED");
+        } catch (BrowserException expected) {
+            assertEquals(BrowserException.Kind.BLOCKED, expected.kind());
+        }
+        assertTrue(engine.screenshots.isEmpty());
+    }
+
+    private static List<String> idsOf(List<BrowserControl> controls) {
+        List<String> ids = new ArrayList<String>();
+        for (BrowserControl control : controls) {
+            ids.add(control.id());
+        }
+        return ids;
     }
 
     @Test

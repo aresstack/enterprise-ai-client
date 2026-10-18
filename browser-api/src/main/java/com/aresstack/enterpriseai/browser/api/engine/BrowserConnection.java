@@ -50,6 +50,15 @@ public interface BrowserConnection {
     RawActOutcome act(String contextId, String ref, BrowserAction action, String value) throws BrowserException;
 
     /**
+     * Takes a picture of the tab's viewport, compressed (JPEG, lower quality as needed) to at most {@code maxBytes}. {@code marks} maps control refs (from {@link #controls}) to the
+     * label drawn next to the control; refs outside the picture get none. With {@code clipRef} the control is
+     * scrolled into view and only the region around it is taken. Password fields are covered while the picture is
+     * taken; everything drawn is removed afterwards. Fails with {@code INVALID_REQUEST} when {@code clipRef} is gone.
+     */
+    RawScreenshot screenshot(String contextId, java.util.Map<String, String> marks, String clipRef,
+                             int maxBytes) throws BrowserException;
+
+    /**
      * Fetches {@code url} inside the tab's document with its cookies (same rules as a script of the page), at most
      * {@code maxBytes}; fails with {@code FAILED} for HTTP errors, too large or blocked (cross-origin) responses.
      */

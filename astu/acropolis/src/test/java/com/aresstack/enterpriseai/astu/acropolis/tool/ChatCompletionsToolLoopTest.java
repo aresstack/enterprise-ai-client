@@ -1,6 +1,7 @@
 package com.aresstack.enterpriseai.astu.acropolis.tool;
 
 import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatImage;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatRequest;
 import com.aresstack.enterpriseai.astu.chat.ChatResponse;
@@ -310,6 +311,72 @@ public class ChatCompletionsToolLoopTest {
         assertTrue("kein Modellaufruf nach Abbruch", chat.requests.isEmpty());
     }
 
+    /** A tool that returns a screenshot along with its text description. */
+    private final ToolRegistry screenshots = new ToolRegistry(Collections.<AiTool>singletonList(new AiTool() {
+        @Override
+        public String name() {
+            return "browser_screenshot";
+        }
+
+        @Override
+        public ToolDefinition definition() {
+            return ToolDefinition.function("browser_screenshot", "Bild", "{\"type\":\"object\",\"properties\":{}}");
+        }
+
+        @Override
+        public String execute(String arguments) {
+            return executeWithContext(arguments).text();
+        }
+
+        @Override
+        public ToolOutput executeWithContext(String arguments) {
+            executed.add(arguments);
+            return new ToolOutput("ctl-1 | search | Suche | oben rechts", null, Collections.singletonList(
+                    new ChatImage("image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) executed.size()})));
+        }
+    }));
+
+    private static ChatResponse screenshotCall(String id) {
+        return new ChatResponse(ChatMessage.assistantToolCalls("", Collections.singletonList(
+                new ChatToolCall(id, "browser_screenshot", "{}"))), ChatFinishReason.TOOL_CALLS,
+                ChatUsage.notReported(), "m");
+    }
+
+    @Test
+    public void screenshotIsShownToTheModelAfterTheToolResultAndOnlyTheNewestStays() {
+        chat.script.add(screenshotCall("a"));
+        chat.script.add(screenshotCall("b"));
+        chat.script.add(answer("ctl-1"));
+
+        ChatResponse response = new ChatCompletionsToolLoop(chat, screenshots, DIRECT, null, 8).complete(request());
+
+        assertEquals("ctl-1", response.content());
+        assertEquals(java.util.Arrays.asList(0, 1, 1), chat.imageCounts);
+        List<ChatMessage> second = chat.requests.get(1).messages();
+        ChatMessage shown = second.get(second.size() - 1);
+        assertEquals(ChatRole.USER, shown.role());
+        assertEquals(ChatCompletionsToolLoop.IMAGE_NOTE, shown.content());
+        assertEquals(ChatRole.TOOL, second.get(second.size() - 2).role());
+        assertEquals("ctl-1 | search | Suche | oben rechts", second.get(second.size() - 2).content());
+        List<ChatMessage> third = chat.requests.get(2).messages();
+        assertEquals(2, third.get(third.size() - 1).images().get(0).bytes()[2]);
+    }
+
+    @Test
+    public void modelWithoutImageInputGetsTheRoundAgainWithoutTheImage() {
+        chat.rejectImages = true;
+        chat.script.add(screenshotCall("a"));
+        chat.script.add(screenshotCall("b"));
+        chat.script.add(answer("Suche oben rechts ist ctl-1"));
+
+        ChatResponse response = new ChatCompletionsToolLoop(chat, screenshots, DIRECT, null, 8).complete(request());
+
+        assertEquals("Suche oben rechts ist ctl-1", response.content());
+        // Rejected once, asked again without the image; later screenshots are no longer attached.
+        assertEquals(java.util.Arrays.asList(0, 1, 0, 0), chat.imageCounts);
+        assertEquals(2, executed.size());
+    }
+
     private ChatCompletionsToolLoop loop(int rounds) {
         return new ChatCompletionsToolLoop(chat, tools, DIRECT, null, rounds);
     }
@@ -333,10 +400,23 @@ public class ChatCompletionsToolLoopTest {
         final List<ChatRequest> requests = new ArrayList<ChatRequest>();
         /** Die wievielte Anfrage (ab 1) mit einem Transportfehler scheitert; 0 = keine. */
         int failOnRequest;
+        /** A model without image input: requests with images are rejected as invalid. */
+        boolean rejectImages;
+        /** Per request the number of images it carried, counted when it was sent. */
+        final List<Integer> imageCounts = new ArrayList<Integer>();
 
         @Override
         public ChatResponse complete(ChatRequest request) {
             requests.add(request);
+            int images = 0;
+            for (ChatMessage message : request.messages()) {
+                images += message.images().size();
+            }
+            imageCounts.add(images);
+            if (rejectImages && images > 0) {
+                throw new ChatCompletionException(com.aresstack.enterpriseai.chat.api.ChatErrorKind.INVALID_REQUEST,
+                        "image input not supported");
+            }
             if (requests.size() == failOnRequest) {
                 throw new ChatCompletionException(com.aresstack.enterpriseai.chat.api.ChatErrorKind.TRANSPORT,
                         "503");

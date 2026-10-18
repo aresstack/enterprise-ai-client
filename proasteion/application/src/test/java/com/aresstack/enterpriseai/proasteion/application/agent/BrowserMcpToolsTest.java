@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserProbe;
+import com.aresstack.enterpriseai.browser.api.BrowserScreenshot;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -238,6 +239,45 @@ public class BrowserMcpToolsTest {
             }
         }
         throw new AssertionError("no tool " + name);
+    }
+
+    @Test
+    public void screenshotReturnsTheImageAndDescribesTheVisibleControlsAsText() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        McpToolResult shot = invoke(tools.contributionsFor(a), BrowserMcpTools.SCREENSHOT);
+
+        assertFalse(shot.getText(), shot.isError());
+        assertTrue(shot.hasImage());
+        assertEquals("image/jpeg", shot.imageMediaType());
+        assertEquals(4, shot.imageBytes().length);
+        // Models without image input still learn which control sits where.
+        assertTrue(shot.getText(), shot.getText().contains("ctl-1 | search | Alles durchsuchen | oben rechts"));
+        assertTrue(shot.getText(), shot.getText().contains("Ids der Bedienelemente eingezeichnet"));
+        assertEquals(Collections.singletonList("screenshot null true"), port.browser(a).calls);
+    }
+
+    @Test
+    public void screenshotPassesRegionAndMarksAndReportsFailures() {
+        ChatConversationId a = new ChatConversationId("chat-a");
+        List<McpToolContribution> bound = tools.contributionsFor(a);
+        McpToolResult shot = invoke(bound, BrowserMcpTools.SCREENSHOT, "control", "ctl-3", "marks", "false");
+        assertFalse(shot.getText().contains("eingezeichnet"));
+        assertEquals(Collections.singletonList("screenshot ctl-3 false"), port.browser(a).calls);
+
+        port.browser(a).fail = true;
+        McpToolResult failed = invoke(bound, BrowserMcpTools.SCREENSHOT);
+        assertTrue(failed.isError());
+        assertFalse(failed.hasImage());
+    }
+
+    @Test
+    public void unboundScreenshotIsListedButRefused() {
+        boolean listed = false;
+        for (McpToolContribution tool : BrowserMcpTools.unbound()) {
+            listed |= tool.getName().equals(BrowserMcpTools.SCREENSHOT);
+        }
+        assertTrue(listed);
+        assertTrue(invoke(BrowserMcpTools.unbound(), BrowserMcpTools.SCREENSHOT).isError());
     }
 
     @Test
@@ -485,6 +525,16 @@ public class BrowserMcpToolsTest {
             calls.add("download " + linkId);
             return new BrowserDocument("https://intranet.example/reise.pdf", "reise.pdf", "application/pdf",
                     "Reisekostenrichtlinie 2026".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public BrowserScreenshot screenshot(String tabId, String controlId, boolean marks) throws BrowserException {
+            check();
+            calls.add("screenshot " + controlId + " " + marks);
+            return new BrowserScreenshot("tab-1", "https://intranet.example/", "Intranet", "image/jpeg",
+                    new byte[]{(byte) 0xFF, (byte) 0xD8, 1, 2}, marks, java.util.Arrays.asList(
+                    new BrowserControl("ctl-1", "search", "Alles durchsuchen", "", "", "", "", false, "",
+                            "oben rechts")));
         }
 
         @Override
