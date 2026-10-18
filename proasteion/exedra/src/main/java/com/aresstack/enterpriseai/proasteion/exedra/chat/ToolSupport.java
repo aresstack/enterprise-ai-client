@@ -41,22 +41,26 @@ public final class ToolSupport {
     private Function<String, List<AiTool>> browserTools = chatId -> Collections.<AiTool>emptyList();
     private java.util.function.BooleanSupplier browserReady = () -> false;
     private java.util.function.Consumer<String> browserTurnEnd = chatId -> { };
-    private BrowserExploration browserExploration = BrowserExploration.NONE;
+    private BrowserExploration browserExploration = BrowserExploration.none();
 
     /** Where a turn's web exploration is recorded (#141); the display only reads it. */
     public interface BrowserExploration {
 
-        BrowserExploration NONE = new BrowserExploration() {
-            @Override
-            public WebExplorationProgress begin(String chatId, java.util.function.Consumer<WebExplorationProgress> l) {
-                return WebExplorationProgress.none();
-            }
+        /** A recording that records nothing (no browser). */
+        static BrowserExploration none() {
+            return new BrowserExploration() {
+                @Override
+                public WebExplorationProgress begin(String chatId,
+                                                    java.util.function.Consumer<WebExplorationProgress> l) {
+                    return WebExplorationProgress.none();
+                }
 
-            @Override
-            public WebExplorationProgress end(String chatId) {
-                return WebExplorationProgress.none();
-            }
-        };
+                @Override
+                public WebExplorationProgress end(String chatId) {
+                    return WebExplorationProgress.none();
+                }
+            };
+        }
 
         /** Starts a turn's recording; {@code listener} gets every change on the tool's thread. */
         WebExplorationProgress begin(String chatId, java.util.function.Consumer<WebExplorationProgress> listener);
