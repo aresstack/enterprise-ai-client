@@ -31,6 +31,9 @@ public final class WebExplorationRun {
     /** Link id to target of the last link list shown, to name a refused or failed follow. */
     private final java.util.Map<String, String> lastLinks = new java.util.HashMap<String, String>();
     private final java.util.Map<String, String> lastControls = new java.util.HashMap<String, String>();
+    /** The controls behind {@link #lastControls}, to judge whether an action changes data (approval). */
+    private final java.util.Map<String, com.aresstack.enterpriseai.browser.api.BrowserControl> lastControlDetails =
+            new java.util.HashMap<String, com.aresstack.enterpriseai.browser.api.BrowserControl>();
     private int unlisted;
     private String currentPage;
     private String currentTitle = "";
@@ -52,6 +55,7 @@ public final class WebExplorationRun {
             steps.clear();
             lastLinks.clear();
             lastControls.clear();
+            lastControlDetails.clear();
             challenge = "";
             currentPage = null;
             currentTitle = "";
@@ -99,6 +103,7 @@ public final class WebExplorationRun {
             currentPage = page;
             lastLinks.clear();
             lastControls.clear();
+            lastControlDetails.clear();
             currentTitle = title == null ? "" : title;
             step(back ? WebExplorationProgress.StepKind.BACK : WebExplorationProgress.StepKind.OPENED,
                     label(title, url), 0);
@@ -151,6 +156,7 @@ public final class WebExplorationRun {
     public void controlsListed(java.util.Map<String, String> labelsById) {
         change(() -> {
             lastControls.clear();
+            lastControlDetails.clear();
             lastControls.putAll(labelsById);
             step(WebExplorationProgress.StepKind.ACTED, labelsById.size()
                     + (labelsById.size() == 1 ? " Bedienelement erkannt" : " Bedienelemente erkannt"), 0);
@@ -164,6 +170,25 @@ public final class WebExplorationRun {
     public synchronized void controlsNoted(java.util.Map<String, String> labelsById) {
         lastControls.clear();
         lastControls.putAll(labelsById);
+    }
+
+    /** The controls of the last list shown or noted, replacing earlier ones; call right after it. */
+    public synchronized void controlsSeen(
+            java.util.List<com.aresstack.enterpriseai.browser.api.BrowserControl> controls) {
+        lastControlDetails.clear();
+        for (com.aresstack.enterpriseai.browser.api.BrowserControl control : controls) {
+            lastControlDetails.put(control.id(), control);
+        }
+    }
+
+    /** Control {@code id} of the last list shown or noted, or {@code null} when it was not in it. */
+    public synchronized com.aresstack.enterpriseai.browser.api.BrowserControl control(String id) {
+        return id == null ? null : lastControlDetails.get(id.trim());
+    }
+
+    /** Address of the page currently in front of the model, or {@code null}. */
+    public synchronized String currentPage() {
+        return currentPage;
     }
 
     /** The label of control {@code id} in the last control list shown, or {@code null}. */

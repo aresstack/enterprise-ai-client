@@ -2,6 +2,7 @@ package com.aresstack.enterpriseai.proasteion.application.agent;
 
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentException;
 import com.aresstack.enterpriseai.astu.acropolis.attachment.AttachmentTextExtractor;
+import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
@@ -16,6 +17,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserProbe;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
+import com.aresstack.enterpriseai.proasteion.application.browser.BrowserActApproval;
 import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress;
 import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationRun;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpToolCall;
@@ -84,6 +86,8 @@ public final class BrowserMcpTools {
     private final ChatBrowserPort browsers;
     /** Text of downloaded documents through the document pipeline; {@code null}: no {@value #DOCUMENT}. */
     private final AttachmentTextExtractor documents;
+    /** Shared approval gate for data-changing actions, or {@code null}. */
+    private final ToolApprovalGate approvals;
     private final ConcurrentMap<ChatConversationId, WebExplorationRun> runs =
             new ConcurrentHashMap<ChatConversationId, WebExplorationRun>();
 
@@ -93,11 +97,24 @@ public final class BrowserMcpTools {
 
     /** With {@code documents} (may be null) linked PDFs and Office files are read through the document pipeline. */
     public BrowserMcpTools(ChatBrowserPort browsers, AttachmentTextExtractor documents) {
+        this(browsers, documents, null);
+    }
+
+    /**
+     * With {@code approvals} (may be null: nothing asked) data-changing {@value #ACT} calls (form submits, buttons like
+     * Speichern or Löschen) go through the shared approval gate; sub-rules {@code change} (default ASK) and
+     * {@code operate} (default ALLOW) of {@value #ACT} in {@code tools.approval}.
+     */
+    public BrowserMcpTools(ChatBrowserPort browsers, AttachmentTextExtractor documents, ToolApprovalGate approvals) {
         if (browsers == null) {
             throw new IllegalArgumentException("browsers must not be null");
         }
         this.browsers = browsers;
         this.documents = documents;
+        this.approvals = approvals;
+        if (approvals != null) {
+            approvals.registerResolver(ACT, BrowserActApproval.resolver(), BrowserActApproval.defaultPolicies());
+        }
     }
 
     /** The browser tools bound to {@code conversation}. */
@@ -116,7 +133,7 @@ public final class BrowserMcpTools {
                 back(tracked(run, call -> back(browser, run, call))),
                 document(tracked(run, call -> document(browser, documents, run, call))),
                 controls(tracked(run, call -> controls(browser, run, call))),
-                act(tracked(run, call -> act(browser, run, call))),
+                act(tracked(run, call -> act(browser, run, approvals, call))),
                 mark(tracked(run, call -> mark(run, call))),
                 close(tracked(run, call -> close(browser, run)))));
     }
@@ -407,6 +424,7 @@ public final class BrowserMcpTools {
                 labels.put(control.id(), control.label());
             }
             run.controlsListed(labels);
+            run.controlsSeen(controls.controls());
             return McpToolResult.ok(render(controls, filter));
         } catch (BrowserException e) {
             run.failed(null, e.getMessage());
@@ -415,6 +433,14 @@ public final class BrowserMcpTools {
     }
 
     static McpToolResult act(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
+        return act(browser, run, null, call);
+    }
+
+    /**
+     * {@code approvals} (may be null) is asked before a data-changing click or submit, see
+     * {@link BrowserActApproval}.
+     */
+    static McpToolResult act(ChatBrowser browser, WebExplorationRun run, ToolApprovalGate approvals, McpToolCall call) {
         String control = blankToNull(call.getString(PARAM_CONTROL));
         if (control == null) {
             return McpToolResult.error("control fehlt; Ids liefert " + CONTROLS);
@@ -431,6 +457,14 @@ public final class BrowserMcpTools {
         }
         String label = run.controlLabel(control);
         String description = describe(action, label == null ? control : label, value);
+        if (approvals != null) {
+            ToolApprovalGate.Verdict verdict = approvals.check(ACT,
+                    BrowserActApproval.request(control, run.control(control), action, run.currentPage()));
+            if (!verdict.permitted()) {
+                return McpToolResult.error("Nicht ausgeführt: " + description + " – " + verdict.reason()
+                        + ". Die Aktion kann Daten auf der Seite ändern und braucht die Freigabe des Benutzers.");
+            }
+        }
         try {
             BrowserActResult result = browser.act(blankToNull(call.getString(PARAM_TAB)), control, action, value);
             run.acted(description);
@@ -516,6 +550,7 @@ public final class BrowserMcpTools {
             labels.put(control.id(), control.label());
         }
         run.controlsNoted(labels);
+        run.controlsSeen(controls.controls());
         if (field != null) {
             return "\n\n[Hinweis: Die Seite hat ein eigenes Suchfeld " + field.id() + " „" + field.label()
                     + "“. Suche damit (" + ACT + " control=\"" + field.id() + "\" action=\"submit\" value=\"…\") "

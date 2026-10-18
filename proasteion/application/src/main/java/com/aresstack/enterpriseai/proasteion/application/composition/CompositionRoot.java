@@ -451,7 +451,7 @@ public final class CompositionRoot {
         // (conversationChatTools), so the chat identity comes from the host, never from the model.
         this.browserTools = ports.browsers() == null ? null
                 : new com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools(ports.browsers(),
-                attachmentText);
+                attachmentText, toolCatalog.approvals());
         // Listed even without Firefox, so the tab "Tools" shows why a chat has no browser.
         {
             toolCatalog.registerDefinitions(browserTools != null ? ORIGIN_BROWSER : ORIGIN_BROWSER_MISSING,
