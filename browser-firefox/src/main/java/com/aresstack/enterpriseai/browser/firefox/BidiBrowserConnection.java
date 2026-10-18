@@ -64,7 +64,7 @@ final class BidiBrowserConnection implements BrowserConnection {
     /**
      * The visible, enabled controls (document order, at most {@value #MAX_RAW_CONTROLS}) as a JSON array of
      * [ref, kind, label, value, options, form target, form name, required, locator, position]. Each element gets a {@code data-eai-control} attribute with a
-     * fresh ref, so {@link #ACT_FUNCTION} finds it again while it is on the page. Password and hidden fields and real
+     * ref (kept from an earlier list), so {@link #ACT_FUNCTION} finds it again while it is on the page. Password and hidden fields and real
      * links (those belong to the link list) are left out; only plain values leave the page.
      */
     static final String CONTROLS_SCRIPT = "(function () {"
@@ -126,7 +126,8 @@ final class BidiBrowserConnection implements BrowserConnection {
             + "   .map(function (o) { return flat(o.text); }).join(' | ') : '';"
             + "  var form = e.form || (e.closest ? e.closest('form') : null);"
             + "  var target = form && (kind === 'search' || kind === 'input' || kind === 'button') ? String(form.action || '') : '';"
-            + "  var ref = gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
+            // An element keeps the ref it got from an earlier list, so ids of that list stay valid.
+            + "  var ref = e.getAttribute('data-eai-control') || gen + '-' + out.length; e.setAttribute('data-eai-control', ref);"
             // The nearest named group wins (a fieldset inside a form), then the form itself.
             + "  function groupName(g) { if (!g) return '';"
             + "   var named = g.getAttribute('aria-labelledby') ? document.getElementById(g.getAttribute('aria-labelledby').split(/\\s+/)[0]) : null;"

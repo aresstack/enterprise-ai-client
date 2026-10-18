@@ -412,26 +412,74 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                     throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Id " + controlId
                             + "; Ids gelten nur für die zuletzt mit browser_controls gelieferte Liste");
                 }
-                // A form that declares where it submits to is vetted before anything is sent there; script driven
-                // targets are only known afterwards and pass the guard as the final address.
-                if (!control.target().isEmpty() && (action == BrowserAction.SUBMIT
-                        || (action == BrowserAction.CLICK && "button".equals(control.kind())))) {
-                    guard.admit(conversation, control.target());
-                }
-                String before = rawTab(connection, raw).url();
-                RawActOutcome outcome = connection.act(raw, control.ref(), action, value);
-                // Same document or a new one: the page's links may have changed either way.
-                snapshots.remove(raw);
-                BrowserPage page = page(connection, raw);
-                if (outcome.navigated()) {
-                    controlSnapshots.remove(raw);
-                }
-                if (outcome.navigated() || !withoutFragment(page.url()).equals(withoutFragment(before))) {
-                    push(raw, before);
-                    checkFinal(connection, raw, page.url());
-                }
-                return new BrowserActResult(page, outcome.navigated(), outcome.changed());
+                return perform(connection, raw, control, action, value);
             }, false);
+        }
+
+        @Override
+        public synchronized BrowserActResult actLocated(final String tabId, final String locator,
+                                                        final BrowserAction action, final String value)
+                throws BrowserException {
+            if (action == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Aktion fehlt");
+            }
+            if ((action == BrowserAction.FILL || action == BrowserAction.SELECT) && value == null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        action == BrowserAction.FILL ? "fill braucht einen Wert" : "select braucht eine Option");
+            }
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                RawControl control = ControlLocator.find(connection.controls(raw), locator);
+                return perform(connection, raw, control, action, value);
+            }, false);
+        }
+
+        /**
+         * Acts on {@code control} behind the access guard. When the element is gone because a single page app
+         * rendered it anew, it is found again once by its locator on the current page.
+         */
+        private BrowserActResult perform(BrowserConnection connection, String raw, RawControl control,
+                                         BrowserAction action, String value) throws BrowserException {
+            // A form that declares where it submits to is vetted before anything is sent there; script driven
+            // targets are only known afterwards and pass the guard as the final address.
+            if (!control.target().isEmpty() && (action == BrowserAction.SUBMIT
+                    || (action == BrowserAction.CLICK && "button".equals(control.kind())))) {
+                guard.admit(conversation, control.target());
+            }
+            String before = rawTab(connection, raw).url();
+            RawActOutcome outcome;
+            try {
+                outcome = connection.act(raw, control.ref(), action, value);
+            } catch (BrowserException e) {
+                if (e.kind() != BrowserException.Kind.INVALID_REQUEST || control.locator().isEmpty()) {
+                    throw e;
+                }
+                RawControl again;
+                try {
+                    again = ControlLocator.find(connection.controls(raw), control.locator());
+                } catch (BrowserException notFound) {
+                    throw e;
+                }
+                if (again.ref().equals(control.ref())) {
+                    throw e;
+                }
+                if (!again.target().isEmpty() && (action == BrowserAction.SUBMIT
+                        || (action == BrowserAction.CLICK && "button".equals(again.kind())))) {
+                    guard.admit(conversation, again.target());
+                }
+                outcome = connection.act(raw, again.ref(), action, value);
+            }
+            // Same document or a new one: the page's links may have changed either way.
+            snapshots.remove(raw);
+            BrowserPage page = page(connection, raw);
+            if (outcome.navigated()) {
+                controlSnapshots.remove(raw);
+            }
+            if (outcome.navigated() || !withoutFragment(page.url()).equals(withoutFragment(before))) {
+                push(raw, before);
+                checkFinal(connection, raw, page.url());
+            }
+            return new BrowserActResult(page, outcome.navigated(), outcome.changed());
         }
 
         @Override

@@ -182,6 +182,30 @@ public final class WebExplorationRun {
     }
 
     /** Control {@code id} of the last list shown or noted, or {@code null} when it was not in it. */
+    /**
+     * The control of the last list that {@code locator} names (its locator, or its label as quoted or plain text), or
+     * {@code null} when none or several fit: for judging an action by locator before it runs.
+     */
+    public synchronized com.aresstack.enterpriseai.browser.api.BrowserControl controlByLocator(String locator) {
+        if (locator == null) {
+            return null;
+        }
+        String wanted = locator.trim();
+        int open = wanted.indexOf('"');
+        int close = wanted.lastIndexOf('"');
+        String name = open >= 0 && close > open ? wanted.substring(open + 1, close) : wanted;
+        com.aresstack.enterpriseai.browser.api.BrowserControl hit = null;
+        for (com.aresstack.enterpriseai.browser.api.BrowserControl control : lastControlDetails.values()) {
+            if (control.locator().equalsIgnoreCase(wanted) || control.label().equalsIgnoreCase(name)) {
+                if (hit != null) {
+                    return null;
+                }
+                hit = control;
+            }
+        }
+        return hit;
+    }
+
     public synchronized com.aresstack.enterpriseai.browser.api.BrowserControl control(String id) {
         return id == null ? null : lastControlDetails.get(id.trim());
     }
