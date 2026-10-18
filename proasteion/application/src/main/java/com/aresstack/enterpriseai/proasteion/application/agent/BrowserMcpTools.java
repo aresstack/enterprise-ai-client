@@ -14,6 +14,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserProbe;
+import com.aresstack.enterpriseai.browser.api.BrowserScreenshot;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -41,7 +42,7 @@ import java.util.function.Consumer;
 
 /**
  * The browser tools of one chat (#141): {@value #TABS}, {@value #NAVIGATE}, {@value #READ}, {@value #LINKS},
- * {@value #FOLLOW}, {@value #BACK}, {@value #DOCUMENT}, {@value #CONTROLS}, {@value #ACT}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
+ * {@value #FOLLOW}, {@value #BACK}, {@value #DOCUMENT}, {@value #CONTROLS}, {@value #ACT}, {@value #SCREENSHOT}, {@value #MARK} and {@value #CLOSE}. Every call records into the chat's
  * {@link WebExplorationRun}, the state behind the progress display. Links are followed by their snapshot id, never by a guessed
  * address; the ids of a page become invalid with the next navigation. The chat is bound when the
  * tools are built ({@link #contributionsFor}), by the host, never by a model argument: the schemas have no chat id,
@@ -64,6 +65,8 @@ public final class BrowserMcpTools {
     private static final List<String> DOCUMENT_ENDINGS = Arrays.asList(".pdf", ".doc", ".docx", ".xls", ".xlsx",
             ".ppt", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".txt", ".csv");
     public static final String ACT = "browser_act";
+    public static final String SCREENSHOT = "browser_screenshot";
+    static final String PARAM_MARKS = "marks";
     static final String PARAM_CONTROL = "control";
     static final String PARAM_VALUE = "value";
     static final String PARAM_LOCATOR = "locator";
@@ -135,6 +138,7 @@ public final class BrowserMcpTools {
                 document(tracked(run, call -> document(browser, documents, run, call))),
                 controls(tracked(run, call -> controls(browser, run, call))),
                 act(tracked(run, call -> act(browser, run, approvals, call))),
+                screenshot(tracked(run, call -> screenshot(browser, run, call))),
                 mark(tracked(run, call -> mark(run, call))),
                 close(tracked(run, call -> close(browser, run)))));
     }
@@ -180,7 +184,8 @@ public final class BrowserMcpTools {
     public static List<McpToolContribution> unbound() {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
-                links(refuse), follow(refuse), back(refuse), document(refuse), controls(refuse), act(refuse), mark(refuse),
+                links(refuse), follow(refuse), back(refuse), document(refuse), controls(refuse), act(refuse), screenshot(refuse),
+                mark(refuse),
                 close(refuse)));
     }
 
@@ -291,6 +296,23 @@ public final class BrowserMcpTools {
                         + CONTROLS + ") or its visible text. No CSS or XPath."),
                 McpToolParameter.enumeration(PARAM_ACTION, true, "click, fill, submit or select.", ACT_ACTIONS),
                 McpToolParameter.string(PARAM_VALUE, false, "Text for fill and submit, option for select."),
+                McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
+    private static McpToolContribution screenshot(McpToolHandler handler) {
+        return McpToolContribution.of(SCREENSHOT,
+                "Take a picture of what a tab of this chat's browser shows: the visible part of the page, or with "
+                        + "control only the region around that control. Use it when the text and the " + CONTROLS
+                        + " list are not enough to find something, e.g. when the user describes it by its look or "
+                        + "place (\"the search at the top right\", \"the red button\"). With marks (default) every "
+                        + "control of the " + CONTROLS + " list that is visible carries its id in the picture; answer "
+                        + "with that id in " + ACT + " instead of guessing coordinates. The result lists the visible "
+                        + "controls with id, kind, label and position as text, also for models that cannot see "
+                        + "images. Password fields are masked.",
+                handler,
+                McpToolParameter.string(PARAM_CONTROL, false, "Optional control id from " + CONTROLS
+                        + ": picture only the region around it."),
+                McpToolParameter.bool(PARAM_MARKS, false, "Draw the control ids into the picture (default true)."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
     }
 
@@ -506,6 +528,17 @@ public final class BrowserMcpTools {
                 return "„" + value + "“ in „" + label + "“ gewählt";
             default:
                 return "„" + label + "“ angeklickt";
+        }
+    }
+
+    static McpToolResult screenshot(ChatBrowser browser, WebExplorationRun run, McpToolCall call) {
+        boolean marks = call.getBoolean(PARAM_MARKS, true);
+        try {
+            BrowserScreenshot shot = browser.screenshot(blankToNull(call.getString(PARAM_TAB)),
+                    blankToNull(call.getString(PARAM_CONTROL)), marks);
+            return McpToolResult.okWithImage(render(shot), shot.mediaType(), shot.image());
+        } catch (BrowserException e) {
+            return refused(run, null, e);
         }
     }
 
@@ -798,6 +831,29 @@ public final class BrowserMcpTools {
         }
         if (shown.isEmpty()) {
             out.append("Keine Bedienelemente gefunden.\n");
+        }
+        return out.toString().trim();
+    }
+
+    private static String render(BrowserScreenshot shot) {
+        StringBuilder out = new StringBuilder();
+        out.append("Tab: ").append(shot.tabId()).append('\n')
+                .append("Seite: ").append(shot.pageTitle()).append(" | ").append(shot.pageUrl()).append('\n')
+                .append("Bildschirmfoto (").append(shot.image().length / 1024).append(" KB")
+                .append(shot.marked() ? ", Ids der Bedienelemente eingezeichnet" : "").append(")\n");
+        if (shot.visible().isEmpty()) {
+            out.append("Keine bekannten Bedienelemente im Bild; mit ").append(CONTROLS)
+                    .append(" eine Liste holen.");
+            return out.toString();
+        }
+        out.append("Sichtbare Bedienelemente (bedienen mit ").append(ACT).append("):\n");
+        for (BrowserControl control : shot.visible()) {
+            out.append(control.id()).append(" | ").append(control.kind()).append(" | ")
+                    .append(control.label().isEmpty() ? "(ohne Beschriftung)" : control.label());
+            if (!control.position().isEmpty()) {
+                out.append(" | ").append(control.position());
+            }
+            out.append('\n');
         }
         return out.toString().trim();
     }

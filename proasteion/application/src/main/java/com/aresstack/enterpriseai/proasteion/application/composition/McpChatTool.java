@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.astu.acropolis.tool.AiTool;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolArguments;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolContextResource;
 import com.aresstack.enterpriseai.astu.acropolis.tool.ToolOutput;
+import com.aresstack.enterpriseai.astu.chat.ChatImage;
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeRevision;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 import com.aresstack.enterpriseai.proasteion.katagogion.McpContextResource;
@@ -82,7 +83,10 @@ final class McpChatTool implements AiTool {
             context.add(new ToolContextResource(resource.sourceId(), resource.resourceId(), resource.title(),
                     resource.location(), KnowledgeRevision.of(resource.modifiedAt(), resource.version())));
         }
-        return new ToolOutput(result.getText(), context);
+        List<ChatImage> images = result.hasImage()
+                ? Collections.singletonList(new ChatImage(result.imageMediaType(), result.imageBytes()))
+                : Collections.<ChatImage>emptyList();
+        return new ToolOutput(result.getText(), context, images);
     }
 
     private McpToolResult invoke(String arguments) {

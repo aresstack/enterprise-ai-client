@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.astu.acropolis.tool;
 
+import com.aresstack.enterpriseai.astu.chat.ChatImage;
 import com.aresstack.enterpriseai.chat.api.ToolDefinition;
 
 import java.util.ArrayList;
@@ -72,12 +73,20 @@ public final class ToolRegistry {
      * @param activity erfährt den Namen vor der Ausführung und danach, ob sie gelang; darf {@code null} sein
      */
     public String execute(String name, String arguments, ToolActivityListener activity) {
+        return run(name, arguments, activity).text();
+    }
+
+    /**
+     * Like {@link #execute}, returning the whole output: the same text plus the images of a successful call (a
+     * screenshot); failures carry no images and no context.
+     */
+    public ToolOutput run(String name, String arguments, ToolActivityListener activity) {
         AiTool tool = find(name);
         if (tool == null) {
-            return ERROR_PREFIX + " unbekanntes Werkzeug " + name;
+            return ToolOutput.text(ERROR_PREFIX + " unbekanntes Werkzeug " + name);
         }
         if (!active.test(name)) {
-            return ERROR_PREFIX + " Werkzeug " + name + " ist abgeschaltet";
+            return ToolOutput.text(ERROR_PREFIX + " Werkzeug " + name + " ist abgeschaltet");
         }
         if (activity != null) {
             activity.onToolCall(name, arguments);
@@ -85,12 +94,14 @@ public final class ToolRegistry {
         String output;
         boolean succeeded;
         List<ToolContextResource> context = Collections.emptyList();
+        List<ChatImage> images = Collections.emptyList();
         try {
             ToolOutput result = tool.executeWithContext(arguments);
             output = result == null ? "" : result.text();
             succeeded = !output.startsWith(ERROR_PREFIX);
             if (succeeded && result != null) {
                 context = result.context();
+                images = result.images();
             }
         } catch (RuntimeException e) {
             String message = e.getMessage();
@@ -105,6 +116,6 @@ public final class ToolRegistry {
             activity.onToolResult(name, succeeded);
             activity.onToolExecuted(name, arguments, output, succeeded);
         }
-        return output;
+        return new ToolOutput(output, context, images);
     }
 }

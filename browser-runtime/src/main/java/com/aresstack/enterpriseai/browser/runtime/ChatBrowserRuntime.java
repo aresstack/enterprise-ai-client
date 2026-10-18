@@ -12,6 +12,7 @@ import com.aresstack.enterpriseai.browser.api.BrowserLink;
 import com.aresstack.enterpriseai.browser.api.BrowserLinks;
 import com.aresstack.enterpriseai.browser.api.BrowserPage;
 import com.aresstack.enterpriseai.browser.api.BrowserProbe;
+import com.aresstack.enterpriseai.browser.api.BrowserScreenshot;
 import com.aresstack.enterpriseai.browser.api.BrowserTab;
 import com.aresstack.enterpriseai.browser.api.ChatBrowser;
 import com.aresstack.enterpriseai.browser.api.ChatBrowserPort;
@@ -23,6 +24,7 @@ import com.aresstack.enterpriseai.browser.api.engine.RawControl;
 import com.aresstack.enterpriseai.browser.api.engine.RawDownload;
 import com.aresstack.enterpriseai.browser.api.engine.RawLink;
 import com.aresstack.enterpriseai.browser.api.engine.RawPage;
+import com.aresstack.enterpriseai.browser.api.engine.RawScreenshot;
 import com.aresstack.enterpriseai.browser.api.engine.RawTab;
 
 import java.net.URI;
@@ -483,6 +485,69 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         }
 
         @Override
+        public synchronized BrowserScreenshot screenshot(final String tabId, final String controlId,
+                                                         final boolean marks) throws BrowserException {
+            final String wanted = controlId == null || controlId.trim().isEmpty() ? null : controlId.trim();
+            boolean current = call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                ControlSnapshot snapshot = controlSnapshots.get(raw);
+                return snapshot != null && snapshot.document.equals(connection.documentToken(raw));
+            }, true);
+            if (!current && wanted != null) {
+                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
+                        "Keine gültige Liste der Bedienelemente für diesen Tab; zuerst browser_controls aufrufen");
+            }
+            if (!current && marks) {
+                // Marks need ids: a fresh snapshot of all controls, the same one browser_controls would return.
+                controls(tabId, BrowserControls.MAX_CONTROLS, null);
+            }
+            return call(connection -> {
+                String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
+                RawTab tab = rawTab(connection, raw);
+                // The page may have been opened by the user; a picture of it goes to the model like its text.
+                if (usableUrl(tab.url()) != null) {
+                    guard.admit(conversation, tab.url());
+                }
+                ControlSnapshot snapshot = controlSnapshots.get(raw);
+                if (snapshot != null && !snapshot.document.equals(connection.documentToken(raw))) {
+                    controlSnapshots.remove(raw);
+                    snapshot = null;
+                }
+                String clipRef = null;
+                if (wanted != null) {
+                    RawControl control = snapshot == null ? null : snapshot.controls.get(wanted);
+                    if (control == null) {
+                        throw new BrowserException(BrowserException.Kind.INVALID_REQUEST, "Unbekannte Id " + wanted
+                                + "; Ids gelten nur für die zuletzt mit browser_controls gelieferte Liste");
+                    }
+                    clipRef = control.ref();
+                }
+                List<String> ids = snapshot == null ? new ArrayList<String>() : snapshot.orderedIds();
+                Map<String, String> labels = new LinkedHashMap<String, String>();
+                Map<String, String> idsByRef = new HashMap<String, String>();
+                for (String id : ids) {
+                    RawControl control = snapshot.controls.get(id);
+                    labels.put(control.ref(), marks ? id : "");
+                    idsByRef.put(control.ref(), id);
+                }
+                RawScreenshot shot = connection.screenshot(raw, labels, clipRef, BrowserScreenshot.MAX_BYTES);
+                Set<String> seen = new HashSet<String>(shot.visibleRefs());
+                List<BrowserControl> visible = new ArrayList<BrowserControl>();
+                for (String id : ids) {
+                    RawControl control = snapshot.controls.get(id);
+                    if (seen.contains(control.ref())) {
+                        visible.add(new BrowserControl(id, control.kind(), clip(control.label()),
+                                clip(control.value()), control.options(),
+                                control.target().isEmpty() ? null : control.target(), clip(control.form()),
+                                control.required(), control.locator(), control.position()));
+                    }
+                }
+                return new BrowserScreenshot(idOf(raw), tab.url(), tab.title(), shot.mediaType(), shot.image(),
+                        marks && !visible.isEmpty(), visible);
+            }, true);
+        }
+
+        @Override
         public synchronized BrowserProbe probe(final String tabId) throws BrowserException {
             return call(connection -> connection.probe(tabId == null ? currentOrFail(connection)
                     : rawOf(connection, tabId)), true);
@@ -730,6 +795,21 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
 
         ControlSnapshot(String document) {
             this.document = document;
+        }
+
+        /** The ids in snapshot order ({@code ctl-1}, {@code ctl-2}, ...). */
+        List<String> orderedIds() {
+            List<String> ids = new ArrayList<String>(controls.keySet());
+            java.util.Collections.sort(ids, (a, b) -> Integer.compare(number(a), number(b)));
+            return ids;
+        }
+
+        private static int number(String id) {
+            try {
+                return Integer.parseInt(id.substring(id.lastIndexOf('-') + 1));
+            } catch (RuntimeException e) {
+                return Integer.MAX_VALUE;
+            }
         }
     }
 
