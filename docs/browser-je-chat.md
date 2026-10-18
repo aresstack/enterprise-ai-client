@@ -92,7 +92,10 @@ erscheinen die Schritte als „Gesucht: „…““, „„Menü“ angeklickt�
 
 Nach jeder Navigation wartet der Adapter über „Dokument vollständig“ hinaus, bis die Seite 600 ms lang nicht mehr
 verändert wurde (höchstens 5 s): Intranets und Single-Page-Apps rendern ihren Inhalt oft erst nach dem Load-Ereignis.
-Jede geöffnete oder gelesene Seite wird danach geprüft (`ChatBrowser#probe`, ohne die Seite zu verändern):
+Ersetzt eine Umleitung per Skript oder Formular (SAML/SSO-Rundreise) das angeforderte Laden, meldet Firefox
+`NS_BINDING_ABORTED`; das gilt nicht als Fehler: der Adapter wartet bis zu 15 s, bis der Tab wieder auf dem Origin
+der angeforderten Adresse ruhig ist, und liest dann die Zielseite (bleibt er auf einer Anmeldeseite, wird diese nach
+Ablauf genommen und als Anmeldung erkannt). Jede geöffnete oder gelesene Seite wird danach geprüft (`ChatBrowser#probe`, ohne die Seite zu verändern):
 
 - **Einwilligungsbanner** (Cookie/Consent, übliche Banner-Ids, sichtbar und mit Schaltflächen): Die Werkzeugantwort
   nennt die Schaltflächen und weist das Modell an, mit `browser_controls`/`browser_act` die sparsamste Option zu wählen

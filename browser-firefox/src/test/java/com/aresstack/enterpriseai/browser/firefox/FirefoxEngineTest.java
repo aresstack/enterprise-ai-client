@@ -56,4 +56,13 @@ public class FirefoxEngineTest {
         assertEquals(null, FirefoxEngine.locate(folder.getRoot().toPath().resolve("no-firefox").toString(),
                 java.util.Collections.<String, String>emptyMap(), "Linux"));
     }
+
+    @Test
+    public void redirectAbortIsRecognisedAndOriginsMatchLocationOrigin() {
+        assertTrue(BidiBrowserConnection.isAbortedByRedirect(new RuntimeException("Error: NS_BINDING_ABORTED")));
+        assertTrue(!BidiBrowserConnection.isAbortedByRedirect(new RuntimeException("Error: NS_ERROR_UNKNOWN_HOST")));
+        assertEquals("https://mapz.example", BidiBrowserConnection.originOf("https://MAPZ.example:443/a/b.html?x"));
+        assertEquals("http://intra.example:8080", BidiBrowserConnection.originOf("http://intra.example:8080/"));
+        assertEquals(null, BidiBrowserConnection.originOf("about:blank"));
+    }
 }
