@@ -137,6 +137,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             "Browser nicht verfügbar: Firefox nicht gefunden oder Browser-Werkzeuge im Reiter „Tools“ aus";
     static final String KNOWLEDGE_ON_TOOLTIP = "Wissensquellen für diesen Chat sind an (Klick: aus)";
     static final String KNOWLEDGE_OFF_TOOLTIP = "Wissensquellen für diesen Chat einschalten";
+    static final String BUDGET_TOOLTIP = "Browser-Budget: %d Werkzeugrunden je Antwort (Klick: ändern)";
+    static final String BUDGET_LABEL = "Browser-Budget";
     static final String BOTH_ON_WARNING = "Browser und interne Wissensquellen sind gleichzeitig aktiv. "
             + "Inhalte aus Wissensquellen können in Browseraufrufe einfließen.";
     private static final Color WARNING_ACCENT = ResearchUiPalette.FIND_AMBER;
@@ -158,6 +160,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private final ComposerButton phaseButton;
     /** Composer switch "Browser" of this chat (#141): latched when on. */
     private final ComposerButton browserButton;
+    /** The small arrow at the globe: opens the browser budget (#141). */
+    private final ComposerButton budgetButton;
+    private int browserBudget;
+    private int[] budgetRange = {1, 999, 4, 60};
+    private java.util.function.IntConsumer budgetListener = value -> { };
+    private BrowserBudgetPopup lastBudgetPopup;
     /** Composer switch "Wissensquellen" of this chat (#141): latched when on. */
     private final ComposerButton knowledgeButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
@@ -233,6 +241,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         phaseButton.setVisible(false);
         this.browserButton = ComposerButton.iconButton(ComposerIcons.globe(), BROWSER_OFF_TOOLTIP);
         browserButton.getAccessibleContext().setAccessibleName(BROWSER_LABEL);
+        this.budgetButton = new ComposerButton(ComposerIcons.chevronDown(), null, false, "");
+        budgetButton.setPreferredSize(new Dimension(14, 28));
+        budgetButton.setMaximumSize(new Dimension(14, 28));
+        budgetButton.getAccessibleContext().setAccessibleName(BUDGET_LABEL);
+        budgetButton.addActionListener(event -> openBudgetPopup());
+        showBrowserBudget(20);
         this.knowledgeButton = ComposerButton.iconButton(ComposerIcons.openBook(), KNOWLEDGE_ON_TOOLTIP);
         knowledgeButton.getAccessibleContext().setAccessibleName(KNOWLEDGE_LABEL);
         showCapabilities(false, false, true);
@@ -995,6 +1009,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         east.add(knowledgeButton);
         east.add(Box.createHorizontalStrut(4));
         east.add(browserButton);
+        east.add(budgetButton);
         east.add(Box.createHorizontalStrut(4));
         east.add(attachButton);
         east.add(Box.createHorizontalStrut(4));
@@ -1435,6 +1450,41 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         return browserButton;
     }
 
+    /**
+     * Sets the range of the browser budget (any value {@code min}..{@code max}, slider {@code sliderMin}..
+     * {@code sliderMax}) and who hears a change (#141).
+     */
+    public void configureBrowserBudget(int min, int max, int sliderMin, int sliderMax,
+                                       java.util.function.IntConsumer listener) {
+        this.budgetRange = new int[]{min, max, sliderMin, sliderMax};
+        this.budgetListener = listener == null ? value -> { } : listener;
+    }
+
+    /** Shows the browser budget of the current chat in the arrow's tooltip. */
+    public void showBrowserBudget(int rounds) {
+        this.browserBudget = rounds;
+        budgetButton.setToolTipText(String.format(BUDGET_TOOLTIP, rounds));
+    }
+
+    ComposerButton budgetButton() {
+        return budgetButton;
+    }
+
+    BrowserBudgetPopup lastBudgetPopup() {
+        return lastBudgetPopup;
+    }
+
+    void openBudgetPopup() {
+        lastBudgetPopup = new BrowserBudgetPopup(browserBudget, budgetRange[0], budgetRange[1], budgetRange[2],
+                budgetRange[3], value -> {
+                    showBrowserBudget(value);
+                    budgetListener.accept(value);
+                });
+        if (budgetButton.isShowing()) {
+            lastBudgetPopup.show(budgetButton, 0, budgetButton.getHeight());
+        }
+    }
+
     /** The composer switch "Wissensquellen" (#141); callers attach the toggle action. */
     public ComposerButton knowledgeButton() {
         return knowledgeButton;
@@ -1448,6 +1498,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         boolean browserShown = browserOn && browserAvailable;
         boolean both = browserShown && knowledgeOn;
         browserButton.setEnabled(browserAvailable);
+        budgetButton.setEnabled(browserAvailable);
+        budgetButton.setGlyphTint(browserShown ? ResearchUiPalette.ACCENT_BLUE : ResearchUiPalette.LIGHT_TEXT_MUTED);
         // Icon-only like attach/mic: the state shows in the glyph color only (on = accent, off = muted).
         browserButton.setGlyphTint(both ? WARNING_ACCENT : browserShown ? ResearchUiPalette.ACCENT_BLUE
                 : ResearchUiPalette.LIGHT_TEXT_MUTED);

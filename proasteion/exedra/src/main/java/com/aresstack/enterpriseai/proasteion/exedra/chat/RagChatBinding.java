@@ -188,6 +188,8 @@ public final class RagChatBinding implements ChatShellActions {
     private boolean conversationHasAttachments; // nur UI-Thread
     /** Composer switch "Browser" of the current chat (#141): off by default; UI thread only. */
     private boolean browserAllowed;
+    /** Tool rounds of a turn with the browser on; see {@link BrowserBudget}. */
+    private int browserBudget = BrowserBudget.DEFAULT;
     /** Composer switch "Wissensquellen" of the current chat (#141): on by default; UI thread only. */
     private boolean knowledgeAllowed = true;
     private final List<Runnable> capabilityListeners = new java.util.concurrent.CopyOnWriteArrayList<Runnable>();
@@ -268,6 +270,7 @@ public final class RagChatBinding implements ChatShellActions {
         this.conversationHasAttachments = hasAttachments;
         // A new or opened chat starts with the defaults; an opened chat then sets its saved switches.
         setCapabilities(false, true);
+        setBrowserBudget(BrowserBudget.DEFAULT);
         this.bookmarks.clear();
         if (pages != null) {
             for (ChatBookmark page : pages) {
@@ -291,6 +294,23 @@ public final class RagChatBinding implements ChatShellActions {
         for (Runnable listener : capabilityListeners) {
             listener.run();
         }
+    }
+
+    /** Sets the browser budget of the current chat (tool rounds, from the next turn on); see {@link BrowserBudget}. */
+    public void setBrowserBudget(int rounds) {
+        int value = BrowserBudget.of(rounds);
+        if (value == browserBudget) {
+            return;
+        }
+        browserBudget = value;
+        for (Runnable listener : capabilityListeners) {
+            listener.run();
+        }
+    }
+
+    /** The browser budget of the current chat in tool rounds. */
+    public int browserBudget() {
+        return browserBudget;
     }
 
     /** Whether the current chat may use its browser (composer switch, #141). */
@@ -462,6 +482,7 @@ public final class RagChatBinding implements ChatShellActions {
         // The composer switches of this turn (#141); toggling later does not change a running answer.
         final boolean knowledgeOn = knowledgeAllowed;
         final boolean browserOn = browserAllowed && tools != null && tools.browserReady();
+        final int turnBrowserBudget = browserBudget;
         RagOptions ragOptions = RagOptions.disabled();
         if (ragEnabled && knowledgeOn) {
             if (!sources.isRestricted()) {
@@ -616,7 +637,7 @@ public final class RagChatBinding implements ChatShellActions {
                             via = new ChatCompletionsToolLoop(support.chat(),
                                     new ToolRegistry(available, support::isEnabled), support.loopExecutor(),
                                     activity(listener, request, conversation, support, chatPages),
-                                    support.maxRounds());
+                                    BrowserBudget.roundsFor(browserOn, turnBrowserBudget, support.maxRounds()));
                             if (capabilityQuestion) {
                                 via = new FixedAnswerPort(ToolCapabilities.answer(definitions(available, support),
                                         chatOptions == null ? null : chatOptions.model()));

@@ -183,6 +183,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
             chat.restoreKnowledgeContext(target, openedKnowledge.getQueries(), ids, openedKnowledge.getScope());
         }
         chat.setCapabilities(record.isBrowserAllowed(), record.isKnowledgeAllowed());
+        chat.setBrowserBudget(record.getBrowserBudget());
         recordedConversation = target;
         createdAt = record.getCreatedAt();
         renamedTitle = record.isTitleEdited() ? record.getTitle() : null;
@@ -452,6 +453,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         record.setKnowledgeContext(knowledgeOf(conversation));
         record.setBrowserAllowed(chat.browserAllowed());
         record.setKnowledgeAllowed(chat.knowledgeAllowed());
+        record.setBrowserBudget(chat.browserBudget() == BrowserBudget.DEFAULT ? 0 : chat.browserBudget());
         if (renamedTitle != null) {
             record.rename(renamedTitle);
         } else {

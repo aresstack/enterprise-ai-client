@@ -22,6 +22,8 @@ public final class ChatRecord {
     private Boolean browserAllowed;
     /** Composer switch "Wissensquellen" (#141); {@code null} in older chats means on. */
     private Boolean knowledgeAllowed;
+    /** Tool rounds of a turn with the browser switch on (#141); {@code null} or 0: the default. */
+    private Integer browserBudget;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -112,5 +114,14 @@ public final class ChatRecord {
 
     public void setKnowledgeAllowed(boolean knowledgeAllowed) {
         this.knowledgeAllowed = knowledgeAllowed;
+    }
+
+    /** The chat's browser budget in tool rounds (#141), 0 when the chat keeps the default. */
+    public int getBrowserBudget() {
+        return browserBudget == null ? 0 : Math.max(0, browserBudget);
+    }
+
+    public void setBrowserBudget(int browserBudget) {
+        this.browserBudget = browserBudget <= 0 ? null : browserBudget;
     }
 }

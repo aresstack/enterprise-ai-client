@@ -180,3 +180,10 @@ XHR). Das folgt später über das Abfangen von Netzwerkanfragen per WebDriver Bi
   Anforderung: `./gradlew :browser-firefox:test -Denterpriseai.firefox.it=true`.
 - Manueller Smoke-Test unter Windows: im Chat `browser_navigate` aufrufen, Firefox von Hand schließen, erneut
   `browser_read` aufrufen. Erwartet: Firefox startet mit demselben Profil neu, Cookies und Consent bleiben.
+
+## Browser-Budget
+
+Mit eingeschaltetem 🌐 darf eine Antwort mehr Werkzeugrunden verwenden als das allgemeine Limit
+(`chat.tools.maxRounds`, Standard 8): standardmäßig 20, nie weniger als das allgemeine Limit.
+Der kleine Pfeil rechts neben dem Globus öffnet ein Feld (beliebiger Wert 1–999) und einen
+Schieberegler (4–60). Der Wert gilt je Chat, wird mit dem Chat gespeichert und gilt ab der nächsten Antwort.
