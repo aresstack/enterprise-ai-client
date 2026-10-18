@@ -163,6 +163,8 @@ public final class ShellAssembly {
                     .withMaxRounds(() -> root.config().chat().maxToolRounds())
                     // Diagnose: Werkzeugaufrufe protokollieren, wenn chat.diagnostics.turnAnalysis an ist.
                     .withDiagnostics(root.turnDiagnostics())
+                    // #141: with Firefox found and its tools on, every turn may use the chat's browser.
+                    .withToolPathWhen(root::browserReady)
                     // Tools bound to the turn's chat: memories (#144), project files (#143), browser (#141).
                     .withChatTools(chatId -> {
                         List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> tools =
