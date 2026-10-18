@@ -137,7 +137,16 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
     private static final Pattern PARTITION_CURSOR = Pattern.compile("p1\\.([A-Za-z0-9_-]{1,400})\\.([0-9]{1,9})");
     private static final String CHANGES_CURSOR_PREFIX = "c1.";
     private static final String TRASH_CURSOR_PREFIX = "t1.";
-    private static final Pattern LINK_CURSOR = Pattern.compile("[ct]1\\.([A-Za-z0-9_-]{1,400})\\.([A-Za-z0-9_-]{1,8000})");
+    private static final Pattern CHANGES_CURSOR = Pattern.compile(
+            "c1\\.([A-Za-z0-9_-]{1,400})\\.([0-9]{1,9})\\.([0-9]{1,18})\\.([0-9]{1,9})");
+    private static final Pattern TRASH_CURSOR = Pattern.compile("t1\\.([A-Za-z0-9_-]{1,400})\\.([0-9]{1,9})");
+    /** Uhr dieses Prozesses für die Dauer seit dem ersten Stapel einer Änderungsabfrage; in Tests verstellbar. */
+    java.util.function.LongSupplier millis = new java.util.function.LongSupplier() {
+        @Override
+        public long getAsLong() {
+            return System.currentTimeMillis();
+        }
+    };
 
     /** Key and start point prefix of a space ({@link ConfluenceIds#startPoint}). */
     static final String SPACE_PREFIX = "space:";
@@ -636,34 +645,56 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
 
     /**
      * Seiten des Space, die innerhalb von {@code within} angelegt oder geändert wurden: eine CQL-Anfrage
-     * {@code lastmodified >= now("-Nm")}, auf volle Minuten aufgerundet. Der Cursor trägt den Folgelink von Confluence
-     * und damit das Zeitfenster des ersten Stapels.
+     * {@code lastmodified >= now("-Nm")}, auf volle Minuten aufgerundet, jüngste Änderung zuerst.
+     *
+     * <p>Confluence wertet {@code now()} bei jedem Stapel neu aus. Damit beim Blättern nichts aus dem Fenster fällt,
+     * verlängert jeder Folgestapel das Fenster um die seit dem ersten Stapel vergangenen Minuten (eine Dauer auf der
+     * Uhr dieses Prozesses, keine Uhrzeit). Wird eine Seite währenddessen erneut geändert, rückt sie nach vorn: Sie
+     * kann in diesem Durchlauf fehlen, nie aber eine andere verdrängen; die nächste Abfrage ab dem Beginn dieses
+     * Durchlaufs findet sie.
      */
     @Override
-    public PartitionResources changedResources(final String partitionKey, Duration within, String cursor,
-                                               final int limit) throws KnowledgeSourceException {
+    public PartitionResources changedResources(String partitionKey, Duration within, String cursor, int limit)
+            throws KnowledgeSourceException {
+        int batchSize = batchSize(limit);
         final boolean first = cursor == null || cursor.isEmpty();
-        if (first && (within == null || within.isNegative() || within.isZero())) {
-            throw new IllegalArgumentException("within must be positive");
-        }
-        long minutes = 0L;
+        long minutes;
+        long startedAtMillis;
+        int start;
         if (first) {
+            if (within == null || within.isNegative() || within.isZero()) {
+                throw new IllegalArgumentException("within must be positive");
+            }
             long seconds = within.getSeconds() + (within.getNano() > 0 ? 1L : 0L);
             minutes = Math.max(1L, (seconds + 59L) / 60L);
+            startedAtMillis = millis.getAsLong();
+            start = 0;
+        } else {
+            long[] parsed = changesCursor(partitionKey, cursor);
+            minutes = parsed[0];
+            startedAtMillis = parsed[1];
+            start = (int) parsed[2];
         }
-        String path = first ? ConfluenceRestClient.changedPagesPath(partitionKey, minutes, batchSize(limit))
-                : linkCursorPath(CHANGES_CURSOR_PREFIX, partitionKey, cursor);
-        return linkedResources(partitionKey, first, path, CHANGES_CURSOR_PREFIX, "Geänderte Seiten des Space");
+        long elapsed = Math.max(0L, millis.getAsLong() - startedAtMillis);
+        long window = minutes + (elapsed + 59_999L) / 60_000L;
+        ConfluenceRestClient.CountedPageBatch batch = countedBatch(partitionKey, first,
+                ConfluenceRestClient.changedPagesPath(partitionKey, window, start, batchSize),
+                "Geänderte Seiten des Space");
+        return new PartitionResources(resources(batch), batch.more ? CHANGES_CURSOR_PREFIX + encodedKey(partitionKey)
+                + "." + minutes + "." + startedAtMillis + "." + (start + batch.consumed) : "");
     }
 
     /** Seiten im Papierkorb des Space ({@code status=trashed}); in Confluence für alle Benutzer gelöscht. */
     @Override
     public PartitionResources removedResources(String partitionKey, String cursor, int limit)
             throws KnowledgeSourceException {
+        int batchSize = batchSize(limit);
         boolean first = cursor == null || cursor.isEmpty();
-        String path = first ? ConfluenceRestClient.trashedPagesPath(partitionKey, batchSize(limit))
-                : linkCursorPath(TRASH_CURSOR_PREFIX, partitionKey, cursor);
-        return linkedResources(partitionKey, first, path, TRASH_CURSOR_PREFIX, "Papierkorb des Space");
+        int start = first ? 0 : trashCursorStart(partitionKey, cursor);
+        ConfluenceRestClient.CountedPageBatch batch = countedBatch(partitionKey, first,
+                ConfluenceRestClient.trashedPagesPath(partitionKey, start, batchSize), "Papierkorb des Space");
+        return new PartitionResources(resources(batch), batch.more
+                ? TRASH_CURSOR_PREFIX + encodedKey(partitionKey) + "." + (start + batch.consumed) : "");
     }
 
     private static int batchSize(int limit) {
@@ -673,93 +704,59 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
         return Math.min(limit, MAX_PARTITION_BATCH);
     }
 
-    private PartitionResources linkedResources(final String partitionKey, final boolean first, final String path,
-                                               String cursorPrefix, final String what)
+    private ConfluenceRestClient.CountedPageBatch countedBatch(final String partitionKey, final boolean first,
+                                                               final String path, final String what)
             throws KnowledgeSourceException {
         if (!ConfluenceIds.isSpaceKey(partitionKey)) {
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Kein Space dieser Quelle: " + partitionKey);
         }
-        ConfluenceRestClient.LinkedPageBatch batch = withSession(
-                new Operation<ConfluenceRestClient.LinkedPageBatch>() {
-                    @Override
-                    public ConfluenceRestClient.LinkedPageBatch run(Session session) throws KnowledgeSourceException {
-                        // Ein unbekannter Space liefert eine leere Liste; nur am Anfang eigens nachfragen.
-                        if (first && client.space(session, partitionKey) == null) {
-                            throw new KnowledgeSourceException(Kind.NOT_FOUND, "Space nicht gefunden: " + partitionKey);
-                        }
-                        return client.linkedPageBatch(session, path, what);
-                    }
-                });
+        return withSession(new Operation<ConfluenceRestClient.CountedPageBatch>() {
+            @Override
+            public ConfluenceRestClient.CountedPageBatch run(Session session) throws KnowledgeSourceException {
+                // Ein unbekannter Space liefert eine leere Liste; nur am Anfang eigens nachfragen.
+                if (first && client.space(session, partitionKey) == null) {
+                    throw new KnowledgeSourceException(Kind.NOT_FOUND, "Space nicht gefunden: " + partitionKey);
+                }
+                return client.countedPageBatch(session, path, what);
+            }
+        });
+    }
+
+    private List<KnowledgeResource> resources(ConfluenceRestClient.CountedPageBatch batch) {
         List<KnowledgeResource> resources = new ArrayList<KnowledgeResource>();
         for (Page page : batch.pages) {
             resources.add(pageResource(page, page.parentId));
         }
-        return new PartitionResources(resources,
-                batch.next == null ? "" : linkCursor(cursorPrefix, partitionKey, batch.next));
+        return resources;
     }
 
-    /** Cursor {@code <Präfix><Space-Key Base64url>.<Folgelink Base64url>}; der Space-Key bindet ihn an seine Partition. */
-    static String linkCursor(String prefix, String spaceKey, String next) {
-        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
-        return prefix + encoder.encodeToString(spaceKey.getBytes(StandardCharsets.UTF_8)) + "."
-                + encoder.encodeToString(next.getBytes(StandardCharsets.UTF_8));
+    private static String encodedKey(String spaceKey) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(spaceKey.getBytes(StandardCharsets.UTF_8));
     }
 
-    /**
-     * Folgelink aus einem Cursor von {@link #linkCursor}; {@code UNSUPPORTED}, wenn er nicht von dieser Art Liste und
-     * nicht aus diesem Space stammt. Geprüft werden Space-Key und Folgelink: er muss dieselbe Anfrage für denselben
-     * Space stellen, sonst könnte ein manipulierter Cursor beliebige REST-Pfade abrufen.
-     */
-    private static String linkCursorPath(String prefix, String spaceKey, String cursor)
-            throws KnowledgeSourceException {
-        Matcher matcher = LINK_CURSOR.matcher(cursor);
-        if (cursor.startsWith(prefix) && matcher.matches()) {
-            try {
-                Base64.Decoder decoder = Base64.getUrlDecoder();
-                String key = new String(decoder.decode(matcher.group(1)), StandardCharsets.UTF_8);
-                String next = new String(decoder.decode(matcher.group(2)), StandardCharsets.UTF_8);
-                if (spaceKey.equals(key) && sameListing(prefix, spaceKey, next)) {
-                    return next;
-                }
-            } catch (IllegalArgumentException e) {
-                // fällt auf UNSUPPORTED durch
-            }
+    /** Fenster in Minuten, Beginn (Millisekunden dieses Prozesses) und Position aus einem Änderungs-Cursor. */
+    private static long[] changesCursor(String spaceKey, String cursor) throws KnowledgeSourceException {
+        Matcher matcher = CHANGES_CURSOR.matcher(cursor);
+        if (matcher.matches() && spaceKey.equals(decodedKey(matcher.group(1)))) {
+            return new long[] {Long.parseLong(matcher.group(2)), Long.parseLong(matcher.group(3)),
+                    Long.parseLong(matcher.group(4))};
         }
         throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Cursor gehört nicht zu Space " + spaceKey);
     }
 
-    private static boolean sameListing(String prefix, String spaceKey, String next) {
-        if (next.contains("//") || next.indexOf('#') >= 0) {
-            return false;
+    private static int trashCursorStart(String spaceKey, String cursor) throws KnowledgeSourceException {
+        Matcher matcher = TRASH_CURSOR.matcher(cursor);
+        if (matcher.matches() && spaceKey.equals(decodedKey(matcher.group(1)))) {
+            return Integer.parseInt(matcher.group(2));
         }
-        int question = next.indexOf('?');
-        if (question < 0) {
-            return false;
-        }
-        String path = next.substring(0, question);
-        Map<String, String> query = new LinkedHashMap<String, String>();
-        for (String pair : next.substring(question + 1).split("&")) {
-            int equals = pair.indexOf('=');
-            String name = decode(equals < 0 ? pair : pair.substring(0, equals));
-            if (query.put(name, equals < 0 ? "" : decode(pair.substring(equals + 1))) != null) {
-                return false; // doppelte Parameter: nicht eindeutig
-            }
-        }
-        if (CHANGES_CURSOR_PREFIX.equals(prefix)) {
-            String cql = query.get("cql");
-            return "/rest/api/content/search".equals(path) && cql != null
-                    && cql.startsWith("space=\"" + spaceKey + "\" AND type=page AND lastmodified >= now(\"-")
-                    && cql.endsWith("m\") ORDER BY lastmodified");
-        }
-        return "/rest/api/content".equals(path) && spaceKey.equals(query.get("spaceKey"))
-                && "trashed".equals(query.get("status")) && "page".equals(query.get("type"));
+        throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Cursor gehört nicht zu Space " + spaceKey);
     }
 
-    private static String decode(String value) {
+    private static String decodedKey(String encoded) {
         try {
-            return java.net.URLDecoder.decode(value, "UTF-8");
-        } catch (java.io.UnsupportedEncodingException e) {
-            throw new IllegalStateException(e);
+            return new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

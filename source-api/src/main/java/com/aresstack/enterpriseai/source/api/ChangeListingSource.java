@@ -11,7 +11,8 @@ import java.time.Duration;
  * <p>Callers check with {@code instanceof}. Paging works as in {@link PartitionListingSource}: {@code ""} for the first
  * batch, then {@link PartitionResources#nextCursor()} until it is empty. Cursors are opaque, bound to their partition
  * and to the kind of listing; a foreign cursor is rejected with {@code UNSUPPORTED}. A cursor keeps the time window
- * of its first batch, so paging stays consistent while time passes.
+ * of its first batch: nothing changed before the first batch is lost while paging. A resource changed again while
+ * paging may be reported twice or not at all in this pass; a following query from the start of this pass finds it.
  *
  * <p>The time window is relative to the clock of the source, not of the caller: there is no time zone or clock skew
  * to convert. Callers add a small overlap to the time since their last query; a resource reported twice is harmless.
@@ -21,7 +22,7 @@ public interface ChangeListingSource {
 
     /**
      * Return one batch of the resources of a partition that were created or modified within the last {@code within},
-     * oldest change first. Resources the caller may not see are missing, as in every other listing.
+     * newest change first. Resources the caller may not see are missing, as in every other listing.
      *
      * @param partitionKey the key of a partition of this source ({@link SourcePartition#key()})
      * @param within       how far back to look, positive; sources round it up to their granularity (Confluence:

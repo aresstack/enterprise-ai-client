@@ -39,6 +39,12 @@ public class ConfluenceChangeListingTest {
         confluence.page("200", "Runbook", "OPS", "<p>Ops</p>").version(9, "2026-10-18T11:59:00.000Z");
         source = new ConfluenceKnowledgeSource(SOURCE, ConfluenceConfig.builder(FakeConfluence.BASE)
                 .credentialRef(RecordingSecretProvider.REF).build(), confluence, new RecordingSecretProvider());
+        source.millis = new java.util.function.LongSupplier() {
+            @Override
+            public long getAsLong() {
+                return 0L;
+            }
+        };
     }
 
     private static KnowledgeResourceId page(String id) {
@@ -54,22 +60,23 @@ public class ConfluenceChangeListingTest {
     }
 
     @Test
-    public void listsPagesOfTheSpaceChangedWithinTheWindowOldestFirstWithOneQuery() throws Exception {
+    public void listsPagesOfTheSpaceChangedWithinTheWindowNewestFirstWithOneQuery() throws Exception {
         int before = confluence.requests().size();
 
         PartitionResources batch = source.changedResources("DEV", Duration.ofMinutes(5), "", 100);
 
-        assertEquals(java.util.Arrays.asList(page("101"), page("103")), ids(batch));
+        assertEquals(java.util.Arrays.asList(page("103"), page("101")), ids(batch));
         assertTrue(batch.complete());
         String cql = confluence.lastCql;
-        assertEquals("space=\"DEV\" AND type=page AND lastmodified >= now(\"-5m\") ORDER BY lastmodified", cql);
+        assertEquals("space=\"DEV\" AND type=page AND lastmodified >= now(\"-5m\") ORDER BY lastmodified DESC",
+                cql);
         // Space-Prüfung und genau eine CQL-Anfrage
         assertEquals(2, confluence.requests().size() - before);
     }
 
     @Test
     public void deliversRevisionAndParentButNoContent() throws Exception {
-        KnowledgeResource guide = source.changedResources("DEV", Duration.ofMinutes(5), "", 100).resources().get(0);
+        KnowledgeResource guide = source.changedResources("DEV", Duration.ofMinutes(5), "", 100).resources().get(1);
 
         assertEquals("Guide", guide.title());
         assertEquals(page("100"), guide.parentId().get());
@@ -91,7 +98,7 @@ public class ConfluenceChangeListingTest {
     @Test
     public void pagesThroughChangesAndKeepsTheWindowOfTheFirstBatch() throws Exception {
         PartitionResources first = source.changedResources("DEV", Duration.ofHours(1), "", 1);
-        assertEquals(java.util.Arrays.asList(page("102")), ids(first));
+        assertEquals(java.util.Arrays.asList(page("103")), ids(first));
         assertFalse(first.complete());
 
         List<KnowledgeResourceId> rest = new ArrayList<KnowledgeResourceId>();
@@ -102,8 +109,44 @@ public class ConfluenceChangeListingTest {
             cursor = batch.nextCursor();
         }
 
-        assertEquals(java.util.Arrays.asList(page("101"), page("103")), rest);
+        assertEquals(java.util.Arrays.asList(page("101"), page("102")), rest);
         assertTrue(confluence.lastCql, confluence.lastCql.contains("now(\"-60m\")"));
+    }
+
+    @Test
+    public void laterBatchesWidenTheWindowByTheTimeSpentPaging() throws Exception {
+        final long[] now = {1_000_000L};
+        source.millis = new java.util.function.LongSupplier() {
+            @Override
+            public long getAsLong() {
+                return now[0];
+            }
+        };
+        String cursor = source.changedResources("DEV", Duration.ofMinutes(31), "", 1).nextCursor();
+        // Confluence's now() moved on by two and a half minutes; the window grows by three.
+        now[0] += 150_000L;
+        confluence.now = confluence.now.plusSeconds(150);
+
+        PartitionResources second = source.changedResources("DEV", Duration.ofMinutes(1), cursor, 1);
+
+        assertTrue(confluence.lastCql, confluence.lastCql.contains("now(\"-34m\")"));
+        assertEquals(java.util.Arrays.asList(page("101")), ids(second));
+    }
+
+    @Test
+    public void aPageChangedAgainWhilePagingDoesNotPushAnUnreadOneOut() throws Exception {
+        String cursor = source.changedResources("DEV", Duration.ofHours(1), "", 1).nextCursor();
+        // 102 changes again and moves to the front; 101 and 102 must still come.
+        confluence.pages.get("102").version(3, "2026-10-18T11:59:59.000Z");
+
+        List<KnowledgeResourceId> rest = new ArrayList<KnowledgeResourceId>();
+        while (!cursor.isEmpty()) {
+            PartitionResources batch = source.changedResources("DEV", Duration.ofMinutes(1), cursor, 1);
+            rest.addAll(ids(batch));
+            cursor = batch.nextCursor();
+        }
+
+        assertTrue(rest.toString(), rest.contains(page("101")));
     }
 
     @Test
@@ -172,8 +215,9 @@ public class ConfluenceChangeListingTest {
         assertFalse(devTrash.isEmpty());
 
         String partition = source.resources("DEV", "", 1).nextCursor();
-        for (String cursor : new String[] {opsChanges, devTrash, partition, "2",
-                ConfluenceKnowledgeSource.linkCursor("c1.", "DEV", "/rest/api/content/100?expand=body.storage")}) {
+        String dev = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString("DEV".getBytes("UTF-8"));
+        for (String cursor : new String[] {opsChanges, devTrash, partition, "2", "c1." + dev + ".5.0",
+                "c1." + dev + ".5.0.1.2", "c1." + dev + ".-5.0.1", "c1.%%%.5.0.1"}) {
             try {
                 source.changedResources("DEV", Duration.ofMinutes(5), cursor, 1);
                 fail("expected UNSUPPORTED for changes with " + cursor);
@@ -181,11 +225,8 @@ public class ConfluenceChangeListingTest {
                 assertEquals(Kind.UNSUPPORTED, e.kind());
             }
         }
-        for (String cursor : new String[] {opsChanges, partition, "2",
-                ConfluenceKnowledgeSource.linkCursor("t1.", "DEV",
-                        "/rest/api/content?type=page&status=trashed&spaceKey=OPS&start=1&limit=1"),
-                ConfluenceKnowledgeSource.linkCursor("t1.", "DEV",
-                        "/rest/api/content?type=page&status=trashed&spaceKey=DEV&spaceKey=OPS&start=1")}) {
+        for (String cursor : new String[] {opsChanges, partition, "2", "t1." + dev, "t1." + dev + ".x",
+                "t1.T1BT.1"}) {
             try {
                 source.removedResources("DEV", cursor, 1);
                 fail("expected UNSUPPORTED for the trash with " + cursor);

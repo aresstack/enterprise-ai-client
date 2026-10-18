@@ -29,7 +29,7 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
 
     private static final String ID_CQL = "type=page AND id in (";
     private static final java.util.regex.Pattern CHANGED_CQL = java.util.regex.Pattern.compile(
-            "space=\"([^\"]+)\" AND type=page AND lastmodified >= now\\(\"-([0-9]+)m\"\\) ORDER BY lastmodified");
+            "space=\"([^\"]+)\" AND type=page AND lastmodified >= now\\(\"-([0-9]+)m\"\\) ORDER BY lastmodified DESC");
 
     private static java.time.Instant modified(FakePage page) {
         return java.time.OffsetDateTime.parse(page.when).toInstant();
@@ -286,7 +286,7 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
                 Collections.sort(recent, new java.util.Comparator<FakePage>() {
                     @Override
                     public int compare(FakePage a, FakePage b) {
-                        return modified(a).compareTo(modified(b));
+                        return modified(b).compareTo(modified(a));
                     }
                 });
                 found = new ArrayList<String>();
