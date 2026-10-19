@@ -28,6 +28,9 @@ public final class ChatRecord {
     private Integer browserTabs;
     /** Maximum random delay before a tab in ms (#141); {@code null}: none. */
     private Integer browserTabDelay;
+    /** Human Emulation and mouse movements of the chat's browser (#141); {@code null}: off. */
+    private Boolean humanEmulation;
+    private Boolean humanMouse;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -145,5 +148,21 @@ public final class ChatRecord {
 
     public void setBrowserTabDelay(int browserTabDelay) {
         this.browserTabDelay = browserTabDelay <= 0 ? null : browserTabDelay;
+    }
+
+    public boolean isHumanEmulation() {
+        return Boolean.TRUE.equals(humanEmulation);
+    }
+
+    public void setHumanEmulation(boolean humanEmulation) {
+        this.humanEmulation = humanEmulation ? Boolean.TRUE : null;
+    }
+
+    public boolean isHumanMouse() {
+        return Boolean.TRUE.equals(humanMouse);
+    }
+
+    public void setHumanMouse(boolean humanMouse) {
+        this.humanMouse = humanMouse ? Boolean.TRUE : null;
     }
 }

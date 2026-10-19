@@ -193,6 +193,9 @@ public final class RagChatBinding implements ChatShellActions {
     /** Parallel tabs and maximum random delay of browser_open_many; see {@link BrowserLoad}. */
     private int browserTabs = BrowserLoad.DEFAULT_TABS;
     private int browserTabDelay = BrowserLoad.DEFAULT_DELAY;
+    /** Human Emulation (keys, scrolling, reading) and mouse movements of the chat's browser; both off by default. */
+    private boolean humanEmulation;
+    private boolean humanMouse;
     /** Composer switch "Wissensquellen" of the current chat (#141): on by default; UI thread only. */
     private boolean knowledgeAllowed = true;
     private final List<Runnable> capabilityListeners = new java.util.concurrent.CopyOnWriteArrayList<Runnable>();
@@ -275,6 +278,7 @@ public final class RagChatBinding implements ChatShellActions {
         setCapabilities(false, true);
         setBrowserBudget(BrowserBudget.DEFAULT);
         setBrowserLoad(BrowserLoad.DEFAULT_TABS, BrowserLoad.DEFAULT_DELAY);
+        setHumanEmulation(false, false);
         this.bookmarks.clear();
         if (pages != null) {
             for (ChatBookmark page : pages) {
@@ -324,6 +328,26 @@ public final class RagChatBinding implements ChatShellActions {
         for (Runnable listener : capabilityListeners) {
             listener.run();
         }
+    }
+
+    /** Sets Human Emulation and mouse movements of the current chat's browser (independent of each other). */
+    public void setHumanEmulation(boolean emulation, boolean mouse) {
+        if (emulation == humanEmulation && mouse == humanMouse) {
+            return;
+        }
+        humanEmulation = emulation;
+        humanMouse = mouse;
+        for (Runnable listener : capabilityListeners) {
+            listener.run();
+        }
+    }
+
+    public boolean humanEmulation() {
+        return humanEmulation;
+    }
+
+    public boolean humanMouse() {
+        return humanMouse;
     }
 
     public int browserTabs() {

@@ -36,6 +36,10 @@ final class BrowserBudgetPopup extends JPopupMenu {
     static final String TITLE = "Werkzeugrunden je Antwort mit Browser";
     static final String TABS_TITLE = "Parallele Tabs";
     static final String DELAY_TITLE = "Zufällige Verzögerung je Tab (max. ms)";
+    static final String HUMAN_TITLE = "Human Emulation";
+    static final String HUMAN_TIP = "Unregelmäßiges Tippen, Scrollen in Etappen und Lesepausen (nur im Browser)";
+    static final String MOUSE_TITLE = "Mausbewegungen";
+    static final String MOUSE_TIP = "Zittern und Umwege des Browser-Zeigers; deine eigene Maus bleibt frei";
     /** Height of the bubble's pointer above the content. */
     private static final int POINTER = 8;
 
@@ -61,6 +65,23 @@ final class BrowserBudgetPopup extends JPopupMenu {
         }
     }
 
+    /** The definition of one checkbox. */
+    static final class Check {
+
+        final String title;
+        final String tooltip;
+        final boolean value;
+        final java.util.function.Consumer<Boolean> listener;
+
+        Check(String title, String tooltip, boolean value, java.util.function.Consumer<Boolean> listener) {
+            this.title = title;
+            this.tooltip = tooltip;
+            this.value = value;
+            this.listener = listener == null ? v -> { } : listener;
+        }
+    }
+
+    private final List<javax.swing.JCheckBox> checkBoxes = new ArrayList<javax.swing.JCheckBox>();
     private final List<SpinnerNumberModel> numbers = new ArrayList<SpinnerNumberModel>();
     private final List<JSlider> sliders = new ArrayList<JSlider>();
 
@@ -69,7 +90,11 @@ final class BrowserBudgetPopup extends JPopupMenu {
                 new Row(TITLE, value, min, max, sliderMin, sliderMax, listener)));
     }
 
-    BrowserBudgetPopup(final ComicPalette palette, List<Row> rows) {
+    BrowserBudgetPopup(ComicPalette palette, List<Row> rows) {
+        this(palette, rows, java.util.Collections.<Check>emptyList());
+    }
+
+    BrowserBudgetPopup(final ComicPalette palette, List<Row> rows, List<Check> checks) {
         setBorder(BorderFactory.createEmptyBorder());
         setOpaque(false);
         JPanel bubble = new JPanel(new BorderLayout()) {
@@ -105,6 +130,17 @@ final class BrowserBudgetPopup extends JPopupMenu {
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         for (Row row : rows) {
             addRow(content, row, palette);
+        }
+        for (final Check check : checks) {
+            final javax.swing.JCheckBox box = new javax.swing.JCheckBox(check.title, check.value);
+            box.setToolTipText(check.tooltip);
+            box.setOpaque(false);
+            box.setFont(ResearchUiTypography.semiBold(12f));
+            box.setForeground(palette.getInk());
+            box.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.addActionListener(event -> check.listener.accept(box.isSelected()));
+            content.add(box);
+            checkBoxes.add(box);
         }
         bubble.add(content, BorderLayout.CENTER);
         add(bubble);
@@ -186,6 +222,10 @@ final class BrowserBudgetPopup extends JPopupMenu {
 
     SpinnerNumberModel number(int row) {
         return numbers.get(row);
+    }
+
+    javax.swing.JCheckBox checkBox(int index) {
+        return checkBoxes.get(index);
     }
 
     int rowCount() {

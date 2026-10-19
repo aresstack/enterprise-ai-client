@@ -31,8 +31,36 @@ final class InputActions {
                 new SourceActions.PointerSourceActions.PointerParameters(), actions);
     }
 
+    /**
+     * Moves the mouse from ({@code fromX}, {@code fromY}) to ({@code x}, {@code y}) as {@code human} shapes the path
+     * and clicks the left button there.
+     */
+    static SourceActions click(double fromX, double fromY, long x, long y, HumanInput human) {
+        List<PointerSourceAction> actions = new ArrayList<PointerSourceAction>(human.path(fromX, fromY, x, y));
+        actions.add(new PointerSourceAction.PointerDownAction(0));
+        actions.add(new PauseAction(human.mouse() ? HOLD_MILLIS + human.keyPause() / 3 : HOLD_MILLIS));
+        actions.add(new PointerSourceAction.PointerUpAction(0));
+        return new SourceActions.PointerSourceActions(MOUSE,
+                new SourceActions.PointerSourceActions.PointerParameters(), actions);
+    }
+
+    /** Pointer moves only (reading), as {@code human} gives them. */
+    static SourceActions moves(List<PointerSourceAction> moves) {
+        return new SourceActions.PointerSourceActions(MOUSE,
+                new SourceActions.PointerSourceActions.PointerParameters(), moves);
+    }
+
+    /** {@link #typeReplacing(String)} with the key pauses of {@code human}. */
+    static SourceActions typeReplacing(String text, HumanInput human) {
+        return new SourceActions.KeySourceActions(KEYBOARD, human.withKeyPauses(keyActions(text)));
+    }
+
     /** Selects the focused field's content, deletes it and types {@code text} key by key. */
     static SourceActions typeReplacing(String text) {
+        return new SourceActions.KeySourceActions(KEYBOARD, keyActions(text));
+    }
+
+    private static List<KeySourceAction> keyActions(String text) {
         List<KeySourceAction> actions = new ArrayList<KeySourceAction>();
         actions.add(new KeySourceAction.KeyDownAction(BidiBrowserConnection.KEY_CONTROL));
         actions.add(new KeySourceAction.KeyDownAction("a"));
@@ -47,7 +75,7 @@ final class InputActions {
             actions.add(new KeySourceAction.KeyUpAction(key));
             i += Character.charCount(codePoint);
         }
-        return new SourceActions.KeySourceActions(KEYBOARD, actions);
+        return actions;
     }
 
     /** Presses and releases one key, e.g. {@link BidiBrowserConnection#KEY_ENTER}. */

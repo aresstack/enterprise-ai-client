@@ -475,6 +475,11 @@ public class BrowserMcpToolsTest {
         }
 
         @Override
+        public void setHumanEmulation(boolean keys, boolean mouse) {
+            calls.add("human " + keys + " " + mouse);
+        }
+
+        @Override
         public BrowserTab newTab(String url) throws BrowserException {
             check();
             calls.add("new " + url);
