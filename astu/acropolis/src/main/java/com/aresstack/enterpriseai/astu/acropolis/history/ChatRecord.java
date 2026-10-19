@@ -24,6 +24,10 @@ public final class ChatRecord {
     private Boolean knowledgeAllowed;
     /** Tool rounds of a turn with the browser switch on (#141); {@code null} or 0: the default. */
     private Integer browserBudget;
+    /** Parallel tabs of browser_open_many (#141); {@code null} or 0: the default. */
+    private Integer browserTabs;
+    /** Maximum random delay before a tab in ms (#141); {@code null}: none. */
+    private Integer browserTabDelay;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -123,5 +127,23 @@ public final class ChatRecord {
 
     public void setBrowserBudget(int browserBudget) {
         this.browserBudget = browserBudget <= 0 ? null : browserBudget;
+    }
+
+    /** Parallel tabs of browser_open_many (#141), 0 when the chat keeps the default. */
+    public int getBrowserTabs() {
+        return browserTabs == null ? 0 : Math.max(0, browserTabs);
+    }
+
+    public void setBrowserTabs(int browserTabs) {
+        this.browserTabs = browserTabs <= 0 ? null : browserTabs;
+    }
+
+    /** Maximum random delay before a tab in ms (#141), 0 for none. */
+    public int getBrowserTabDelay() {
+        return browserTabDelay == null ? 0 : Math.max(0, browserTabDelay);
+    }
+
+    public void setBrowserTabDelay(int browserTabDelay) {
+        this.browserTabDelay = browserTabDelay <= 0 ? null : browserTabDelay;
     }
 }

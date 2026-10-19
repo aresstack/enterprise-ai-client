@@ -1010,6 +1010,14 @@ public final class CompositionRoot {
         return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));
     }
 
+    /** How browser_open_many loads in {@code conversation} (#141): parallel tabs, maximum delay before a tab. */
+    public void setBrowserBatchLoad(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation, int tabs,
+                                    int maxDelayMillis) {
+        if (browserTools != null && conversation != null) {
+            browserTools.setBatchLoad(conversation, tabs, maxDelayMillis);
+        }
+    }
+
     /**
      * The active chat tools bound to {@code conversation} (#141: the chat's own browser), empty without a browser
      * engine. Switched off in the tab "Tools" means missing from the next request on.

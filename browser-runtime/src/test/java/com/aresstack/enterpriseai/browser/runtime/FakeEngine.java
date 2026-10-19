@@ -41,6 +41,10 @@ final class FakeEngine implements BrowserEngine {
     final Map<String, String> actionTargets = new java.util.concurrent.ConcurrentHashMap<String, String>();
     /** Page url to what a probe finds there; other pages are clear. */
     final Map<String, BrowserProbe> probes = new java.util.concurrent.ConcurrentHashMap<String, BrowserProbe>();
+    /** Urls whose load fails in navigateAll. */
+    final java.util.Set<String> failingLoads = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Every navigateAll call as its list of urls. */
+    final List<List<String>> waves = new CopyOnWriteArrayList<List<String>>();
     /** Every url fetched inside a page, in order; {@link #redirects} apply. */
     final List<String> fetches = new CopyOnWriteArrayList<String>();
     /** Every screenshot as "marks clipRef maxBytes", in order. */
@@ -185,6 +189,21 @@ final class FakeEngine implements BrowserEngine {
                 process.documents.merge(contextId, 1, Integer::sum);
                 process.tabs.put(contextId, new String[]{target, "Title of " + target});
             }
+        }
+
+        @Override
+        public Map<String, String> navigateAll(Map<String, String> urlByContext) throws BrowserException {
+            check();
+            process.engine.waves.add(new ArrayList<String>(urlByContext.values()));
+            Map<String, String> failures = new java.util.LinkedHashMap<String, String>();
+            for (Map.Entry<String, String> entry : urlByContext.entrySet()) {
+                if (process.engine.failingLoads.contains(entry.getValue())) {
+                    failures.put(entry.getKey(), "NS_ERROR_UNKNOWN_HOST");
+                } else {
+                    navigate(entry.getKey(), entry.getValue());
+                }
+            }
+            return failures;
         }
 
         @Override

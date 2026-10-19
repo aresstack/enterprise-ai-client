@@ -26,6 +26,23 @@ public interface ChatBrowser {
     /** Reads {@code tabId} (or the current tab if {@code null}) without navigating. */
     BrowserPage read(String tabId) throws BrowserException;
 
+    /** Upper bound for the tabs {@link #openMany} loads at the same time. */
+    int MAX_PARALLEL_TABS = 8;
+
+    /** Upper bound for the random wait before each tab of {@link #openMany}. */
+    int MAX_TAB_DELAY_MILLIS = 10000;
+
+    /**
+     * Opens {@code urls} in fresh tabs, at most {@code parallel} (1 to {@link #MAX_PARALLEL_TABS}) loading at the same
+     * time, reads each page and closes its tab again; before
+     * each new tab it waits a random time from 0 to {@code maxDelayMillis} (0: no wait), so a site does not see a burst; the current tab stays as it was. Every host passes the access
+     * guard once per call (an unknown host is asked about at most once), every final address after redirects again.
+     * Addresses whose path names a document (PDF, Office file) are also downloaded inside their tab, at most
+     * {@link BrowserDocument#MAX_BYTES}. Duplicates and non-http(s) addresses are skipped. One entry per requested
+     * address, in order; a failing address never fails the others.
+     */
+    List<BrowserBatchPage> openMany(List<String> urls, int parallel, int maxDelayMillis) throws BrowserException;
+
     /**
      * The links of {@code tabId} (or the current tab if {@code null}) as a new snapshot: only real anchors of the
      * rendered page, absolute http(s) addresses, de-duplicated, and when {@code filter} is not {@code null} only links

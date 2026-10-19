@@ -30,6 +30,13 @@ public interface BrowserConnection {
      */
     void navigate(String contextId, String url) throws BrowserException;
 
+    /**
+     * Starts loading every address of {@code urlByContext} in its tab at once and waits until each tab is complete and
+     * quiet as {@link #navigate} does, within the same upper bounds. Returns the failure message per context whose
+     * load failed (empty when all loaded); a failing tab does not stop the others.
+     */
+    java.util.Map<String, String> navigateAll(java.util.Map<String, String> urlByContext) throws BrowserException;
+
     /** Url, title and visible text of the tab. */
     RawPage read(String contextId) throws BrowserException;
 

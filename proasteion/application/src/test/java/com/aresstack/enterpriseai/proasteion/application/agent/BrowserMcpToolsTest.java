@@ -26,6 +26,7 @@ import com.aresstack.enterpriseai.proasteion.katagogion.McpToolResult;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -226,6 +227,30 @@ public class BrowserMcpToolsTest {
 
         McpToolResult missing = invoke(bound, BrowserMcpTools.ACT, "action", "click");
         assertTrue(missing.getText(), missing.getText().contains("control oder locator fehlt"));
+    }
+
+    @Test
+    public void openManyReturnsOneEntryPerAddressAndUsesTheChatsLoad() throws Exception {
+        RecordingPort port = new RecordingPort();
+        BrowserMcpTools tools = new BrowserMcpTools(port);
+        ChatConversationId chat = new ChatConversationId("chat-many");
+        tools.setBatchLoad(chat, 3, 250);
+        Map<String, Object> values = new HashMap<String, Object>();
+        values.put("urls", Arrays.asList("https://a.example/", "https://blocked.example/", "https://down.example/"));
+        McpToolResult result = null;
+        for (McpToolContribution tool : tools.contributionsFor(chat)) {
+            if (tool.getName().equals(BrowserMcpTools.OPEN_MANY)) {
+                result = tool.getHandler().invoke(new McpToolCall(BrowserMcpTools.OPEN_MANY, values));
+            }
+        }
+
+        assertFalse(result.isError());
+        String text = result.getText();
+        assertTrue(text, text.startsWith("1 von 3 Adressen geladen."));
+        assertTrue(text, text.contains("1. Seite A | https://a.example/ | geladen"));
+        assertTrue(text, text.contains("2. https://blocked.example/ | übersprungen: gesperrt"));
+        assertTrue(text, text.contains("3. https://down.example/ | fehlgeschlagen: weg"));
+        assertTrue(port.browser(chat).calls.contains("openMany 3 3 250"));
     }
 
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
@@ -434,6 +459,19 @@ public class BrowserMcpToolsTest {
             check();
             calls.add("select " + tabId);
             return null;
+        }
+
+        @Override
+        public List<com.aresstack.enterpriseai.browser.api.BrowserBatchPage> openMany(List<String> urls,
+                                                                                      int parallel, int delay)
+                throws BrowserException {
+            check();
+            calls.add("openMany " + urls.size() + " " + parallel + " " + delay);
+            return Arrays.asList(
+                    com.aresstack.enterpriseai.browser.api.BrowserBatchPage.loaded(urls.get(0),
+                            new BrowserPage("tab-9", urls.get(0), "Seite A", "Inhalt A"), null),
+                    com.aresstack.enterpriseai.browser.api.BrowserBatchPage.skipped(urls.get(1), "gesperrt"),
+                    com.aresstack.enterpriseai.browser.api.BrowserBatchPage.failed(urls.get(2), "weg"));
         }
 
         @Override

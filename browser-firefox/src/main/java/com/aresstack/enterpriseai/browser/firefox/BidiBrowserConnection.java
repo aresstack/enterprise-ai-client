@@ -456,6 +456,73 @@ final class BidiBrowserConnection implements BrowserConnection {
         settle(contextId, null, LOAD_SETTLE_MILLIS);
     }
 
+    @Override
+    public Map<String, String> navigateAll(Map<String, String> urlByContext) throws BrowserException {
+        check();
+        Map<String, String> failures = new java.util.LinkedHashMap<String, String>();
+        Map<String, String> before = new java.util.HashMap<String, String>();
+        for (Map.Entry<String, String> entry : urlByContext.entrySet()) {
+            String contextId = entry.getKey();
+            before.put(contextId, tokenOrNull(contextId));
+            try {
+                // Readiness none: the command returns once the load started, so all tabs load at the same time.
+                driver.browsingContext().navigate(entry.getValue(), contextId, WDReadinessState.NONE);
+            } catch (RuntimeException e) {
+                BrowserException failure = classify(e);
+                if (failure.kind() == BrowserException.Kind.BROWSER_CLOSED
+                        || failure.kind() == BrowserException.Kind.CONNECTION_LOST) {
+                    throw failure;
+                }
+                if (!isAbortedByRedirect(e)) {
+                    failures.put(contextId, failure.getMessage());
+                }
+            }
+        }
+        Map<String, String> last = new java.util.HashMap<String, String>();
+        Map<String, Long> quietSince = new java.util.HashMap<String, Long>();
+        java.util.Set<String> pending = new java.util.LinkedHashSet<String>(urlByContext.keySet());
+        pending.removeAll(failures.keySet());
+        java.util.Set<String> replaced = new java.util.HashSet<String>();
+        long deadline = System.currentTimeMillis() + REDIRECT_SETTLE_MILLIS;
+        while (!pending.isEmpty() && System.currentTimeMillis() < deadline) {
+            pause();
+            for (java.util.Iterator<String> it = pending.iterator(); it.hasNext(); ) {
+                String contextId = it.next();
+                JsonArray state;
+                try {
+                    state = JsonParser.parseString(evaluate(contextId, STATE_SCRIPT)).getAsJsonArray();
+                } catch (BrowserException | RuntimeException e) {
+                    // Between two documents there is nothing to evaluate in; only a gone browser ends the wait.
+                    check();
+                    continue;
+                }
+                if (!state.get(0).getAsString().equals(before.get(contextId))) {
+                    replaced.add(contextId);
+                }
+                String now = state.toString();
+                long time = System.currentTimeMillis();
+                if (!now.equals(last.get(contextId))) {
+                    last.put(contextId, now);
+                    quietSince.put(contextId, time);
+                } else if (isLoadSettled(replaced.contains(contextId),
+                        "complete".equals(state.get(1).getAsString()), time - quietSince.get(contextId))) {
+                    it.remove();
+                }
+            }
+        }
+        for (String contextId : pending) {
+            if (!replaced.contains(contextId)) {
+                failures.put(contextId, "Seite hat nicht rechtzeitig geladen");
+            }
+        }
+        return failures;
+    }
+
+    /** The decision of {@link #navigateAll} for one tab: a new document arrived, is complete and quiet. */
+    static boolean isLoadSettled(boolean newDocument, boolean complete, long quietMillis) {
+        return newDocument && complete && quietMillis >= QUIET_MILLIS;
+    }
+
     private String tokenOrNull(String contextId) {
         try {
             return evaluate(contextId, DOCUMENT_TOKEN_SCRIPT);

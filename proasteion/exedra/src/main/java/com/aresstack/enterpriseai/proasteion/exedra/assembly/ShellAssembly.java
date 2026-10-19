@@ -20,6 +20,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchConceptViewAss
 import com.aresstack.enterpriseai.proasteion.exedra.agent.ResearchWorkflowAssembly;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.reader.ReaderLink;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.BrowserBudget;
+import com.aresstack.enterpriseai.proasteion.exedra.chat.BrowserLoad;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatHistoryBinding;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.chat.ChatTranscriptPanel;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ChatApprovalPrompt;
@@ -289,11 +290,20 @@ public final class ShellAssembly {
             switches.composer().showCapabilities(chatActions.browserAllowed(), root.browserReady(),
                     chatActions.knowledgeAllowed());
             switches.composer().showBrowserBudget(chatActions.browserBudget());
+            switches.composer().showBrowserLoad(chatActions.browserTabs(), chatActions.browserTabDelay());
+            root.setBrowserBatchLoad(chatActions.conversationId(), chatActions.browserTabs(),
+                    chatActions.browserTabDelay());
         };
         // Browser budget (tool rounds with the browser on) under the globe's arrow, saved with the chat.
         chatShell.composer().configureBrowserBudget(BrowserBudget.MIN, BrowserBudget.MAX, BrowserBudget.SLIDER_MIN,
                 BrowserBudget.SLIDER_MAX, rounds -> {
                     chatActions.setBrowserBudget(rounds);
+                    history.capabilitiesChanged();
+                });
+        chatShell.composer().configureBrowserLoad(
+                new int[]{BrowserLoad.MIN_TABS, BrowserLoad.MAX_TABS, BrowserLoad.MIN_TABS, BrowserLoad.MAX_TABS},
+                new int[]{0, BrowserLoad.MAX_DELAY, 0, BrowserLoad.SLIDER_MAX_DELAY}, (tabs, delay) -> {
+                    chatActions.setBrowserLoad(tabs, delay);
                     history.capabilitiesChanged();
                 });
         chatActions.addCapabilityListener(showSwitches);
