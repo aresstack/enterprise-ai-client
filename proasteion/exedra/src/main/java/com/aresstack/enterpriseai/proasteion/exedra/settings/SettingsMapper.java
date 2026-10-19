@@ -212,7 +212,7 @@ public final class SettingsMapper {
         b.browserAllow(BrowserAccessConfig.split(text(p, BrowserAccessConfig.ALLOW_KEY, "")));
         b.browserBlock(BrowserAccessConfig.split(text(p, BrowserAccessConfig.BLOCK_KEY, "")));
         b.browserSearchUrls(BrowserAccessConfig.splitUrls(text(p, BrowserProfile.EXTERNAL.searchKey(),
-                BrowserAccessConfig.DUCKDUCKGO)));
+                AppConfigLoader.defaultExternalSearchUrls())));
         b.browserInternalAllowByDefault(BrowserAccessConfig.isAllowMode(text(p, BrowserProfile.INTERNAL.modeKey(),
                 "")));
         b.browserInternalAllow(BrowserAccessConfig.split(text(p, BrowserProfile.INTERNAL.allowKey(), "")));
@@ -400,7 +400,7 @@ public final class SettingsMapper {
         put(set, BrowserProfile.INTERNAL.allowKey(), BrowserAccessConfig.join(form.browserInternalAllow()));
         put(set, BrowserProfile.INTERNAL.blockKey(), BrowserAccessConfig.join(form.browserInternalBlock()));
         String external = BrowserAccessConfig.joinUrls(form.browserSearchUrls());
-        put(set, BrowserProfile.EXTERNAL.searchKey(), BrowserAccessConfig.DUCKDUCKGO.equals(external) ? "" : external);
+        put(set, BrowserProfile.EXTERNAL.searchKey(), AppConfigLoader.defaultExternalSearchUrls().equals(external) ? "" : external);
         String internal = BrowserAccessConfig.joinUrls(form.browserInternalSearchUrls());
         put(set, BrowserProfile.INTERNAL.searchKey(), BrowserAccessConfig.NONE.equals(internal) ? "" : internal);
         putUnlessDefault(set, TextMiningConfig.MAX_LETTERS_KEY, form.acronymMaxLetters(),

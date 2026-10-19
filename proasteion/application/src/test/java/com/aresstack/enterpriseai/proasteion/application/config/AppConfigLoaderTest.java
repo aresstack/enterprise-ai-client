@@ -577,7 +577,7 @@ public class AppConfigLoaderTest {
     public void browserProfilesKeepTheOldKeysAsExternAndHaveTheirOwnSearchUrls() throws Exception {
         Properties p = minimal();
         BrowserAccessConfig defaults = AppConfigLoader.fromProperties(p).browserAccess();
-        assertEquals(java.util.Collections.singletonList(BrowserAccessConfig.DUCKDUCKGO),
+        assertEquals(java.util.Collections.singletonList("https://html.duckduckgo.com/html/?q={query}"),
                 defaults.profile(BrowserProfile.EXTERNAL).searchUrls());
         assertTrue(defaults.profile(BrowserProfile.INTERNAL).searchUrls().isEmpty());
 

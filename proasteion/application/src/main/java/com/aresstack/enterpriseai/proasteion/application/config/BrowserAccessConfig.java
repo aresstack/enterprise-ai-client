@@ -23,8 +23,6 @@ public final class BrowserAccessConfig {
     public static final String NONE = "-";
     /** Placeholder of the search words in a search URL template. */
     public static final String QUERY = "{query}";
-    /** Default search URL of the external profile: DuckDuckGo's light HTML page, renders without scripts. */
-    public static final String DUCKDUCKGO = "https://html.duckduckgo.com/html/?q=" + QUERY;
 
     private final boolean allowByDefault;
     private final List<String> allow;
@@ -33,7 +31,7 @@ public final class BrowserAccessConfig {
     private final BrowserAccessConfig internal;
 
     public BrowserAccessConfig(boolean allowByDefault, List<String> allow, List<String> block) {
-        this(allowByDefault, allow, block, Collections.singletonList(DUCKDUCKGO), null);
+        this(allowByDefault, allow, block, Collections.<String>emptyList(), null);
     }
 
     public BrowserAccessConfig(boolean allowByDefault, List<String> allow, List<String> block,

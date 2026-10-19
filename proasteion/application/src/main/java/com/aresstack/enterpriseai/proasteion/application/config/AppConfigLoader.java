@@ -278,6 +278,21 @@ public final class AppConfigLoader {
     }
 
     /** Die mitgelieferte Beispielkonfiguration (ohne Secrets) als Text, z. B. um sie als Vorlage abzulegen. */
+    /**
+     * The default search URLs of profile Extern: {@code browser.search.urls} of the example configuration
+     * (DuckDuckGo's light HTML page), so the URL stays configuration, not code.
+     */
+    public static String defaultExternalSearchUrls() {
+        Properties example = new Properties();
+        try {
+            example.load(new java.io.StringReader(exampleConfiguration()));
+        } catch (IOException | RuntimeException e) {
+            return BrowserAccessConfig.NONE;
+        }
+        String value = example.getProperty(BrowserProfile.EXTERNAL.searchKey());
+        return value == null || value.trim().isEmpty() ? BrowserAccessConfig.NONE : value.trim();
+    }
+
     public static String exampleConfiguration() {
         try (InputStream in = AppConfigLoader.class.getResourceAsStream(EXAMPLE_RESOURCE)) {
             if (in == null) {
@@ -298,7 +313,7 @@ public final class AppConfigLoader {
     // ------------------------------------------------------------------ Abschnitte
 
     private static BrowserAccessConfig browserAccess(ConfigReader r) {
-        return browserProfile(r, BrowserProfile.EXTERNAL, BrowserAccessConfig.DUCKDUCKGO)
+        return browserProfile(r, BrowserProfile.EXTERNAL, defaultExternalSearchUrls())
                 .withInternal(browserProfile(r, BrowserProfile.INTERNAL, BrowserAccessConfig.NONE));
     }
 

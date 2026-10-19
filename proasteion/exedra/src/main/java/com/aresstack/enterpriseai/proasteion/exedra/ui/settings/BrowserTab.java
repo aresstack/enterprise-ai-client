@@ -23,8 +23,8 @@ final class BrowserTab {
     static final String ALLOW_LABEL = "Standardmäßig erlauben — nur Websites aus der Blacklist werden blockiert.";
     static final String RULE_HINT = "Eine Regel je Zeile: example.org = genau dieser Host, *.example.org = "
             + "Subdomains; Blacklist gewinnt immer";
-    static final String SEARCH_HINT = "Eine Such-URL je Zeile, {query} steht für die Suchbegriffe, z. B. "
-            + "https://html.duckduckgo.com/html/?q={query}. Der Chat bekommt sie bei eingeschaltetem Browser.";
+    static final String SEARCH_HINT = "Eine Such-URL je Zeile, {query} steht für die Suchbegriffe. "
+            + "Der Chat bekommt sie bei eingeschaltetem Browser.";
     static final String NOTE = "Jeder Chat nutzt das Profil Extern oder Intern (Umschalter im Browser-Popup am "
             + "Globus, Standard Extern). Bei „Standardmäßig blockieren“ fragt der Chat bei unbekannten Websites nach: "
             + "Einmal erlauben, Immer erlauben, Immer verbieten oder Abbrechen. „Immer“ trägt den Host in das aktive "
