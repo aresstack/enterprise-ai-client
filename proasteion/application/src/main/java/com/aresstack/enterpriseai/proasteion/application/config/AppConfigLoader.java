@@ -279,13 +279,16 @@ public final class AppConfigLoader {
 
     /** Die mitgelieferte Beispielkonfiguration (ohne Secrets) als Text, z. B. um sie als Vorlage abzulegen. */
     /**
-     * The default search URLs of profile Extern: {@code browser.search.urls} of the example configuration
-     * (DuckDuckGo's light HTML page), so the URL stays configuration, not code.
+     * The default search URLs of profile Extern: {@code browser.search.urls} of the resource
+     * {@code browser-search-defaults.properties} (DuckDuckGo's light HTML page), so the URL stays configuration.
      */
     public static String defaultExternalSearchUrls() {
         Properties example = new Properties();
-        try {
-            example.load(new java.io.StringReader(exampleConfiguration()));
+        try (InputStream in = AppConfigLoader.class.getResourceAsStream("browser-search-defaults.properties")) {
+            if (in == null) {
+                return BrowserAccessConfig.NONE;
+            }
+            example.load(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
             return BrowserAccessConfig.NONE;
         }
