@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.application.composition;
 import com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfigLoader;
 import com.aresstack.enterpriseai.proasteion.application.config.BrowserAccessConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserProfile;
 import com.aresstack.enterpriseai.proasteion.application.settings.ConfigurationFile;
 import com.aresstack.enterpriseai.proasteion.application.settings.SettingsService;
 
@@ -11,8 +12,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Writes "always" answers of the browser prompt into {@code browser.access.allow} / {@code browser.access.block} of
- * the configuration file (read-modify-write, serialized) and reloads the settings so they apply at once.
+ * Writes "always" answers of the browser prompt into the allow / block list of the active profile
+ * ({@code browser.access.allow} / {@code .block} for Extern, {@code browser.access.internal.*} for Intern) of the
+ * configuration file (read-modify-write, serialized) and reloads the settings so they apply at once.
  */
 final class FileBrowserPolicyStore implements BrowserPolicyStore {
 
@@ -28,13 +30,13 @@ final class FileBrowserPolicyStore implements BrowserPolicyStore {
     }
 
     @Override
-    public void allow(String host) throws IOException {
-        add(BrowserAccessConfig.ALLOW_KEY, host);
+    public void allow(BrowserProfile profile, String host) throws IOException {
+        add(profile.allowKey(), host);
     }
 
     @Override
-    public void block(String host) throws IOException {
-        add(BrowserAccessConfig.BLOCK_KEY, host);
+    public void block(BrowserProfile profile, String host) throws IOException {
+        add(profile.blockKey(), host);
     }
 
     private synchronized void add(String key, String host) throws IOException {

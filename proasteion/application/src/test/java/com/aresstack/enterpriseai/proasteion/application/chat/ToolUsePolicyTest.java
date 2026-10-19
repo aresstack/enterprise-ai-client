@@ -118,4 +118,17 @@ public class ToolUsePolicyTest {
         String without = ToolUsePolicy.context(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH));
         org.junit.Assert.assertFalse(without, without.contains("browser_open_many"));
     }
+
+    @Test
+    public void browserProfileRuleNamesTheProfileAndItsSearchUrls() {
+        String rule = ToolUsePolicy.browserProfile("Extern",
+                Collections.singletonList("https://html.duckduckgo.com/html/?q={query}"));
+        assertTrue(rule, rule.contains("Aktives Browserprofil: Extern"));
+        assertTrue(rule, rule.contains("https://html.duckduckgo.com/html/?q={query}"));
+        assertTrue(rule, rule.contains("{query}"));
+
+        String none = ToolUsePolicy.browserProfile("Intern", Collections.<String>emptyList());
+        assertTrue(none, none.contains("Aktives Browserprofil: Intern"));
+        assertTrue(none, none.contains("keine Such-URLs"));
+    }
 }

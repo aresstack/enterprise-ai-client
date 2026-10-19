@@ -31,6 +31,8 @@ public final class ChatRecord {
     /** Human Emulation and mouse movements of the chat's browser (#141); {@code null}: off. */
     private Boolean humanEmulation;
     private Boolean humanMouse;
+    /** Browser profile Intern of the chat (#141); {@code null}: Extern, the default. */
+    private Boolean browserInternal;
 
     /** Für die Deserialisierung. */
     public ChatRecord() {
@@ -164,5 +166,14 @@ public final class ChatRecord {
 
     public void setHumanMouse(boolean humanMouse) {
         this.humanMouse = humanMouse ? Boolean.TRUE : null;
+    }
+
+    /** Whether the chat browses with profile Intern (#141); {@code false}: Extern. */
+    public boolean isBrowserInternal() {
+        return Boolean.TRUE.equals(browserInternal);
+    }
+
+    public void setBrowserInternal(boolean browserInternal) {
+        this.browserInternal = browserInternal ? Boolean.TRUE : null;
     }
 }

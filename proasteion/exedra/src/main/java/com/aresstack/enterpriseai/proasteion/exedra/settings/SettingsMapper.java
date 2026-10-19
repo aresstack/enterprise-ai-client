@@ -3,6 +3,7 @@ package com.aresstack.enterpriseai.proasteion.exedra.settings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.AcronymSettings;
 import com.aresstack.enterpriseai.astu.acropolis.textmining.statements.StatementSettings;
 import com.aresstack.enterpriseai.proasteion.application.config.BrowserAccessConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserProfile;
 import com.aresstack.enterpriseai.proasteion.application.config.FileAccessConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.TextMiningConfig;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlanningPolicy;
@@ -210,6 +211,13 @@ public final class SettingsMapper {
         b.browserAllowByDefault(BrowserAccessConfig.isAllowMode(text(p, BrowserAccessConfig.MODE_KEY, "")));
         b.browserAllow(BrowserAccessConfig.split(text(p, BrowserAccessConfig.ALLOW_KEY, "")));
         b.browserBlock(BrowserAccessConfig.split(text(p, BrowserAccessConfig.BLOCK_KEY, "")));
+        b.browserSearchUrls(BrowserAccessConfig.splitUrls(text(p, BrowserProfile.EXTERNAL.searchKey(),
+                AppConfigLoader.defaultExternalSearchUrls())));
+        b.browserInternalAllowByDefault(BrowserAccessConfig.isAllowMode(text(p, BrowserProfile.INTERNAL.modeKey(),
+                "")));
+        b.browserInternalAllow(BrowserAccessConfig.split(text(p, BrowserProfile.INTERNAL.allowKey(), "")));
+        b.browserInternalBlock(BrowserAccessConfig.split(text(p, BrowserProfile.INTERNAL.blockKey(), "")));
+        b.browserInternalSearchUrls(BrowserAccessConfig.splitUrls(text(p, BrowserProfile.INTERNAL.searchKey(), "")));
         b.acronymMaxLetters(text(p, TextMiningConfig.MAX_LETTERS_KEY,
                 String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS)));
         b.acronymShoutingPercent(text(p, TextMiningConfig.SHOUTING_PERCENT_KEY,
@@ -385,6 +393,16 @@ public final class SettingsMapper {
         put(set, BrowserAccessConfig.MODE_KEY, form.browserAllowByDefault() ? BrowserAccessConfig.MODE_ALLOW : "");
         put(set, BrowserAccessConfig.ALLOW_KEY, BrowserAccessConfig.join(form.browserAllow()));
         put(set, BrowserAccessConfig.BLOCK_KEY, BrowserAccessConfig.join(form.browserBlock()));
+        // Profile Intern (#141): same fields under browser.access.internal.*; search URLs per profile, the defaults
+        // (Extern: DuckDuckGo, Intern: none) stay out of the file.
+        put(set, BrowserProfile.INTERNAL.modeKey(), form.browserInternalAllowByDefault()
+                ? BrowserAccessConfig.MODE_ALLOW : "");
+        put(set, BrowserProfile.INTERNAL.allowKey(), BrowserAccessConfig.join(form.browserInternalAllow()));
+        put(set, BrowserProfile.INTERNAL.blockKey(), BrowserAccessConfig.join(form.browserInternalBlock()));
+        String external = BrowserAccessConfig.joinUrls(form.browserSearchUrls());
+        put(set, BrowserProfile.EXTERNAL.searchKey(), AppConfigLoader.defaultExternalSearchUrls().equals(external) ? "" : external);
+        String internal = BrowserAccessConfig.joinUrls(form.browserInternalSearchUrls());
+        put(set, BrowserProfile.INTERNAL.searchKey(), BrowserAccessConfig.NONE.equals(internal) ? "" : internal);
         putUnlessDefault(set, TextMiningConfig.MAX_LETTERS_KEY, form.acronymMaxLetters(),
                 AcronymSettings.DEFAULT_MAX_LETTERS);
         putUnlessDefault(set, TextMiningConfig.SHOUTING_PERCENT_KEY, form.acronymShoutingPercent(),

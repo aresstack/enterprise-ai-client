@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessPolicy;
 import com.aresstack.enterpriseai.browser.api.BrowserException;
 import com.aresstack.enterpriseai.proasteion.application.config.BrowserAccessConfig;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserProfile;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -27,13 +28,13 @@ public class BrowserAccessServiceTest {
 
     private final BrowserPolicyStore store = new BrowserPolicyStore() {
         @Override
-        public void allow(String host) {
-            allowed.add(host);
+        public void allow(BrowserProfile profile, String host) {
+            allowed.add(profile == BrowserProfile.INTERNAL ? "intern:" + host : host);
         }
 
         @Override
-        public void block(String host) {
-            blocked.add(host);
+        public void block(BrowserProfile profile, String host) {
+            blocked.add(profile == BrowserProfile.INTERNAL ? "intern:" + host : host);
         }
     };
 
@@ -114,5 +115,26 @@ public class BrowserAccessServiceTest {
         assertTrue(asked.isEmpty());
         assertEquals(BrowserAccessPolicy.Mode.BLOCK_BY_DEFAULT,
                 BrowserAccessService.policyOf(BrowserAccessConfig.defaults()).mode());
+    }
+
+    @Test
+    public void theChatsActiveProfileDecidesAndAlwaysAnswersGoIntoItsList() throws Exception {
+        final BrowserAccessConfig both = config(true, "", "").withInternal(config(false, "intranet.example", ""));
+        final ChatConversationId internalChat = new ChatConversationId("chat-intern");
+        ApprovalPromptPort prompt = (request, timeoutMillis) -> {
+            asked.add(request);
+            return ApprovalDecision.of(request, ApprovalDecision.Outcome.APPROVED_ALWAYS);
+        };
+        BrowserAccessService service = new BrowserAccessService(
+                c -> internalChat.equals(c) ? BrowserProfile.INTERNAL : BrowserProfile.EXTERNAL,
+                profile -> BrowserAccessService.policyOf(both.profile(profile)), () -> prompt, store, 1000);
+
+        service.admit(chat, "https://public.example/");
+        assertTrue("external profile allows by default", asked.isEmpty());
+        service.admit(internalChat, "https://intranet.example/start");
+        assertTrue("internal whitelist passes", asked.isEmpty());
+        service.admit(internalChat, "https://other.example/");
+        assertEquals(1, asked.size());
+        assertEquals(java.util.Collections.singletonList("intern:other.example"), allowed);
     }
 }

@@ -40,6 +40,7 @@ import com.aresstack.enterpriseai.proasteion.exedra.chat.RagChatBinding;
 import com.aresstack.enterpriseai.proasteion.application.browser.WebExplorationProgress;
 import com.aresstack.enterpriseai.proasteion.exedra.chat.ToolSupport;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserProfile;
 import com.aresstack.enterpriseai.proasteion.application.config.ChatConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.ModelsConfig;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.KnowledgeSourceSelection;
@@ -173,6 +174,8 @@ public final class ShellAssembly {
                     .withBrowserTools(chatId -> root.conversationChatTools(new ChatConversationId(chatId)),
                             root::browserReady)
                     // Like askai: a finished turn does not leave the chat's Firefox open; the profile stays.
+                    // The chat's browser profile and its search URLs in the system prompt of browser turns.
+                    .withBrowserRule(chatId -> root.browserProfileRule(new ChatConversationId(chatId)))
                     .withBrowserTurnEnd(chatId -> root.closeChatBrowser(new ChatConversationId(chatId)))
                     // The exploration state behind the browser card in the chat.
                     .withBrowserExploration(new ToolSupport.BrowserExploration() {
@@ -296,6 +299,9 @@ public final class ShellAssembly {
             switches.composer().showHumanEmulation(chatActions.humanEmulation(), chatActions.humanMouse());
             root.setBrowserHumanEmulation(chatActions.conversationId(), chatActions.humanEmulation(),
                     chatActions.humanMouse());
+            switches.composer().showBrowserProfile(chatActions.browserInternal());
+            root.setBrowserProfile(chatActions.conversationId(), chatActions.browserInternal()
+                    ? BrowserProfile.INTERNAL : BrowserProfile.EXTERNAL);
         };
         // Browser budget (tool rounds with the browser on) under the globe's arrow, saved with the chat.
         chatShell.composer().configureBrowserBudget(BrowserBudget.MIN, BrowserBudget.MAX, BrowserBudget.SLIDER_MIN,
@@ -309,6 +315,11 @@ public final class ShellAssembly {
                     chatActions.setBrowserLoad(tabs, delay);
                     history.capabilitiesChanged();
                 });
+        // Browser profile Intern/Extern (#141) at the top of the popup, saved with the chat.
+        chatShell.composer().configureBrowserProfile(internal -> {
+            chatActions.setBrowserInternal(internal);
+            history.capabilitiesChanged();
+        });
         chatShell.composer().configureHumanEmulation((emulation, mouse) -> {
             chatActions.setHumanEmulation(emulation, mouse);
             history.capabilitiesChanged();

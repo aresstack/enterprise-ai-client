@@ -22,6 +22,7 @@ import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegatio
 import com.aresstack.enterpriseai.proasteion.application.config.AgentConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppConfig;
 import com.aresstack.enterpriseai.proasteion.application.config.AppPaths;
+import com.aresstack.enterpriseai.proasteion.application.config.BrowserProfile;
 import com.aresstack.enterpriseai.proasteion.application.config.KnowledgeConfig;
 import com.aresstack.enterpriseai.proasteion.application.chat.DocumentAttachmentTextExtractor;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.FileDocumentNavigationStore;
@@ -174,6 +175,10 @@ public final class CompositionRoot {
     private volatile ApprovalPromptPort approvalPrompt;
     /** Where "always" answers of the browser prompt go; {@code null}: they apply only to the current call. */
     private volatile com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore browserPolicyStore;
+    /** Browser profile per chat (#141); a chat that is not listed uses Extern. */
+    private final java.util.Map<com.aresstack.enterpriseai.astu.chat.ChatConversationId, BrowserProfile>
+            browserProfiles = new java.util.concurrent.ConcurrentHashMap<com.aresstack.enterpriseai.astu.chat
+            .ChatConversationId, BrowserProfile>();
     private final Object attachmentImagesLock = new Object();
     private com.aresstack.enterpriseai.astu.acropolis.image.SourceImageAnalysisUseCase attachmentImages;
     private final ToolCatalog toolCatalog;
@@ -214,22 +219,23 @@ public final class CompositionRoot {
         AppConfig config = settings.current();
         this.ports = ports;
         if (ports.browserGuard() != null) {
-            // Browser access policy (#141): browser.access.* of the current settings on every navigation; unknown
-            // hosts are asked through the same prompt as tool approvals.
+            // Browser access policy (#141): the chat's active profile (Intern/Extern) of the current settings on
+            // every navigation; unknown hosts are asked through the same prompt as tool approvals.
             ports.browserGuard().delegateTo(new com.aresstack.enterpriseai.proasteion.application.browser
-                    .BrowserAccessService(() -> com.aresstack.enterpriseai.proasteion.application.browser
-                    .BrowserAccessService.policyOf(settings.current().browserAccess()), () -> approvalPrompt,
+                    .BrowserAccessService(this::browserProfile, profile -> com.aresstack.enterpriseai.proasteion
+                    .application.browser.BrowserAccessService.policyOf(settings.current().browserAccess()
+                            .profile(profile)), () -> approvalPrompt,
                     new com.aresstack.enterpriseai.proasteion.application.browser.BrowserPolicyStore() {
                         @Override
-                        public void allow(String host) throws java.io.IOException {
-                            store().allow(host);
+                        public void allow(BrowserProfile profile, String host) throws java.io.IOException {
+                            store().allow(profile, host);
                         }
 
                         @Override
-                        public void block(String host) throws java.io.IOException {
-                            store().block(host);
+                        public void block(BrowserProfile profile, String host) throws java.io.IOException {
+                            store().block(profile, host);
                         }
-                    }));
+                    }, com.aresstack.enterpriseai.astu.approval.ToolApprovalGate.DEFAULT_TIMEOUT_MILLIS));
         }
         this.uiExecutor = uiExecutor;
         this.clock = clock;
@@ -1008,6 +1014,32 @@ public final class CompositionRoot {
      */
     public List<com.aresstack.enterpriseai.astu.acropolis.tool.AiTool> knowledgeChatTools() {
         return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));
+    }
+
+    /** The browser profile (Intern/Extern) of {@code conversation} (#141); applies from its next navigation. */
+    public void setBrowserProfile(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation,
+                                  BrowserProfile profile) {
+        if (conversation == null) {
+            return;
+        }
+        if (profile == null || profile == BrowserProfile.EXTERNAL) {
+            browserProfiles.remove(conversation);
+        } else {
+            browserProfiles.put(conversation, profile);
+        }
+    }
+
+    /** The browser profile of {@code conversation}; Extern unless the chat chose Intern. */
+    public BrowserProfile browserProfile(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        BrowserProfile profile = conversation == null ? null : browserProfiles.get(conversation);
+        return profile == null ? BrowserProfile.EXTERNAL : profile;
+    }
+
+    /** The system prompt rule of {@code conversation}'s browser profile and its search URLs (#141). */
+    public String browserProfileRule(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation) {
+        BrowserProfile profile = browserProfile(conversation);
+        return com.aresstack.enterpriseai.proasteion.application.chat.ToolUsePolicy.browserProfile(profile.label(),
+                settings.current().browserAccess().profile(profile).searchUrls());
     }
 
     /** Human Emulation of the browser of {@code conversation} (#141): keystrokes/scrolling and mouse movements. */

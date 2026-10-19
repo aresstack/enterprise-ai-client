@@ -54,6 +54,11 @@ final class BrowserBudgetPopup extends JPopupMenu {
     static final String HUMAN_TIP = "Unregelmäßiges Tippen, Scrollen in Etappen und Lesepausen (nur im Browser)";
     static final String MOUSE_TITLE = "Mausbewegungen";
     static final String MOUSE_TIP = "Zittern und Umwege des Browser-Zeigers; deine eigene Maus bleibt frei";
+    static final String PROFILE_TITLE = "Profil";
+    static final String PROFILE_EXTERNAL = "Extern";
+    static final String PROFILE_INTERNAL = "Intern";
+    static final String PROFILE_TIP = "Welche Whitelist, Blacklist und Such-URLs gelten (Einstellungen → Browser); "
+            + "klicken schaltet zwischen Extern und Intern um";
     /** Height of the bubble's pointer below the content. */
     static final int POINTER = 10;
     /** Corner radius of the bubble. */
@@ -99,6 +104,7 @@ final class BrowserBudgetPopup extends JPopupMenu {
         }
     }
 
+    private javax.swing.JToggleButton profileToggle;
     private final List<javax.swing.JCheckBox> checkBoxes = new ArrayList<javax.swing.JCheckBox>();
     private final List<SpinnerNumberModel> numbers = new ArrayList<SpinnerNumberModel>();
     private final List<JSlider> sliders = new ArrayList<JSlider>();
@@ -113,6 +119,13 @@ final class BrowserBudgetPopup extends JPopupMenu {
     }
 
     BrowserBudgetPopup(final ComicPalette palette, List<Row> rows, List<Check> checks) {
+        this(palette, null, rows, checks);
+    }
+
+    /**
+     * @param profile the chat's profile switch at the top (selected = Intern), {@code null} for none
+     */
+    BrowserBudgetPopup(final ComicPalette palette, Check profile, List<Row> rows, List<Check> checks) {
         setBorder(BorderFactory.createEmptyBorder());
         setOpaque(false);
         JPanel bubble = new JPanel(new BorderLayout()) {
@@ -138,6 +151,9 @@ final class BrowserBudgetPopup extends JPopupMenu {
         JPanel content = new JPanel();
         content.setOpaque(false);
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        if (profile != null) {
+            addProfile(content, profile, palette);
+        }
         for (Row row : rows) {
             addRow(content, row, palette);
         }
@@ -154,6 +170,34 @@ final class BrowserBudgetPopup extends JPopupMenu {
         }
         bubble.add(content, BorderLayout.CENTER);
         add(bubble);
+    }
+
+    private void addProfile(JPanel content, final Check profile, ComicPalette palette) {
+        final javax.swing.JToggleButton toggle = new javax.swing.JToggleButton(
+                profile.value ? PROFILE_INTERNAL : PROFILE_EXTERNAL, profile.value);
+        toggle.setToolTipText(profile.tooltip);
+        ComicFormControls.install(toggle, palette);
+        toggle.setFont(ResearchUiTypography.semiBold(12f));
+        toggle.getAccessibleContext().setAccessibleName(profile.title);
+        toggle.addActionListener(event -> {
+            toggle.setText(toggle.isSelected() ? PROFILE_INTERNAL : PROFILE_EXTERNAL);
+            profile.listener.accept(toggle.isSelected());
+        });
+        JLabel title = new JLabel(profile.title);
+        title.setFont(ResearchUiTypography.semiBold(12f));
+        title.setForeground(palette.getInk());
+        JPanel head = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        head.setOpaque(false);
+        head.add(title);
+        head.add(toggle);
+        head.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(head);
+        profileToggle = toggle;
+    }
+
+    /** The profile switch (selected = Intern), {@code null} without one. */
+    javax.swing.JToggleButton profileToggle() {
+        return profileToggle;
     }
 
     private void addRow(JPanel content, final Row row, ComicPalette palette) {

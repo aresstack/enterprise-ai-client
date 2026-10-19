@@ -80,6 +80,43 @@ public final class ComicFormControls {
         }
     }
 
+    /**
+     * A two-state button as a comic pill: white plate with ink contour at rest, the navigation blue with white text
+     * when selected, the yellow accent while hovered. The caller sets the text of each state.
+     */
+    public static void install(javax.swing.JToggleButton toggle, final ComicPalette palette) {
+        requireArguments(toggle, palette);
+        toggle.setUI(new javax.swing.plaf.basic.BasicToggleButtonUI() {
+            @Override
+            public void paint(Graphics g, JComponent c) {
+                AbstractButton button = (AbstractButton) c;
+                Graphics2D g2 = smooth(g);
+                try {
+                    boolean hovered = button.getModel().isRollover() || button.getModel().isArmed();
+                    RoundRectangle2D pill = new RoundRectangle2D.Float(1, 1, c.getWidth() - 2, c.getHeight() - 2,
+                            c.getHeight() - 2, c.getHeight() - 2);
+                    g2.setColor(!c.isEnabled() ? palette.getSurface() : button.isSelected()
+                            ? palette.getNavigationBlue() : hovered ? palette.getAccentYellow() : Color.WHITE);
+                    g2.fill(pill);
+                    g2.setColor(c.isEnabled() ? palette.getInk() : muted(palette));
+                    g2.setStroke(new BasicStroke(2f));
+                    g2.draw(pill);
+                } finally {
+                    g2.dispose();
+                }
+                c.setForeground(button.isSelected() && c.isEnabled() ? Color.WHITE : palette.getInk());
+                super.paint(g, c);
+            }
+        });
+        toggle.setOpaque(false);
+        toggle.setContentAreaFilled(false);
+        toggle.setBorderPainted(false);
+        toggle.setFocusPainted(false);
+        toggle.setRolloverEnabled(true);
+        toggle.setBorder(BorderFactory.createEmptyBorder(3, 12, 3, 12));
+        toggle.setForeground(palette.getInk());
+    }
+
     private static void requireArguments(Object control, ComicPalette palette) {
         if (control == null || palette == null) {
             throw new IllegalArgumentException("control and palette must not be null");

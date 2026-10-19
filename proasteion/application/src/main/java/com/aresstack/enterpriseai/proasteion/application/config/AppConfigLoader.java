@@ -278,6 +278,24 @@ public final class AppConfigLoader {
     }
 
     /** Die mitgelieferte Beispielkonfiguration (ohne Secrets) als Text, z. B. um sie als Vorlage abzulegen. */
+    /**
+     * The default search URLs of profile Extern: {@code browser.search.urls} of the resource
+     * {@code browser-search-defaults.properties} (DuckDuckGo's light HTML page), so the URL stays configuration.
+     */
+    public static String defaultExternalSearchUrls() {
+        Properties example = new Properties();
+        try (InputStream in = AppConfigLoader.class.getResourceAsStream("browser-search-defaults.properties")) {
+            if (in == null) {
+                return BrowserAccessConfig.NONE;
+            }
+            example.load(new java.io.InputStreamReader(in, StandardCharsets.UTF_8));
+        } catch (IOException | RuntimeException e) {
+            return BrowserAccessConfig.NONE;
+        }
+        String value = example.getProperty(BrowserProfile.EXTERNAL.searchKey());
+        return value == null || value.trim().isEmpty() ? BrowserAccessConfig.NONE : value.trim();
+    }
+
     public static String exampleConfiguration() {
         try (InputStream in = AppConfigLoader.class.getResourceAsStream(EXAMPLE_RESOURCE)) {
             if (in == null) {
@@ -298,11 +316,17 @@ public final class AppConfigLoader {
     // ------------------------------------------------------------------ Abschnitte
 
     private static BrowserAccessConfig browserAccess(ConfigReader r) {
+        return browserProfile(r, BrowserProfile.EXTERNAL, defaultExternalSearchUrls())
+                .withInternal(browserProfile(r, BrowserProfile.INTERNAL, BrowserAccessConfig.NONE));
+    }
+
+    private static BrowserAccessConfig browserProfile(ConfigReader r, BrowserProfile profile, String searchDefault) {
         // Anything but "allow" fails safe to "block".
-        String mode = r.text(BrowserAccessConfig.MODE_KEY, BrowserAccessConfig.MODE_BLOCK);
+        String mode = r.text(profile.modeKey(), BrowserAccessConfig.MODE_BLOCK);
         return new BrowserAccessConfig(BrowserAccessConfig.isAllowMode(mode),
-                BrowserAccessConfig.split(r.text(BrowserAccessConfig.ALLOW_KEY, null)),
-                BrowserAccessConfig.split(r.text(BrowserAccessConfig.BLOCK_KEY, null)));
+                BrowserAccessConfig.split(r.text(profile.allowKey(), null)),
+                BrowserAccessConfig.split(r.text(profile.blockKey(), null)),
+                BrowserAccessConfig.splitUrls(r.text(profile.searchKey(), searchDefault)), null);
     }
 
     private static ChatConfig chat(ConfigReader r) {

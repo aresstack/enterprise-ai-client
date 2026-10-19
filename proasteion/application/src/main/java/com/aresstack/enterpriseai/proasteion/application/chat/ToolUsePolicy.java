@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.InformationNeed;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.NextAction;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools;
 import com.aresstack.enterpriseai.proasteion.application.agent.ResearchDelegationTool;
 import com.aresstack.enterpriseai.proasteion.application.composition.AppHelpMcpTools;
 
@@ -156,6 +157,39 @@ public final class ToolUsePolicy {
         if (offered.contains(BrowserMcpTools.OPEN_MANY)) {
             text.append(' ').append(BROWSER);
         }
+        return text.toString();
+    }
+
+    /**
+     * The rule of a chat's browser profile (#141), added when the browser is on: names the profile and its search
+     * URL templates for an open web search.
+     *
+     * @param profile    name of the active profile (Intern or Extern)
+     * @param searchUrls search URL templates with {@code {query}}, in order; empty gives a rule without search URLs
+     */
+    public static String browserProfile(String profile, Collection<String> searchUrls) {
+        StringBuilder text = new StringBuilder("[Browserprofil] Aktives Browserprofil: ").append(profile)
+                .append(". Die Freigaben (Whitelist/Blacklist) dieses Profils gelten für jede Adresse.");
+        List<String> urls = new ArrayList<String>();
+        if (searchUrls != null) {
+            for (String url : searchUrls) {
+                if (url != null && !url.trim().isEmpty()) {
+                    urls.add(url.trim());
+                }
+            }
+        }
+        if (urls.isEmpty()) {
+            text.append(" Für dieses Profil sind keine Such-URLs eingestellt: nutze die Adresse aus der Aufgabe und "
+                    + "die Suche der Website.");
+            return text.toString();
+        }
+        text.append(" Such-URLs dieses Profils:");
+        for (String url : urls) {
+            text.append(' ').append(url);
+        }
+        text.append(". Braucht die Aufgabe eine freie Websuche und nennt keine Einstiegsseite, öffne eine dieser "
+                + "URLs mit " + BrowserMcpTools.NAVIGATE + " und ersetze {query} durch die URL-kodierten "
+                + "Suchbegriffe; die erste ist die bevorzugte. Kennst du die Website schon, nutze deren eigene Suche.");
         return text.toString();
     }
 }
