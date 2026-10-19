@@ -69,6 +69,10 @@ public final class BrowserMcpTools {
     public static final String SCREENSHOT = "browser_screenshot";
     public static final String OPEN_MANY = "browser_open_many";
     static final String PARAM_URLS = "urls";
+    static final String PARAM_LINKS = "links";
+    static final String PARAM_FROM_PAGE = "from_page";
+    /** Links {@value #OPEN_MANY} takes from the current page with {@value #PARAM_FROM_PAGE} at most. */
+    static final int MAX_FROM_PAGE = 30;
     /** Characters of text per entry of {@value #OPEN_MANY} by default. */
     static final int DEFAULT_MANY_CHARS = 3000;
     /** Characters of text of all entries of one {@value #OPEN_MANY} call together. */
@@ -260,7 +264,8 @@ public final class BrowserMcpTools {
                 "List the real links of the page in a tab of this chat's browser (current tab unless tab is given): "
                         + "id | text | address {region}; the region (Navigation, Kopfbereich, Inhalt, Seitenleiste, "
                         + "Fußbereich) tells menus from content. Use it before visiting subpages instead of guessing addresses, then "
-                        + "open a link with " + FOLLOW + ". The ids are valid only for this page: after any "
+                        + "open a link with " + FOLLOW + ", or several at once with " + OPEN_MANY + " links=[ids] "
+                        + "(preferred whenever more than one link is to be read). The ids are valid only for this page: after any "
                         + "navigation call " + LINKS + " again. filter keeps only links whose text, label or "
                         + "address contains the word.",
                 handler,
@@ -272,8 +277,10 @@ public final class BrowserMcpTools {
 
     private static McpToolContribution follow(McpToolHandler handler) {
         return McpToolContribution.of(FOLLOW,
-                "Open a link of the last " + LINKS + " list by its id (e.g. link=\"link-7\") in the same tab and "
-                        + "return the page title and the beginning of its text. Use " + BACK + " to return.",
+                "Open ONE link of the last " + LINKS + " list by its id (e.g. link=\"link-7\") in the same tab and "
+                        + "return the page title and the beginning of its text. Use " + BACK + " to return. To read "
+                        + "several links (search results, link lists, news), use " + OPEN_MANY + " instead: it is "
+                        + "much faster.",
                 handler,
                 McpToolParameter.string(PARAM_LINK, true, "Link id from " + LINKS + "."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
@@ -353,14 +360,22 @@ public final class BrowserMcpTools {
 
     private static McpToolContribution openMany(McpToolHandler handler) {
         return McpToolContribution.of(OPEN_MANY,
-                "Open a whole list of http(s) addresses at once in parallel tabs of this chat's browser and get "
-                        + "every page back as one list: number | title | address | status (geladen, übersprungen, "
-                        + "fehlgeschlagen with reason) and its text; PDFs and Office files are converted like "
-                        + "attachments. The list may be as long as needed; tabs are closed again afterwards and the "
-                        + "current tab stays. Use it instead of many " + NAVIGATE + " or " + FOLLOW + " calls when "
-                        + "you already have the addresses (from " + LINKS + ", the user or a search result).",
+                "The default way to read more than one page: opens many pages at once in parallel tabs of this "
+                        + "chat's browser and returns every page as one list: number | title | address | status "
+                        + "(geladen, übersprungen, fehlgeschlagen with reason) and its text; PDFs and Office files are "
+                        + "converted like attachments. Much faster than " + FOLLOW + " one by one. Use it whenever "
+                        + "you have several candidates (search results, link lists, teasers), also when a result "
+                        + "list already shows snippets: snippets are not the content, read the pages before you "
+                        + "answer. Give the pages as links=[ids from " + LINKS + "], as urls, or as from_page=\"word\" "
+                        + "(opens the content links of the current page whose text or address contains the word; "
+                        + "\"*\" for all content links, at most " + MAX_FROM_PAGE + ") without listing them first. "
+                        + "Tabs are closed again; the current tab stays. Only captcha, login and consent pages need "
+                        + "the single-page tools.",
                 handler,
-                McpToolParameter.stringArray(PARAM_URLS, true, "The http(s) addresses, in order."),
+                McpToolParameter.stringArray(PARAM_LINKS, false, "Link ids from the last " + LINKS + " list."),
+                McpToolParameter.stringArray(PARAM_URLS, false, "http(s) addresses, in order."),
+                McpToolParameter.string(PARAM_FROM_PAGE, false, "Word the link text or address must contain, or "
+                        + "* for all content links of the current page (navigation, header and footer left out)."),
                 McpToolParameter.integer(PARAM_MAX_CHARS, false, "Maximum characters of text per page (default "
                         + DEFAULT_MANY_CHARS + "; all pages together at most " + MAX_MANY_TOTAL_CHARS + ")."));
     }
@@ -593,9 +608,25 @@ public final class BrowserMcpTools {
 
     static McpToolResult openMany(ChatBrowser browser, AttachmentTextExtractor documents, WebExplorationRun run,
                                   int[] load, McpToolCall call) {
-        List<String> urls = call.getStrings(PARAM_URLS);
-        if (urls == null || urls.isEmpty()) {
-            return McpToolResult.error("urls fehlt");
+        List<String> urls = new ArrayList<String>();
+        for (String id : call.getStrings(PARAM_LINKS)) {
+            String target = run.linkTarget(id);
+            if (target == null) {
+                return McpToolResult.error("Unbekannte Link-Id " + id + "; Link-Ids liefert " + LINKS);
+            }
+            urls.add(target);
+        }
+        urls.addAll(call.getStrings(PARAM_URLS));
+        String fromPage = blankToNull(call.getString(PARAM_FROM_PAGE));
+        if (fromPage != null) {
+            try {
+                urls.addAll(contentLinks(browser, run, "*".equals(fromPage) ? null : fromPage));
+            } catch (BrowserException e) {
+                return refused(run, null, e);
+            }
+        }
+        if (urls.isEmpty()) {
+            return McpToolResult.error("Keine Seiten angegeben: links, urls oder from_page");
         }
         int maxChars = (int) Math.min(MAX_MANY_TOTAL_CHARS,
                 Math.max(1L, call.getInteger(PARAM_MAX_CHARS, DEFAULT_MANY_CHARS)));
@@ -656,6 +687,27 @@ public final class BrowserMcpTools {
             out.append("\n\n");
         }
         return McpToolResult.ok(loaded + " von " + pages.size() + " Adressen geladen.\n\n" + out.toString().trim());
+    }
+
+    /** The content links of the current page matching {@code filter} (all when null), recorded as a link list. */
+    private static List<String> contentLinks(ChatBrowser browser, WebExplorationRun run, String filter)
+            throws BrowserException {
+        BrowserLinks links = browser.links(null, BrowserLinks.MAX_LINKS, filter);
+        Map<String, String> shown = new LinkedHashMap<String, String>();
+        List<String> urls = new ArrayList<String>();
+        for (BrowserLink link : links.links()) {
+            String region = link.region();
+            if ("nav".equals(region) || "header".equals(region) || "footer".equals(region)) {
+                continue;
+            }
+            if (urls.size() >= MAX_FROM_PAGE) {
+                break;
+            }
+            shown.put(link.id(), link.url());
+            urls.add(link.url());
+        }
+        run.linksListed(shown, links.total(), filter);
+        return urls;
     }
 
     static McpToolResult mark(WebExplorationRun run, McpToolCall call) {

@@ -253,6 +253,25 @@ public class BrowserMcpToolsTest {
         assertTrue(port.browser(chat).calls.contains("openMany 3 3 250"));
     }
 
+    @Test
+    public void openManyTakesLinkIdsOfTheLastList() throws Exception {
+        RecordingPort port = new RecordingPort();
+        BrowserMcpTools tools = new BrowserMcpTools(port);
+        ChatConversationId chat = new ChatConversationId("chat-ids");
+        List<McpToolContribution> bound = tools.contributionsFor(chat);
+        invoke(bound, BrowserMcpTools.LINKS);
+        Map<String, Object> values = new HashMap<String, Object>();
+        values.put("links", Arrays.asList("link-1", "link-2", "link-1"));
+        McpToolResult result = null;
+        for (McpToolContribution tool : bound) {
+            if (tool.getName().equals(BrowserMcpTools.OPEN_MANY)) {
+                result = tool.getHandler().invoke(new McpToolCall(BrowserMcpTools.OPEN_MANY, values));
+            }
+        }
+        assertFalse(result.getText(), result.isError());
+        assertTrue(port.browser(chat).calls.toString(), port.browser(chat).calls.contains("openMany 3 4 0"));
+    }
+
     private static McpToolResult invoke(List<McpToolContribution> contributions, String name, String... args) {
         Map<String, Object> values = new HashMap<String, Object>();
         for (int i = 0; i + 1 < args.length; i += 2) {
