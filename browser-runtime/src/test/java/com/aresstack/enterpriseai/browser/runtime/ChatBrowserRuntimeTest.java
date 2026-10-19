@@ -221,6 +221,53 @@ public class ChatBrowserRuntimeTest {
         assertTrue(engine.starts.isEmpty());
     }
 
+    @Test
+    public void openManyLoadsInWavesAdmitsEachHostOnceAndClosesItsTabs() throws Exception {
+        final List<String> admitted = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        BrowserAccessGuard guard = (chat, url) -> {
+            admitted.add(url);
+            if (url.contains("blocked.example")) {
+                throw new BrowserException(BrowserException.Kind.BLOCKED, "gesperrt");
+            }
+        };
+        ChatBrowser browser = new ChatBrowserRuntime(engine, new BrowserProfileStore(folder.getRoot().toPath()),
+                guard).browserOf(chatA);
+        browser.navigate(null, "https://start.example/");
+        engine.failingLoads.add("https://down.example/");
+        admitted.clear();
+
+        List<com.aresstack.enterpriseai.browser.api.BrowserBatchPage> pages = browser.openMany(Arrays.asList(
+                "https://a.example/1", "https://a.example/2", "https://a.example/1#top", "ftp://a.example/",
+                "https://blocked.example/x", "https://blocked.example/y", "https://down.example/",
+                "https://docs.example/plan.pdf"), 2, 0);
+
+        assertEquals(8, pages.size());
+        com.aresstack.enterpriseai.browser.api.BrowserBatchPage.Status loaded =
+                com.aresstack.enterpriseai.browser.api.BrowserBatchPage.Status.LOADED;
+        com.aresstack.enterpriseai.browser.api.BrowserBatchPage.Status skipped =
+                com.aresstack.enterpriseai.browser.api.BrowserBatchPage.Status.SKIPPED;
+        assertEquals(loaded, pages.get(0).status());
+        assertEquals("Text of https://a.example/1", pages.get(0).page().text());
+        assertEquals(loaded, pages.get(1).status());
+        assertEquals(skipped, pages.get(2).status());
+        assertEquals(skipped, pages.get(3).status());
+        assertEquals(skipped, pages.get(4).status());
+        assertEquals(skipped, pages.get(5).status());
+        assertEquals(com.aresstack.enterpriseai.browser.api.BrowserBatchPage.Status.FAILED, pages.get(6).status());
+        assertEquals(loaded, pages.get(7).status());
+        assertTrue(pages.get(7).document() != null);
+        // One admission per host before loading (a, blocked, down, docs), then the final addresses of loaded pages
+        // reuse the host decision.
+        assertEquals(Arrays.asList("https://a.example/1", "https://blocked.example/x", "https://down.example/",
+                "https://docs.example/plan.pdf"), admitted);
+        for (List<String> wave : engine.waves) {
+            assertTrue(wave.size() <= 2);
+        }
+        assertEquals(2, engine.waves.size());
+        assertEquals(1, engine.last().tabs.size());
+        assertEquals("https://start.example/", browser.read(null).url());
+    }
+
     private ChatBrowserRuntime guarded() {
         BrowserAccessGuard guard = (chat, url) -> {
             if (url != null && url.contains("blocked.example")) {

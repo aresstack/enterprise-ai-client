@@ -190,6 +190,9 @@ public final class RagChatBinding implements ChatShellActions {
     private boolean browserAllowed;
     /** Tool rounds of a turn with the browser on; see {@link BrowserBudget}. */
     private int browserBudget = BrowserBudget.DEFAULT;
+    /** Parallel tabs and maximum random delay of browser_open_many; see {@link BrowserLoad}. */
+    private int browserTabs = BrowserLoad.DEFAULT_TABS;
+    private int browserTabDelay = BrowserLoad.DEFAULT_DELAY;
     /** Composer switch "Wissensquellen" of the current chat (#141): on by default; UI thread only. */
     private boolean knowledgeAllowed = true;
     private final List<Runnable> capabilityListeners = new java.util.concurrent.CopyOnWriteArrayList<Runnable>();
@@ -271,6 +274,7 @@ public final class RagChatBinding implements ChatShellActions {
         // A new or opened chat starts with the defaults; an opened chat then sets its saved switches.
         setCapabilities(false, true);
         setBrowserBudget(BrowserBudget.DEFAULT);
+        setBrowserLoad(BrowserLoad.DEFAULT_TABS, BrowserLoad.DEFAULT_DELAY);
         this.bookmarks.clear();
         if (pages != null) {
             for (ChatBookmark page : pages) {
@@ -306,6 +310,28 @@ public final class RagChatBinding implements ChatShellActions {
         for (Runnable listener : capabilityListeners) {
             listener.run();
         }
+    }
+
+    /** Sets parallel tabs and maximum random delay (ms) of browser_open_many in the current chat. */
+    public void setBrowserLoad(int tabs, int delayMillis) {
+        int t = BrowserLoad.tabs(tabs);
+        int d = BrowserLoad.delay(delayMillis);
+        if (t == browserTabs && d == browserTabDelay) {
+            return;
+        }
+        browserTabs = t;
+        browserTabDelay = d;
+        for (Runnable listener : capabilityListeners) {
+            listener.run();
+        }
+    }
+
+    public int browserTabs() {
+        return browserTabs;
+    }
+
+    public int browserTabDelay() {
+        return browserTabDelay;
     }
 
     /** The browser budget of the current chat in tool rounds. */

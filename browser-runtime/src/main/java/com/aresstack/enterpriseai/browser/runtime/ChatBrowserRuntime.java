@@ -4,6 +4,7 @@ import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAccessGuard;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserBatchPage;
 import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserDocument;
@@ -222,6 +223,160 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                 String raw = tabId == null ? currentOrFail(connection) : rawOf(connection, tabId);
                 return page(connection, raw);
             }, true);
+        }
+
+        @Override
+        public synchronized List<BrowserBatchPage> openMany(final List<String> urls, final int parallel,
+                                                        final int maxDelayMillis)
+                throws BrowserException {
+            if (urls == null) {
+                throw new IllegalArgumentException("urls must not be null");
+            }
+            int wave = Math.max(1, Math.min(MAX_PARALLEL_TABS, parallel));
+            final int delay = Math.max(0, Math.min(MAX_TAB_DELAY_MILLIS, maxDelayMillis));
+            BrowserBatchPage[] results = new BrowserBatchPage[urls.size()];
+            Map<String, BrowserException> hosts = new HashMap<String, BrowserException>();
+            Set<String> seen = new HashSet<String>();
+            List<Integer> admitted = new ArrayList<Integer>();
+            for (int i = 0; i < urls.size(); i++) {
+                String url = urls.get(i) == null ? "" : urls.get(i).trim();
+                if (usableUrl(url) == null) {
+                    results[i] = BrowserBatchPage.skipped(url, "Keine http(s)-Adresse");
+                } else if (!seen.add(withoutFragment(url))) {
+                    results[i] = BrowserBatchPage.skipped(url, "Doppelt in der Liste");
+                } else {
+                    BrowserException refused = admitOnce(hosts, url);
+                    if (refused == null) {
+                        admitted.add(i);
+                    } else {
+                        results[i] = outcomeOf(url, refused);
+                    }
+                }
+            }
+            for (int from = 0; from < admitted.size(); from += wave) {
+                final List<Integer> slice = admitted.subList(from, Math.min(admitted.size(), from + wave));
+                try {
+                    call(connection -> {
+                        loadWave(connection, urls, slice, results, hosts, delay);
+                        return null;
+                    }, false);
+                } catch (BrowserException e) {
+                    if (e.kind() == BrowserException.Kind.BROWSER_CLOSED && closed) {
+                        throw e;
+                    }
+                }
+                for (int index : slice) {
+                    if (results[index] == null) {
+                        results[index] = BrowserBatchPage.failed(urls.get(index).trim(),
+                                "Verbindung zum Browser verloren");
+                    }
+                }
+            }
+            return java.util.Arrays.asList(results);
+        }
+
+        /** Loads one wave in fresh tabs, reads and closes them; the user's current tab is restored. */
+        private void loadWave(BrowserConnection connection, List<String> urls, List<Integer> slice,
+                              BrowserBatchPage[] results, Map<String, BrowserException> hosts,
+                              int maxDelayMillis) throws BrowserException {
+            String current = currentRaw;
+            Map<String, String> urlByRaw = new LinkedHashMap<String, String>();
+            Map<String, Integer> indexByRaw = new HashMap<String, Integer>();
+            try {
+                for (int index : slice) {
+                    pauseBeforeTab(maxDelayMillis);
+                    String raw = connection.createTab();
+                    idOf(raw);
+                    urlByRaw.put(raw, urls.get(index).trim());
+                    indexByRaw.put(raw, index);
+                }
+                Map<String, String> failures = connection.navigateAll(urlByRaw);
+                for (Map.Entry<String, String> entry : urlByRaw.entrySet()) {
+                    String raw = entry.getKey();
+                    String url = entry.getValue();
+                    int index = indexByRaw.get(raw);
+                    if (failures.containsKey(raw)) {
+                        results[index] = BrowserBatchPage.failed(url, failures.get(raw));
+                        continue;
+                    }
+                    try {
+                        BrowserPage page = page(connection, raw);
+                        BrowserException refused = admitOnce(hosts, page.url());
+                        if (refused != null) {
+                            connection.navigate(raw, "about:blank");
+                            results[index] = outcomeOf(url, refused);
+                            continue;
+                        }
+                        results[index] = BrowserBatchPage.loaded(url, page, documentOf(connection, raw, page.url()));
+                    } catch (BrowserException e) {
+                        if (!e.isRecoverable()) {
+                            results[index] = outcomeOf(url, e);
+                        } else {
+                            throw e;
+                        }
+                    }
+                }
+            } finally {
+                for (String raw : urlByRaw.keySet()) {
+                    try {
+                        connection.close(raw);
+                    } catch (BrowserException ignored) {
+                        // The tab may be gone already; the next sync forgets it.
+                    }
+                    tabIds.remove(raw);
+                }
+                currentRaw = current;
+            }
+        }
+
+        /** Waits a random time from 0 to {@code maxDelayMillis} before a new tab is opened. */
+        private void pauseBeforeTab(int maxDelayMillis) throws BrowserException {
+            if (maxDelayMillis <= 0) {
+                return;
+            }
+            try {
+                Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextInt(maxDelayMillis + 1));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new BrowserException(BrowserException.Kind.FAILED, "Öffnen der Tabs unterbrochen", e);
+            }
+        }
+
+        /** The document behind {@code url} when its path names one, fetched in its own tab; else {@code null}. */
+        private BrowserDocument documentOf(BrowserConnection connection, String raw, String url) {
+            if (!isDocumentPath(url)) {
+                return null;
+            }
+            try {
+                RawDownload download = connection.fetch(raw, url, BrowserDocument.MAX_BYTES);
+                return new BrowserDocument(download.finalUrl(), fileNameOf(download.finalUrl()), download.contentType(),
+                        download.content());
+            } catch (BrowserException e) {
+                // The viewer's text is still there; the document stays unread.
+                return null;
+            }
+        }
+
+        /** Admits the host of {@code url} once per batch; {@code null} when admitted, else the refusal. */
+        private BrowserException admitOnce(Map<String, BrowserException> hosts, String url) {
+            String host;
+            try {
+                host = new URI(url).getHost();
+            } catch (URISyntaxException e) {
+                host = null;
+            }
+            String key = host == null ? url : host.toLowerCase(Locale.ROOT);
+            if (hosts.containsKey(key)) {
+                return hosts.get(key);
+            }
+            BrowserException refused = null;
+            try {
+                guard.admit(conversation, url);
+            } catch (BrowserException e) {
+                refused = e;
+            }
+            hosts.put(key, refused);
+            return refused;
         }
 
         @Override
@@ -828,6 +983,30 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         } catch (URISyntaxException e) {
             return null;
         }
+    }
+
+    private static final List<String> DOCUMENT_ENDINGS = java.util.Arrays.asList(".pdf", ".doc", ".docx", ".xls",
+            ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp", ".rtf");
+
+    /** Whether the path of {@code url} names a document (PDF, Office file). */
+    static boolean isDocumentPath(String url) {
+        try {
+            String path = new URI(url).getPath();
+            String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
+            for (String ending : DOCUMENT_ENDINGS) {
+                if (lower.endsWith(ending)) {
+                    return true;
+                }
+            }
+        } catch (URISyntaxException ignored) {
+            // Not a document address.
+        }
+        return false;
+    }
+
+    private static BrowserBatchPage outcomeOf(String url, BrowserException e) {
+        return e.kind() == BrowserException.Kind.BLOCKED ? BrowserBatchPage.skipped(url, e.getMessage())
+                : BrowserBatchPage.failed(url, e.getMessage());
     }
 
     /** The last path segment of {@code url}, decoded, or {@code dokument}. */

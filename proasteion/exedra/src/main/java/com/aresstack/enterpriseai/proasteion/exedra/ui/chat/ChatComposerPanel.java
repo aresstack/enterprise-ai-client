@@ -137,7 +137,8 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
             "Browser nicht verfügbar: Firefox nicht gefunden oder Browser-Werkzeuge im Reiter „Tools“ aus";
     static final String KNOWLEDGE_ON_TOOLTIP = "Wissensquellen für diesen Chat sind an (Klick: aus)";
     static final String KNOWLEDGE_OFF_TOOLTIP = "Wissensquellen für diesen Chat einschalten";
-    static final String BUDGET_TOOLTIP = "Browser-Budget: %d Werkzeugrunden je Antwort (Klick: ändern)";
+    static final String BUDGET_TOOLTIP = "Browser-Budget: %d Werkzeugrunden je Antwort, Tabs und Verzögerung "
+            + "(Klick: ändern)";
     static final String BUDGET_LABEL = "Browser-Budget";
     static final String BOTH_ON_WARNING = "Browser und interne Wissensquellen sind gleichzeitig aktiv. "
             + "Inhalte aus Wissensquellen können in Browseraufrufe einfließen.";
@@ -166,6 +167,13 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private int[] budgetRange = {1, 999, 4, 60};
     private java.util.function.IntConsumer budgetListener = value -> { };
     private BrowserBudgetPopup lastBudgetPopup;
+    /** Parallel tabs and maximum random delay (ms) of browser_open_many in the current chat. */
+    private final ComicPalette popupPalette;
+    private int browserTabs = 4;
+    private int browserTabDelay;
+    /** min, max, sliderMin, sliderMax for tabs, then the same for the delay. */
+    private int[] loadRange = {1, 8, 1, 8, 0, 10000, 0, 2000};
+    private java.util.function.BiConsumer<Integer, Integer> loadListener = (tabs, delay) -> { };
     /** Composer switch "Wissensquellen" of this chat (#141): latched when on. */
     private final ComposerButton knowledgeButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
@@ -226,6 +234,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         }
         this.model = model;
         this.actions = actions;
+        this.popupPalette = palette;
         this.modelButton = new ComposerButton(ComposerIcons.chevronDown(), MODEL_PLACEHOLDER, false,
                 "Chat-Modell (Einstellungen → KI-Dienst)");
         modelButton.setHorizontalTextPosition(SwingConstants.LEFT); // Name zuerst, Chevron danach (arch)
@@ -1460,6 +1469,24 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.budgetListener = listener == null ? value -> { } : listener;
     }
 
+    /**
+     * Sets the ranges of the parallel tabs and of the maximum random delay before a tab (ms) and who hears a change
+     * of either; the listener gets both values.
+     */
+    public void configureBrowserLoad(int[] tabsRange, int[] delayRange,
+                                     java.util.function.BiConsumer<Integer, Integer> listener) {
+        this.loadRange = new int[]{tabsRange[0], tabsRange[1], tabsRange[2], tabsRange[3],
+                delayRange[0], delayRange[1], delayRange[2], delayRange[3]};
+        this.loadListener = listener == null ? (tabs, delay) -> { } : listener;
+    }
+
+    /** Shows the parallel tabs and the maximum delay of the current chat. */
+    public void showBrowserLoad(int tabs, int delayMillis) {
+        this.browserTabs = tabs;
+        this.browserTabDelay = delayMillis;
+        budgetButton.setToolTipText(String.format(BUDGET_TOOLTIP, browserBudget));
+    }
+
     /** Shows the browser budget of the current chat in the arrow's tooltip. */
     public void showBrowserBudget(int rounds) {
         this.browserBudget = rounds;
@@ -1475,11 +1502,23 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     }
 
     void openBudgetPopup() {
-        lastBudgetPopup = new BrowserBudgetPopup(browserBudget, budgetRange[0], budgetRange[1], budgetRange[2],
-                budgetRange[3], value -> {
+        java.util.List<BrowserBudgetPopup.Row> rows = new java.util.ArrayList<BrowserBudgetPopup.Row>();
+        rows.add(new BrowserBudgetPopup.Row(BrowserBudgetPopup.TITLE, browserBudget, budgetRange[0], budgetRange[1],
+                budgetRange[2], budgetRange[3], value -> {
                     showBrowserBudget(value);
                     budgetListener.accept(value);
-                });
+                }));
+        rows.add(new BrowserBudgetPopup.Row(BrowserBudgetPopup.TABS_TITLE, browserTabs, loadRange[0], loadRange[1],
+                loadRange[2], loadRange[3], value -> {
+                    showBrowserLoad(value, browserTabDelay);
+                    loadListener.accept(value, browserTabDelay);
+                }));
+        rows.add(new BrowserBudgetPopup.Row(BrowserBudgetPopup.DELAY_TITLE, browserTabDelay, loadRange[4],
+                loadRange[5], loadRange[6], loadRange[7], value -> {
+                    showBrowserLoad(browserTabs, value);
+                    loadListener.accept(browserTabs, value);
+                }));
+        lastBudgetPopup = new BrowserBudgetPopup(popupPalette, rows);
         if (budgetButton.isShowing()) {
             lastBudgetPopup.show(budgetButton, 0, budgetButton.getHeight());
         }

@@ -6,6 +6,7 @@ import com.aresstack.enterpriseai.astu.approval.ToolApprovalGate;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
 import com.aresstack.enterpriseai.browser.api.BrowserAction;
 import com.aresstack.enterpriseai.browser.api.BrowserActResult;
+import com.aresstack.enterpriseai.browser.api.BrowserBatchPage;
 import com.aresstack.enterpriseai.browser.api.BrowserControl;
 import com.aresstack.enterpriseai.browser.api.BrowserControls;
 import com.aresstack.enterpriseai.browser.api.BrowserDocument;
@@ -66,6 +67,14 @@ public final class BrowserMcpTools {
             ".ppt", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".txt", ".csv");
     public static final String ACT = "browser_act";
     public static final String SCREENSHOT = "browser_screenshot";
+    public static final String OPEN_MANY = "browser_open_many";
+    static final String PARAM_URLS = "urls";
+    /** Characters of text per entry of {@value #OPEN_MANY} by default. */
+    static final int DEFAULT_MANY_CHARS = 3000;
+    /** Characters of text of all entries of one {@value #OPEN_MANY} call together. */
+    static final int MAX_MANY_TOTAL_CHARS = 60000;
+    /** Tabs {@value #OPEN_MANY} loads at the same time unless the chat sets it. */
+    public static final int DEFAULT_PARALLEL_TABS = 4;
     static final String PARAM_MARKS = "marks";
     static final String PARAM_CONTROL = "control";
     static final String PARAM_VALUE = "value";
@@ -92,6 +101,8 @@ public final class BrowserMcpTools {
     private final AttachmentTextExtractor documents;
     /** Shared approval gate for data-changing actions, or {@code null}. */
     private final ToolApprovalGate approvals;
+    /** Per chat: tabs at the same time and maximum random delay before a tab, for {@value #OPEN_MANY}. */
+    private final ConcurrentMap<ChatConversationId, int[]> batchLoads = new ConcurrentHashMap<ChatConversationId, int[]>();
     private final ConcurrentMap<ChatConversationId, WebExplorationRun> runs =
             new ConcurrentHashMap<ChatConversationId, WebExplorationRun>();
 
@@ -139,8 +150,23 @@ public final class BrowserMcpTools {
                 controls(tracked(run, call -> controls(browser, run, call))),
                 act(tracked(run, call -> act(browser, run, approvals, call))),
                 screenshot(tracked(run, call -> screenshot(browser, run, call))),
+                openMany(tracked(run, call -> openMany(browser, documents, run, batchLoadOf(conversation), call))),
                 mark(tracked(run, call -> mark(run, call))),
                 close(tracked(run, call -> close(browser, run)))));
+    }
+
+    /**
+     * Sets how {@value #OPEN_MANY} loads in {@code conversation}: {@code parallel} tabs at the same time (clamped to
+     * 1 .. {@link ChatBrowser#MAX_PARALLEL_TABS}) and a random wait of up to {@code maxDelayMillis} before each tab.
+     */
+    public void setBatchLoad(ChatConversationId conversation, int parallel, int maxDelayMillis) {
+        batchLoads.put(conversation, new int[]{Math.max(1, Math.min(ChatBrowser.MAX_PARALLEL_TABS, parallel)),
+                Math.max(0, Math.min(ChatBrowser.MAX_TAB_DELAY_MILLIS, maxDelayMillis))});
+    }
+
+    private int[] batchLoadOf(ChatConversationId conversation) {
+        int[] load = batchLoads.get(conversation);
+        return load == null ? new int[]{DEFAULT_PARALLEL_TABS, 0} : load;
     }
 
     /**
@@ -185,6 +211,7 @@ public final class BrowserMcpTools {
         McpToolHandler refuse = call -> McpToolResult.error("Browser-Werkzeuge sind nur im Chat verfügbar");
         return Collections.unmodifiableList(Arrays.asList(tabs(refuse), navigate(refuse), read(refuse),
                 links(refuse), follow(refuse), back(refuse), document(refuse), controls(refuse), act(refuse), screenshot(refuse),
+                openMany(refuse),
                 mark(refuse),
                 close(refuse)));
     }
@@ -314,6 +341,20 @@ public final class BrowserMcpTools {
                         + ": picture only the region around it."),
                 McpToolParameter.bool(PARAM_MARKS, false, "Draw the control ids into the picture (default true)."),
                 McpToolParameter.string(PARAM_TAB, false, "Tab id; default the current tab."));
+    }
+
+    private static McpToolContribution openMany(McpToolHandler handler) {
+        return McpToolContribution.of(OPEN_MANY,
+                "Open a whole list of http(s) addresses at once in parallel tabs of this chat's browser and get "
+                        + "every page back as one list: number | title | address | status (geladen, übersprungen, "
+                        + "fehlgeschlagen with reason) and its text; PDFs and Office files are converted like "
+                        + "attachments. The list may be as long as needed; tabs are closed again afterwards and the "
+                        + "current tab stays. Use it instead of many " + NAVIGATE + " or " + FOLLOW + " calls when "
+                        + "you already have the addresses (from " + LINKS + ", the user or a search result).",
+                handler,
+                McpToolParameter.stringArray(PARAM_URLS, true, "The http(s) addresses, in order."),
+                McpToolParameter.integer(PARAM_MAX_CHARS, false, "Maximum characters of text per page (default "
+                        + DEFAULT_MANY_CHARS + "; all pages together at most " + MAX_MANY_TOTAL_CHARS + ")."));
     }
 
     private static McpToolContribution close(McpToolHandler handler) {
@@ -540,6 +581,73 @@ public final class BrowserMcpTools {
         } catch (BrowserException e) {
             return refused(run, null, e);
         }
+    }
+
+    static McpToolResult openMany(ChatBrowser browser, AttachmentTextExtractor documents, WebExplorationRun run,
+                                  int[] load, McpToolCall call) {
+        List<String> urls = call.getStrings(PARAM_URLS);
+        if (urls == null || urls.isEmpty()) {
+            return McpToolResult.error("urls fehlt");
+        }
+        int maxChars = (int) Math.min(MAX_MANY_TOTAL_CHARS,
+                Math.max(1L, call.getInteger(PARAM_MAX_CHARS, DEFAULT_MANY_CHARS)));
+        List<BrowserBatchPage> pages;
+        try {
+            pages = browser.openMany(urls, load[0], load[1]);
+        } catch (BrowserException e) {
+            return refused(run, null, e);
+        }
+        int budget = MAX_MANY_TOTAL_CHARS;
+        int loaded = 0;
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < pages.size(); i++) {
+            BrowserBatchPage entry = pages.get(i);
+            out.append(i + 1).append(". ");
+            if (entry.status() != BrowserBatchPage.Status.LOADED) {
+                if (entry.status() == BrowserBatchPage.Status.SKIPPED) {
+                    run.skipped(entry.requestedUrl());
+                } else {
+                    run.failed(entry.requestedUrl(), entry.reason());
+                }
+                out.append(entry.requestedUrl()).append(" | ")
+                        .append(entry.status() == BrowserBatchPage.Status.SKIPPED ? "übersprungen" : "fehlgeschlagen")
+                        .append(": ").append(entry.reason()).append("\n\n");
+                continue;
+            }
+            loaded++;
+            BrowserPage page = entry.page();
+            String text = page.text();
+            String status = "geladen";
+            BrowserDocument document = entry.document();
+            if (document != null && documents != null) {
+                try {
+                    text = documents.extractText(document.fileName(), document.content());
+                    status = "geladen (Dokument " + document.fileName() + ")";
+                    run.documentRead(document.url(), document.fileName());
+                } catch (AttachmentException e) {
+                    status = "geladen (Dokument nicht lesbar: " + e.getMessage() + ")";
+                    run.opened(page.url(), page.title(), false);
+                }
+            } else {
+                run.opened(page.url(), page.title(), false);
+            }
+            out.append(page.title().isEmpty() ? "(ohne Titel)" : page.title()).append(" | ").append(page.url())
+                    .append(" | ").append(status).append('\n');
+            int room = Math.min(maxChars, budget);
+            if (room <= 0) {
+                out.append("[Text ausgelassen, Gesamtgrenze erreicht; einzeln mit ").append(NAVIGATE)
+                        .append(" lesen]\n\n");
+                continue;
+            }
+            boolean cut = text.length() > room;
+            out.append(cut ? text.substring(0, room) : text);
+            budget -= cut ? room : text.length();
+            if (cut) {
+                out.append("\n[… gekürzt, ").append(text.length()).append(" Zeichen insgesamt]");
+            }
+            out.append("\n\n");
+        }
+        return McpToolResult.ok(loaded + " von " + pages.size() + " Adressen geladen.\n\n" + out.toString().trim());
     }
 
     static McpToolResult mark(WebExplorationRun run, McpToolCall call) {
