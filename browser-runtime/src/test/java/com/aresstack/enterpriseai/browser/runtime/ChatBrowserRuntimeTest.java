@@ -381,7 +381,7 @@ public class ChatBrowserRuntimeTest {
     }
 
     @Test
-    public void followOpensTheLinkAndInvalidatesTheOldIds() throws Exception {
+    public void followAfterFollowOpensTheAddressOfTheLastList() throws Exception {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
@@ -390,32 +390,29 @@ public class ChatBrowserRuntimeTest {
         BrowserPage page = browser.follow(null, "link-2");
 
         assertEquals("https://intranet.example/ki", page.url());
+        // The tab left the list's page; the id still names what the model was shown.
+        assertEquals("https://intranet.example/reise", browser.follow(null, "link-1").url());
         try {
-            browser.follow(null, "link-1");
-            fail("ids of the previous page must be invalid");
+            browser.follow(null, "link-99");
+            fail("unknown ids still fail");
         } catch (BrowserException expected) {
             assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
         }
     }
 
     @Test
-    public void navigateInvalidatesTheLinkIds() throws Exception {
+    public void followAfterNavigateUsesTheLastList() throws Exception {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
         browser.links(null, 100, null);
         browser.navigate(null, "https://other.example/");
 
-        try {
-            browser.follow(null, "link-1");
-            fail("expected INVALID_REQUEST");
-        } catch (BrowserException expected) {
-            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
-        }
+        assertEquals("https://intranet.example/reise", browser.follow(null, "link-1").url());
     }
 
     @Test
-    public void pageChangedByTheUserInvalidatesTheLinkIds() throws Exception {
+    public void followAfterAUserNavigationUsesTheLastList() throws Exception {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
@@ -423,13 +420,7 @@ public class ChatBrowserRuntimeTest {
         String raw = engine.last().tabs.keySet().iterator().next();
         engine.last().connection.userNavigates(raw, "https://intranet.example/elsewhere");
 
-        try {
-            browser.follow(null, "link-1");
-            fail("expected INVALID_REQUEST");
-        } catch (BrowserException expected) {
-            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
-        }
-        assertEquals(1, engine.navigations.size());
+        assertEquals("https://intranet.example/reise", browser.follow(null, "link-1").url());
     }
 
     @Test
@@ -525,20 +516,14 @@ public class ChatBrowserRuntimeTest {
     }
 
     @Test
-    public void reloadOnTheSameAddressInvalidatesTheLinkIds() throws Exception {
+    public void followAfterAReloadUsesTheLastList() throws Exception {
         homeWithLinks();
         ChatBrowser browser = runtime.browserOf(chatA);
         browser.navigate(null, HOME);
         browser.links(null, 100, null);
         engine.last().connection.userReloads(engine.last().tabs.keySet().iterator().next());
 
-        try {
-            browser.follow(null, "link-1");
-            fail("expected INVALID_REQUEST");
-        } catch (BrowserException expected) {
-            assertEquals(BrowserException.Kind.INVALID_REQUEST, expected.kind());
-        }
-        assertEquals(1, engine.navigations.size());
+        assertEquals("https://intranet.example/reise", browser.follow(null, "link-1").url());
     }
 
     @Test

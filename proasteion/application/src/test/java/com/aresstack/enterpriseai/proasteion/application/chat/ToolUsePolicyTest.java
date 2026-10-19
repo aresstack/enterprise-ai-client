@@ -108,4 +108,14 @@ public class ToolUsePolicyTest {
                 Collections.singletonList("read_attachment")));
         assertNull(route(InformationNeed.GENERAL_KNOWLEDGE, NextAction.UNKNOWN, Collections.<String>emptyList()));
     }
+
+    @Test
+    public void browserRulePrefersParallelReadingOnlyWhenOffered() {
+        String rules = ToolUsePolicy.context(Arrays.asList(
+                com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools.OPEN_MANY,
+                com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools.FOLLOW));
+        org.junit.Assert.assertTrue(rules, rules.contains("parallel mit browser_open_many"));
+        String without = ToolUsePolicy.context(Arrays.asList(KnowledgeMcpTools.KNOWLEDGE_SEARCH));
+        org.junit.Assert.assertFalse(without, without.contains("browser_open_many"));
+    }
 }

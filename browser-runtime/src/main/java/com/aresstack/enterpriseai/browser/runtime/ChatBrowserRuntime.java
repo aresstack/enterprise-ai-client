@@ -144,6 +144,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         private int nextTab = 1;
         private String currentRaw;
         private boolean closed;
+        /** Link id to address of the last link list of any tab; never invalidated, every target passes the guard. */
+        private final Map<String, String> lastLinks = new HashMap<String, String>();
         private boolean humanKeys;
         private boolean humanMouse;
         /** Raw context id to the tab's current link snapshot. */
@@ -423,6 +425,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
                             entry.getValue()[2]));
                 }
                 snapshots.put(raw, snapshot);
+                lastLinks.clear();
+                lastLinks.putAll(snapshot.urls);
                 return new BrowserLinks(idOf(raw), tab.url(), tab.title(), links, usable.size());
             }, true);
         }
@@ -430,16 +434,20 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         /** The address of {@code linkId} in the tab's still valid link snapshot, else {@code INVALID_REQUEST}. */
         private String snapshotUrl(BrowserConnection connection, String raw, String linkId) throws BrowserException {
             LinkSnapshot snapshot = snapshots.get(raw);
-            if (snapshot == null) {
-                throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
-                        "Keine gültige Linkliste für diesen Tab; zuerst browser_links aufrufen");
-            }
-            if (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)
-                    || !connection.documentToken(raw).equals(snapshot.document)) {
+            if (snapshot != null && (!withoutFragment(rawTab(connection, raw).url()).equals(snapshot.pageUrl)
+                    || !connection.documentToken(raw).equals(snapshot.document))) {
                 snapshots.remove(raw);
+                snapshot = null;
+            }
+            if (snapshot == null) {
+                // The tab moved on since the list (follow, back, a click): the id still names the address the model
+                // was shown in the last list; it passes the guard like any navigation.
+                String remembered = linkId == null ? null : lastLinks.get(linkId.trim());
+                if (remembered != null) {
+                    return remembered;
+                }
                 throw new BrowserException(BrowserException.Kind.INVALID_REQUEST,
-                        "Die Seite hat sich seit browser_links geändert; die Link-Ids gelten nicht mehr. "
-                                + "browser_links erneut aufrufen");
+                        "Unbekannte Link-Id " + linkId + "; zuerst browser_links aufrufen");
             }
             String url = linkId == null ? null : snapshot.urls.get(linkId.trim());
             if (url == null) {

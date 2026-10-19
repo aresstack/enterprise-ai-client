@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.application.chat;
 
+import com.aresstack.enterpriseai.proasteion.application.agent.BrowserMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.chat.TurnContext;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.AnswerPlan;
 import com.aresstack.enterpriseai.astu.acropolis.chat.planning.InformationNeed;
@@ -49,6 +50,13 @@ public final class ToolUsePolicy {
             + "Auftrag in natürlicher Sprache; Suchbegriffe wählt der Recherche-Agent. Dass du irgendeine Bedeutung "
             + "kennst, ersetzt die Recherche nicht. Antworte nur aus den Befunden und nenne ihre Quellen; findet sie "
             + "nichts, sag das und nenne eine öffentliche Bedeutung nur als mögliche Lesart, nie stillschweigend.";
+
+    static final String BROWSER = "Im Browser liest du mehr als eine Seite immer parallel mit "
+            + BrowserMcpTools.OPEN_MANY + " (Suchergebnisse, Linklisten, Teaser; per links=[Ids], urls oder "
+            + "from_page), nicht nacheinander mit " + BrowserMcpTools.FOLLOW + ". Trefferlisten und Teaser zeigen nur "
+            + "Ausschnitte: öffne die relevanten Seiten, bevor du antwortest. " + BrowserMcpTools.FOLLOW
+            + " nur für eine einzelne Seite oder wenn du auf der Seite etwas bedienen musst; Captcha-, Anmelde- und "
+            + "Einwilligungsseiten bleiben einzeln.";
 
     static final String ROUTE_PREFIX = "[Routing für diese Nachricht laut Antwortplan] ";
 
@@ -144,6 +152,9 @@ public final class ToolUsePolicy {
             text.append(' ').append(RESEARCH);
         } else if (offered.contains(KnowledgeMcpTools.KNOWLEDGE_SEARCH)) {
             text.append(' ').append(KNOWLEDGE);
+        }
+        if (offered.contains(BrowserMcpTools.OPEN_MANY)) {
+            text.append(' ').append(BROWSER);
         }
         return text.toString();
     }
