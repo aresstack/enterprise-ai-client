@@ -1,6 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
-import com.aresstack.enterpriseai.ui.comic.border.ComicBorder;
+import com.aresstack.enterpriseai.ui.comic.control.ComicFormControls;
 import com.aresstack.enterpriseai.ui.comic.theme.ComicPalette;
 import com.aresstack.enterpriseai.ui.comic.theme.ResearchUiTypography;
 
@@ -20,14 +20,28 @@ import java.awt.Component;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.Polygon;
+import java.awt.Color;
+import java.awt.Container;
+import java.awt.Point;
+import java.awt.Shape;
+import java.awt.Window;
+import java.awt.geom.Area;
+import java.awt.geom.Path2D;
+import java.awt.geom.RoundRectangle2D;
+import javax.swing.JComponent;
+import java.awt.IllegalComponentStateException;
+import javax.swing.JLayeredPane;
+import javax.swing.JRootPane;
+import javax.swing.JWindow;
+import javax.swing.SwingUtilities;
 import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntConsumer;
 
 /**
- * The browser popup under the globe's arrow (#141), drawn as a comic speech bubble pointing up to the arrow: one
+ * The browser popup of the globe's arrow (#141), drawn as a comic speech bubble that opens ABOVE the composer with
+ * its pointer at the bottom aiming at the arrow; its window is transparent, so the rounded corners stay round: one
  * compact row per value (tool rounds, parallel tabs, random delay before a tab), each a field for any value and a
  * slider over the usual range, kept in sync; every change goes to the row's listener at once.
  */
@@ -40,8 +54,12 @@ final class BrowserBudgetPopup extends JPopupMenu {
     static final String HUMAN_TIP = "Unregelmäßiges Tippen, Scrollen in Etappen und Lesepausen (nur im Browser)";
     static final String MOUSE_TITLE = "Mausbewegungen";
     static final String MOUSE_TIP = "Zittern und Umwege des Browser-Zeigers; deine eigene Maus bleibt frei";
-    /** Height of the bubble's pointer above the content. */
-    private static final int POINTER = 8;
+    /** Height of the bubble's pointer below the content. */
+    static final int POINTER = 10;
+    /** Corner radius of the bubble. */
+    static final int RADIUS = 14;
+    /** Where the pointer's tip sits, from the bubble's left edge. */
+    private int pointerX = 22;
 
     /** The definition of one row. */
     static final class Row {
@@ -103,28 +121,20 @@ final class BrowserBudgetPopup extends JPopupMenu {
                 Graphics2D g2 = (Graphics2D) g.create();
                 try {
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2.setColor(getParent() == null ? palette.getSurface() : getParent().getBackground());
-                    g2.fillRect(0, 0, getWidth(), getHeight());
-                    int w = getWidth() - 3;
-                    int h = getHeight() - 3 - POINTER;
-                    Polygon pointer = new Polygon(new int[]{14, 22, 30}, new int[]{POINTER + 2, 1, POINTER + 2}, 3);
+                    g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+                    Shape shape = bubbleShape(getWidth(), getHeight(), pointerX);
                     g2.setColor(palette.getSurface());
-                    g2.fillRoundRect(1, POINTER + 1, w, h, 18, 18);
-                    g2.fillPolygon(pointer);
+                    g2.fill(shape);
                     g2.setColor(palette.getInk());
                     g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                    g2.drawRoundRect(1, POINTER + 1, w, h, 18, 18);
-                    g2.drawLine(14, POINTER + 1, 22, 1);
-                    g2.drawLine(22, 1, 30, POINTER + 1);
-                    g2.setColor(palette.getSurface());
-                    g2.drawLine(16, POINTER + 1, 28, POINTER + 1);
+                    g2.draw(shape);
                 } finally {
                     g2.dispose();
                 }
             }
         };
         bubble.setOpaque(false);
-        bubble.setBorder(BorderFactory.createEmptyBorder(POINTER + 8, 12, 10, 12));
+        bubble.setBorder(BorderFactory.createEmptyBorder(10, 12, POINTER + 10, 12));
         JPanel content = new JPanel();
         content.setOpaque(false);
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -134,7 +144,7 @@ final class BrowserBudgetPopup extends JPopupMenu {
         for (final Check check : checks) {
             final javax.swing.JCheckBox box = new javax.swing.JCheckBox(check.title, check.value);
             box.setToolTipText(check.tooltip);
-            box.setOpaque(false);
+            ComicFormControls.install(box, palette);
             box.setFont(ResearchUiTypography.semiBold(12f));
             box.setForeground(palette.getInk());
             box.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -152,15 +162,16 @@ final class BrowserBudgetPopup extends JPopupMenu {
         JSpinner field = new JSpinner(number);
         JSpinner.NumberEditor editor = new JSpinner.NumberEditor(field, "#");
         field.setEditor(editor);
-        field.setBorder(ComicBorder.popupBorder(palette));
         JFormattedTextField text = editor.getTextField();
         text.setColumns(5);
+        ComicFormControls.install(field, palette);
         if (text.getFormatter() instanceof DefaultFormatter) {
             // Typed digits apply while typing, not only on Enter.
             ((DefaultFormatter) text.getFormatter()).setCommitsOnValidEdit(true);
         }
         final JSlider slider = new JSlider(row.sliderMin, row.sliderMax, clamp(row.value, row.sliderMin, row.sliderMax));
-        slider.setOpaque(false);
+        ComicFormControls.install(slider, palette);
+        slider.setFont(ResearchUiTypography.semiBold(10f));
         slider.setMajorTickSpacing(Math.max(1, (row.sliderMax - row.sliderMin) / 4));
         slider.setPaintTicks(true);
         slider.setPaintLabels(true);
@@ -197,6 +208,83 @@ final class BrowserBudgetPopup extends JPopupMenu {
         content.add(slider);
         numbers.add(number);
         sliders.add(slider);
+    }
+
+    /**
+     * Open the bubble above {@code invoker} (the globe's arrow) with its pointer aiming at the invoker's center,
+     * shifted left where the screen's right edge would cut it off.
+     */
+    void showAbove(Component invoker) {
+        java.awt.Dimension size = getPreferredSize();
+        int target = invoker.getWidth() / 2;
+        int x = Math.min(0, target - 22);
+        if (invoker.isShowing() && invoker.getGraphicsConfiguration() != null) {
+            java.awt.Rectangle screen = invoker.getGraphicsConfiguration().getBounds();
+            int right = invoker.getLocationOnScreen().x + x + size.width;
+            if (right > screen.x + screen.width) {
+                x -= right - (screen.x + screen.width);
+            }
+        }
+        pointerX = clamp(target - x, RADIUS + 8, Math.max(RADIUS + 8, size.width - RADIUS - 8));
+        show(invoker, x, -size.height);
+    }
+
+    int pointerX() {
+        return pointerX;
+    }
+
+    @Override
+    public void setVisible(boolean visible) {
+        super.setVisible(visible);
+        if (visible) {
+            clearBackdrop();
+        }
+    }
+
+    /**
+     * Swing hosts a popup in an opaque panel (inside the frame) or an opaque window (beyond it); both would paint
+     * square corners around the rounded bubble. Make the host see-through: a transparent window background where
+     * the platform allows translucency, else the window shaped to the bubble.
+     */
+    private void clearBackdrop() {
+        Container parent = getParent();
+        while (parent != null && !(parent instanceof JLayeredPane) && !(parent instanceof JRootPane)
+                && !(parent instanceof Window)) {
+            if (parent instanceof JComponent) {
+                ((JComponent) parent).setOpaque(false);
+            }
+            parent = parent.getParent();
+        }
+        Window window = SwingUtilities.getWindowAncestor(this);
+        if (window instanceof JWindow && window != SwingUtilities.getWindowAncestor(getInvoker())) {
+            try {
+                window.setBackground(new Color(0, 0, 0, 0));
+                ((JWindow) window).getContentPane().setBackground(new Color(0, 0, 0, 0));
+                ((JComponent) ((JWindow) window).getContentPane()).setOpaque(false);
+            } catch (UnsupportedOperationException | IllegalComponentStateException noTranslucency) {
+                try {
+                    window.setShape(bubbleShape(window.getWidth(), window.getHeight(), pointerX));
+                } catch (UnsupportedOperationException | IllegalComponentStateException noShape) {
+                    // square corners, still usable
+                }
+            }
+        }
+        repaint();
+    }
+
+    /** The bubble's outline: a rounded body with the pointer at the bottom, tip at {@code tipX}. */
+    static Shape bubbleShape(int width, int height, int tipX) {
+        float w = width - 3f;
+        float h = height - 3f - POINTER;
+        Area area = new Area(new RoundRectangle2D.Float(1.5f, 1.5f, w, h, RADIUS * 2, RADIUS * 2));
+        Path2D.Float pointer = new Path2D.Float();
+        float base = 1.5f + h - 1f;
+        pointer.moveTo(tipX - 9, base);
+        pointer.lineTo(tipX, height - 1.5f);
+        pointer.lineTo(tipX + 4, base);
+        pointer.closePath();
+        area.add(new Area(pointer));
+        return area;
     }
 
     /** The value of the first row (tool rounds). */

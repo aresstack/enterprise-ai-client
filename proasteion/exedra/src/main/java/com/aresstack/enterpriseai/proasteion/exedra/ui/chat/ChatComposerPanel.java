@@ -1545,7 +1545,7 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                 }));
         lastBudgetPopup = new BrowserBudgetPopup(popupPalette, rows, checks);
         if (budgetButton.isShowing()) {
-            lastBudgetPopup.show(budgetButton, 0, budgetButton.getHeight());
+            lastBudgetPopup.showAbove(budgetButton);
         }
     }
 
