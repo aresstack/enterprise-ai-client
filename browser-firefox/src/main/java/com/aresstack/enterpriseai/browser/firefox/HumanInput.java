@@ -79,6 +79,11 @@ final class HumanInput {
         return moves;
     }
 
+    /** A slight hand tremor in pixels, about ±2. */
+    private double tremor() {
+        return random.nextGaussian() * 1.2;
+    }
+
     /** Where the pointer starts in a tab it has not moved in yet: somewhere in the upper part of the page. */
     double[] startPoint() {
         return new double[]{100 + random.nextInt(600), 80 + random.nextInt(300)};
