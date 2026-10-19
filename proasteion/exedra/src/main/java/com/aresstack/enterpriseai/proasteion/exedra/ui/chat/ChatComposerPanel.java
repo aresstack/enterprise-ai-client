@@ -174,6 +174,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     /** min, max, sliderMin, sliderMax for tabs, then the same for the delay. */
     private int[] loadRange = {1, 8, 1, 8, 0, 10000, 0, 2000};
     private java.util.function.BiConsumer<Integer, Integer> loadListener = (tabs, delay) -> { };
+    private boolean humanEmulation;
+    private boolean humanMouse;
+    private java.util.function.BiConsumer<Boolean, Boolean> humanListener = (emulation, mouse) -> { };
     /** Composer switch "Wissensquellen" of this chat (#141): latched when on. */
     private final ComposerButton knowledgeButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
@@ -1480,6 +1483,17 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.loadListener = listener == null ? (tabs, delay) -> { } : listener;
     }
 
+    /** Who hears a change of the checkboxes Human Emulation and Mausbewegungen (both values). */
+    public void configureHumanEmulation(java.util.function.BiConsumer<Boolean, Boolean> listener) {
+        this.humanListener = listener == null ? (emulation, mouse) -> { } : listener;
+    }
+
+    /** Shows Human Emulation and mouse movements of the current chat. */
+    public void showHumanEmulation(boolean emulation, boolean mouse) {
+        this.humanEmulation = emulation;
+        this.humanMouse = mouse;
+    }
+
     /** Shows the parallel tabs and the maximum delay of the current chat. */
     public void showBrowserLoad(int tabs, int delayMillis) {
         this.browserTabs = tabs;
@@ -1518,7 +1532,18 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                     showBrowserLoad(browserTabs, value);
                     loadListener.accept(browserTabs, value);
                 }));
-        lastBudgetPopup = new BrowserBudgetPopup(popupPalette, rows);
+        java.util.List<BrowserBudgetPopup.Check> checks = new java.util.ArrayList<BrowserBudgetPopup.Check>();
+        checks.add(new BrowserBudgetPopup.Check(BrowserBudgetPopup.HUMAN_TITLE, BrowserBudgetPopup.HUMAN_TIP,
+                humanEmulation, on -> {
+                    showHumanEmulation(on, humanMouse);
+                    humanListener.accept(on, humanMouse);
+                }));
+        checks.add(new BrowserBudgetPopup.Check(BrowserBudgetPopup.MOUSE_TITLE, BrowserBudgetPopup.MOUSE_TIP,
+                humanMouse, on -> {
+                    showHumanEmulation(humanEmulation, on);
+                    humanListener.accept(humanEmulation, on);
+                }));
+        lastBudgetPopup = new BrowserBudgetPopup(popupPalette, rows, checks);
         if (budgetButton.isShowing()) {
             lastBudgetPopup.show(budgetButton, 0, budgetButton.getHeight());
         }

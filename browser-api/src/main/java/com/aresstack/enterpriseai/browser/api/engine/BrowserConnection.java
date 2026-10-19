@@ -37,6 +37,13 @@ public interface BrowserConnection {
      */
     java.util.Map<String, String> navigateAll(java.util.Map<String, String> urlByContext) throws BrowserException;
 
+    /**
+     * Switches the human variation of this connection's input (#141): {@code keys} for uneven keystrokes, scrolling
+     * through a loaded page and a reading pause, {@code mouse} for curved mouse paths with tremor. Only the browser's
+     * own synthetic input is affected, never the operating system's mouse or keyboard.
+     */
+    void setHumanEmulation(boolean keys, boolean mouse);
+
     /** Url, title and visible text of the tab. */
     RawPage read(String contextId) throws BrowserException;
 

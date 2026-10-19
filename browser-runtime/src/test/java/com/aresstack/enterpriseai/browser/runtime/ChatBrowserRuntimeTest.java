@@ -268,6 +268,19 @@ public class ChatBrowserRuntimeTest {
         assertEquals("https://start.example/", browser.read(null).url());
     }
 
+    @Test
+    public void humanEmulationReachesTheConnectionAlsoAfterAReconnect() throws Exception {
+        ChatBrowser browser = runtime.browserOf(chatA);
+        browser.setHumanEmulation(true, false);
+        browser.navigate(null, "https://example.org/");
+        assertEquals("true/false", engine.last().connection.human);
+        engine.last().connection.open = false;
+        browser.read(null);
+        assertEquals("true/false", engine.last().connection.human);
+        browser.setHumanEmulation(false, true);
+        assertEquals("false/true", engine.last().connection.human);
+    }
+
     private ChatBrowserRuntime guarded() {
         BrowserAccessGuard guard = (chat, url) -> {
             if (url != null && url.contains("blocked.example")) {

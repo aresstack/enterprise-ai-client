@@ -1010,6 +1010,14 @@ public final class CompositionRoot {
         return McpChatTool.all(toolCatalog.tools(EnumSet.of(ToolChannel.CHAT)));
     }
 
+    /** Human Emulation of the browser of {@code conversation} (#141): keystrokes/scrolling and mouse movements. */
+    public void setBrowserHumanEmulation(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation,
+                                         boolean keys, boolean mouse) {
+        if (browserTools != null && conversation != null) {
+            browserTools.setHumanEmulation(conversation, keys, mouse);
+        }
+    }
+
     /** How browser_open_many loads in {@code conversation} (#141): parallel tabs, maximum delay before a tab. */
     public void setBrowserBatchLoad(com.aresstack.enterpriseai.astu.chat.ChatConversationId conversation, int tabs,
                                     int maxDelayMillis) {

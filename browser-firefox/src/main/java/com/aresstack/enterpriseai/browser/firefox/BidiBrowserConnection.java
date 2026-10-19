@@ -353,6 +353,12 @@ final class BidiBrowserConnection implements BrowserConnection {
     private final WebDriver driver;
     private final FirefoxInstance instance;
     private volatile boolean disconnected;
+    /** Human variation of input, scrolling and reading; off unless the chat switched it on. */
+    private volatile HumanInput human = HumanInput.off();
+    /** Last pointer position per tab, start of the next mouse path. */
+    private final Map<String, double[]> pointers = new java.util.concurrent.ConcurrentHashMap<String, double[]>();
+    static final String PAGE_SIZE_SCRIPT = "JSON.stringify([document.documentElement ? document.documentElement"
+            + ".scrollHeight : 0, window.innerHeight || 0, document.body ? (document.body.innerText || '').length : 0])";
 
     private BidiBrowserConnection(WDWebSocketImpl socket, WebDriver driver, FirefoxInstance instance) {
         this.socket = socket;
@@ -454,6 +460,70 @@ final class BidiBrowserConnection implements BrowserConnection {
         }
         // Complete is not ready: intranets and single page apps render their content after the load event.
         settle(contextId, null, LOAD_SETTLE_MILLIS);
+        humanize(contextId);
+    }
+
+    @Override
+    public void setHumanEmulation(boolean keys, boolean mouse) {
+        HumanInput now = human;
+        if (now.keys() != keys || now.mouse() != mouse) {
+            human = new HumanInput(new java.util.Random(), keys, mouse);
+        }
+    }
+
+    /**
+     * After a load with Human Emulation on: scrolls through the page in a few uneven steps (lazy content appears),
+     * lets the pointer wander over the text when mouse movements are on, scrolls back to the top and pauses as a
+     * reader would. Only inside the tab (page scripts and BiDi input); failures never fail the load.
+     */
+    private void humanize(String contextId) {
+        HumanInput now = human;
+        if (!now.keys() && !now.mouse()) {
+            return;
+        }
+        try {
+            JsonArray size = JsonParser.parseString(evaluate(contextId, PAGE_SIZE_SCRIPT)).getAsJsonArray();
+            int height = size.get(0).getAsInt();
+            int viewport = size.get(1).getAsInt();
+            int text = size.get(2).getAsInt();
+            for (int step : now.scrollSteps(height, viewport)) {
+                evaluate(contextId, "window.scrollBy(0, " + step + "), ''");
+                sleep(now.scrollPause());
+            }
+            if (now.mouse()) {
+                double[] at = pointerOf(contextId, now);
+                driver.input().performActions(contextId,
+                        java.util.Collections.singletonList(InputActions.moves(now.wander(at[0], at[1]))));
+                driver.input().releaseActions(contextId);
+            }
+            if (now.keys()) {
+                evaluate(contextId, "window.scrollTo(0, 0), ''");
+                sleep(now.readingPause(text));
+            }
+        } catch (BrowserException | RuntimeException e) {
+            // Emulation is decoration; the page is loaded either way.
+        }
+    }
+
+    private double[] pointerOf(String contextId, HumanInput now) {
+        double[] at = pointers.get(contextId);
+        if (at == null) {
+            at = now.startPoint();
+            pointers.put(contextId, at);
+        }
+        return at;
+    }
+
+    private static void sleep(int millis) throws BrowserException {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BrowserException(BrowserException.Kind.FAILED, "Warten unterbrochen", e);
+        }
     }
 
     @Override
@@ -513,6 +583,11 @@ final class BidiBrowserConnection implements BrowserConnection {
         for (String contextId : pending) {
             if (!replaced.contains(contextId)) {
                 failures.put(contextId, "Seite hat nicht rechtzeitig geladen");
+            }
+        }
+        for (String contextId : urlByContext.keySet()) {
+            if (!failures.containsKey(contextId)) {
+                humanize(contextId);
             }
         }
         return failures;
@@ -741,9 +816,12 @@ final class BidiBrowserConnection implements BrowserConnection {
         boolean typing = field && action != BrowserAction.CLICK && value != null;
         try {
             List<SourceActions> actions = new ArrayList<SourceActions>();
-            actions.add(InputActions.click(x, y));
+            HumanInput now = human;
+            double[] from = pointerOf(contextId, now);
+            actions.add(InputActions.click(from[0], from[1], x, y, now));
+            pointers.put(contextId, new double[]{x, y});
             if (typing && value.length() <= MAX_TYPED_CHARS) {
-                actions.add(InputActions.typeReplacing(value));
+                actions.add(InputActions.typeReplacing(value, now));
             }
             driver.input().performActions(contextId, actions);
             driver.input().releaseActions(contextId);

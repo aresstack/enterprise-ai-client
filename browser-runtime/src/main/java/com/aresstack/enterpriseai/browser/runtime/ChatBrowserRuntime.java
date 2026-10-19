@@ -144,6 +144,8 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         private int nextTab = 1;
         private String currentRaw;
         private boolean closed;
+        private boolean humanKeys;
+        private boolean humanMouse;
         /** Raw context id to the tab's current link snapshot. */
         private final Map<String, LinkSnapshot> snapshots = new HashMap<String, LinkSnapshot>();
         /** Raw context id to the tab's current control snapshot. */
@@ -715,6 +717,15 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
         }
 
         @Override
+        public synchronized void setHumanEmulation(boolean keys, boolean mouse) {
+            humanKeys = keys;
+            humanMouse = mouse;
+            if (connection != null) {
+                connection.setHumanEmulation(keys, mouse);
+            }
+        }
+
+        @Override
         public synchronized boolean isRunning() {
             return instance != null && instance.isAlive();
         }
@@ -805,6 +816,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             if (instance != null && instance.isAlive()) {
                 try {
                     connection = instance.connect();
+                    connection.setHumanEmulation(humanKeys, humanMouse);
                     return;
                 } catch (BrowserException e) {
                     if (!e.isRecoverable()) {
@@ -817,6 +829,7 @@ public final class ChatBrowserRuntime implements ChatBrowserPort {
             instance = engine.start(profiles.profileOf(conversation));
             try {
                 connection = instance.connect();
+                connection.setHumanEmulation(humanKeys, humanMouse);
             } catch (BrowserException e) {
                 stopInstance();
                 throw e;

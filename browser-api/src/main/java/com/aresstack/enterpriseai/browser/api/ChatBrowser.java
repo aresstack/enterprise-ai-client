@@ -117,6 +117,12 @@ public interface ChatBrowser {
      */
     void closeBrowser();
 
+    /**
+     * Switches Human Emulation of this chat's browser from the next operation on: {@code keys} uneven keystrokes,
+     * scrolling and reading pauses, {@code mouse} curved mouse paths with tremor. Both act only inside the browser.
+     */
+    void setHumanEmulation(boolean keys, boolean mouse);
+
     /** Whether a browser process of this chat runs right now (as far as the runtime knows). */
     boolean isRunning();
 }

@@ -164,6 +164,14 @@ public final class BrowserMcpTools {
                 Math.max(0, Math.min(ChatBrowser.MAX_TAB_DELAY_MILLIS, maxDelayMillis))});
     }
 
+    /**
+     * Switches Human Emulation of {@code conversation}'s browser: {@code keys} uneven keystrokes, scrolling and reading
+     * pauses, {@code mouse} curved mouse paths with tremor; only inside the browser, never the user's own mouse.
+     */
+    public void setHumanEmulation(ChatConversationId conversation, boolean keys, boolean mouse) {
+        browsers.browserOf(conversation).setHumanEmulation(keys, mouse);
+    }
+
     private int[] batchLoadOf(ChatConversationId conversation) {
         int[] load = batchLoads.get(conversation);
         return load == null ? new int[]{DEFAULT_PARALLEL_TABS, 0} : load;

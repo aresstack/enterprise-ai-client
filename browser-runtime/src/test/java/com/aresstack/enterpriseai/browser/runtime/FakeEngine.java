@@ -191,6 +191,13 @@ final class FakeEngine implements BrowserEngine {
             }
         }
 
+        volatile String human = "off";
+
+        @Override
+        public void setHumanEmulation(boolean keys, boolean mouse) {
+            human = keys + "/" + mouse;
+        }
+
         @Override
         public Map<String, String> navigateAll(Map<String, String> urlByContext) throws BrowserException {
             check();

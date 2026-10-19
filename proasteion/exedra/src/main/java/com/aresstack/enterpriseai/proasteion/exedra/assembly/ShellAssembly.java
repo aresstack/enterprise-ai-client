@@ -293,6 +293,9 @@ public final class ShellAssembly {
             switches.composer().showBrowserLoad(chatActions.browserTabs(), chatActions.browserTabDelay());
             root.setBrowserBatchLoad(chatActions.conversationId(), chatActions.browserTabs(),
                     chatActions.browserTabDelay());
+            switches.composer().showHumanEmulation(chatActions.humanEmulation(), chatActions.humanMouse());
+            root.setBrowserHumanEmulation(chatActions.conversationId(), chatActions.humanEmulation(),
+                    chatActions.humanMouse());
         };
         // Browser budget (tool rounds with the browser on) under the globe's arrow, saved with the chat.
         chatShell.composer().configureBrowserBudget(BrowserBudget.MIN, BrowserBudget.MAX, BrowserBudget.SLIDER_MIN,
@@ -306,6 +309,10 @@ public final class ShellAssembly {
                     chatActions.setBrowserLoad(tabs, delay);
                     history.capabilitiesChanged();
                 });
+        chatShell.composer().configureHumanEmulation((emulation, mouse) -> {
+            chatActions.setHumanEmulation(emulation, mouse);
+            history.capabilitiesChanged();
+        });
         chatActions.addCapabilityListener(showSwitches);
         chatShell.composer().browserButton().addActionListener(event -> {
             if (root.browserReady()) {
