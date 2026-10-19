@@ -723,4 +723,31 @@ public class SettingsPanelTest {
             }
         });
     }
+
+    @Test
+    public void browserTabKeepsBothProfilesApart() throws Exception {
+        final ScriptedActions actions = new ScriptedActions();
+        onEdt(new Runnable() {
+            @Override
+            public void run() {
+                SettingsPanel panel = new SettingsPanel(sample().toBuilder()
+                        .browserSearchUrls(Collections.singletonList("https://html.duckduckgo.com/html/?q={query}"))
+                        .browserInternalAllow(Collections.singletonList("wiki.intern")).build(),
+                        Collections.<String>emptyList(), SettingsPanel.Mode.EDIT, actions, palette);
+                BrowserTab tab = panel.browserTab();
+                assertEquals("https://html.duckduckgo.com/html/?q={query}", tab.external().searchUrls.getText());
+                assertEquals("wiki.intern", tab.internal().whitelist.getText());
+                assertEquals("", tab.external().whitelist.getText());
+                tab.internal().allowByDefault.setSelected(true);
+                tab.internal().searchUrls.setText("https://wiki.intern/s?q={query}\n");
+                SettingsForm form = panel.toForm();
+                assertTrue(form.browserInternalAllowByDefault());
+                assertTrue(!form.browserAllowByDefault());
+                assertEquals(Collections.singletonList("https://wiki.intern/s?q={query}"),
+                        form.browserInternalSearchUrls());
+                assertEquals(Collections.singletonList("https://html.duckduckgo.com/html/?q={query}"),
+                        form.browserSearchUrls());
+            }
+        });
+    }
 }

@@ -186,6 +186,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         chat.setBrowserBudget(record.getBrowserBudget());
         chat.setBrowserLoad(record.getBrowserTabs(), record.getBrowserTabDelay());
         chat.setHumanEmulation(record.isHumanEmulation(), record.isHumanMouse());
+        chat.setBrowserInternal(record.isBrowserInternal());
         recordedConversation = target;
         createdAt = record.getCreatedAt();
         renamedTitle = record.isTitleEdited() ? record.getTitle() : null;
@@ -460,6 +461,7 @@ public final class ChatHistoryBinding implements ChatShellModelListener {
         record.setBrowserTabDelay(chat.browserTabDelay());
         record.setHumanEmulation(chat.humanEmulation());
         record.setHumanMouse(chat.humanMouse());
+        record.setBrowserInternal(chat.browserInternal());
         if (renamedTitle != null) {
             record.rename(renamedTitle);
         } else {

@@ -196,6 +196,8 @@ public final class RagChatBinding implements ChatShellActions {
     /** Human Emulation (keys, scrolling, reading) and mouse movements of the chat's browser; both off by default. */
     private boolean humanEmulation;
     private boolean humanMouse;
+    /** Browser profile of the chat (#141): {@code true} = Intern, {@code false} = Extern (default). */
+    private boolean browserInternal;
     /** Composer switch "Wissensquellen" of the current chat (#141): on by default; UI thread only. */
     private boolean knowledgeAllowed = true;
     private final List<Runnable> capabilityListeners = new java.util.concurrent.CopyOnWriteArrayList<Runnable>();
@@ -279,6 +281,7 @@ public final class RagChatBinding implements ChatShellActions {
         setBrowserBudget(BrowserBudget.DEFAULT);
         setBrowserLoad(BrowserLoad.DEFAULT_TABS, BrowserLoad.DEFAULT_DELAY);
         setHumanEmulation(false, false);
+        setBrowserInternal(false);
         this.bookmarks.clear();
         if (pages != null) {
             for (ChatBookmark page : pages) {
@@ -340,6 +343,22 @@ public final class RagChatBinding implements ChatShellActions {
         for (Runnable listener : capabilityListeners) {
             listener.run();
         }
+    }
+
+    /** Sets the browser profile of the current chat: {@code true} = Intern, {@code false} = Extern. */
+    public void setBrowserInternal(boolean internal) {
+        if (internal == browserInternal) {
+            return;
+        }
+        browserInternal = internal;
+        for (Runnable listener : capabilityListeners) {
+            listener.run();
+        }
+    }
+
+    /** Whether the current chat browses with profile Intern. */
+    public boolean browserInternal() {
+        return browserInternal;
     }
 
     public boolean humanEmulation() {
@@ -682,6 +701,10 @@ public final class RagChatBinding implements ChatShellActions {
                                     .with(TurnContext.Section.REFERENCES, ChatReferences.context(references))
                                     .withRule(ToolUsePolicy.context(offered))
                                     .withPlanRouting(ToolUsePolicy.routing(offered));
+                            if (browserOn) {
+                                // The chat's browser profile and its search URLs (#141).
+                                extraContext = extraContext.withRule(support.browserRule(conversation.value()));
+                            }
                             // Wer während der Runde ein Werkzeug abschaltet (Reiter „Tools“), nimmt es ab dem
                             // nächsten Aufruf aus dem Angebot; ein schon angefragter Aufruf wird abgelehnt.
                             via = new ChatCompletionsToolLoop(support.chat(),

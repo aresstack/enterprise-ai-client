@@ -134,6 +134,11 @@ public final class SettingsForm {
     private final boolean browserAllowByDefault;
     private final java.util.List<String> browserAllow;
     private final java.util.List<String> browserBlock;
+    private final java.util.List<String> browserSearchUrls;
+    private final boolean browserInternalAllowByDefault;
+    private final java.util.List<String> browserInternalAllow;
+    private final java.util.List<String> browserInternalBlock;
+    private final java.util.List<String> browserInternalSearchUrls;
     private final String acronymMaxLetters;
     private final String acronymShoutingPercent;
     private final String acronymShoutingMinWords;
@@ -242,6 +247,15 @@ public final class SettingsForm {
         this.browserAllowByDefault = b.browserAllowByDefault;
         this.browserAllow = java.util.Collections.unmodifiableList(new java.util.ArrayList<String>(b.browserAllow));
         this.browserBlock = java.util.Collections.unmodifiableList(new java.util.ArrayList<String>(b.browserBlock));
+        this.browserSearchUrls = java.util.Collections.unmodifiableList(
+                new java.util.ArrayList<String>(b.browserSearchUrls));
+        this.browserInternalAllowByDefault = b.browserInternalAllowByDefault;
+        this.browserInternalAllow = java.util.Collections.unmodifiableList(
+                new java.util.ArrayList<String>(b.browserInternalAllow));
+        this.browserInternalBlock = java.util.Collections.unmodifiableList(
+                new java.util.ArrayList<String>(b.browserInternalBlock));
+        this.browserInternalSearchUrls = java.util.Collections.unmodifiableList(
+                new java.util.ArrayList<String>(b.browserInternalSearchUrls));
         this.acronymMaxLetters = b.acronymMaxLetters;
         this.acronymShoutingPercent = b.acronymShoutingPercent;
         this.acronymShoutingMinWords = b.acronymShoutingMinWords;
@@ -337,6 +351,11 @@ public final class SettingsForm {
                 .browserAllowByDefault(browserAllowByDefault)
                 .browserAllow(browserAllow)
                 .browserBlock(browserBlock)
+                .browserSearchUrls(browserSearchUrls)
+                .browserInternalAllowByDefault(browserInternalAllowByDefault)
+                .browserInternalAllow(browserInternalAllow)
+                .browserInternalBlock(browserInternalBlock)
+                .browserInternalSearchUrls(browserInternalSearchUrls)
                 .acronymMaxLetters(acronymMaxLetters)
                 .acronymShoutingPercent(acronymShoutingPercent)
                 .acronymShoutingMinWords(acronymShoutingMinWords)
@@ -794,6 +813,31 @@ public final class SettingsForm {
         return browserBlock;
     }
 
+    /** Search URL templates of the external profile ({@code browser.search.urls}). */
+    public java.util.List<String> browserSearchUrls() {
+        return browserSearchUrls;
+    }
+
+    /** Mode of the internal profile ({@code browser.access.internal.mode}): {@code true} = allow by default. */
+    public boolean browserInternalAllowByDefault() {
+        return browserInternalAllowByDefault;
+    }
+
+    /** Whitelist of the internal profile ({@code browser.access.internal.allow}). */
+    public java.util.List<String> browserInternalAllow() {
+        return browserInternalAllow;
+    }
+
+    /** Blacklist of the internal profile ({@code browser.access.internal.block}). */
+    public java.util.List<String> browserInternalBlock() {
+        return browserInternalBlock;
+    }
+
+    /** Search URL templates of the internal profile ({@code browser.search.internal.urls}). */
+    public java.util.List<String> browserInternalSearchUrls() {
+        return browserInternalSearchUrls;
+    }
+
     /** Longest acronym in letters ({@code textMining.acronyms.maxLetters}, 2–20). */
     public String acronymMaxLetters() {
         return acronymMaxLetters;
@@ -980,6 +1024,11 @@ public final class SettingsForm {
         private boolean browserAllowByDefault;
         private java.util.List<String> browserAllow = java.util.Collections.emptyList();
         private java.util.List<String> browserBlock = java.util.Collections.emptyList();
+        private java.util.List<String> browserSearchUrls = java.util.Collections.emptyList();
+        private boolean browserInternalAllowByDefault;
+        private java.util.List<String> browserInternalAllow = java.util.Collections.emptyList();
+        private java.util.List<String> browserInternalBlock = java.util.Collections.emptyList();
+        private java.util.List<String> browserInternalSearchUrls = java.util.Collections.emptyList();
         private String acronymMaxLetters = String.valueOf(AcronymSettings.DEFAULT_MAX_LETTERS);
         private String acronymShoutingPercent = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_PERCENT);
         private String acronymShoutingMinWords = String.valueOf(AcronymSettings.DEFAULT_SHOUTING_MIN_WORDS);
@@ -1447,6 +1496,31 @@ public final class SettingsForm {
 
         public Builder browserBlock(java.util.List<String> value) {
             this.browserBlock = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserSearchUrls(java.util.List<String> value) {
+            this.browserSearchUrls = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserInternalAllowByDefault(boolean value) {
+            this.browserInternalAllowByDefault = value;
+            return this;
+        }
+
+        public Builder browserInternalAllow(java.util.List<String> value) {
+            this.browserInternalAllow = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserInternalBlock(java.util.List<String> value) {
+            this.browserInternalBlock = value == null ? java.util.Collections.<String>emptyList() : value;
+            return this;
+        }
+
+        public Builder browserInternalSearchUrls(java.util.List<String> value) {
+            this.browserInternalSearchUrls = value == null ? java.util.Collections.<String>emptyList() : value;
             return this;
         }
 

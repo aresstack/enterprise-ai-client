@@ -572,4 +572,32 @@ public class AppConfigLoaderTest {
         assertEquals("Größe", config.windowTitle());
         assertEquals(SecretRef.of("Schlüssel"), config.chat().apiKeyRef());
     }
+
+    @Test
+    public void browserProfilesKeepTheOldKeysAsExternAndHaveTheirOwnSearchUrls() throws Exception {
+        Properties p = minimal();
+        BrowserAccessConfig defaults = AppConfigLoader.fromProperties(p).browserAccess();
+        assertEquals(java.util.Collections.singletonList(BrowserAccessConfig.DUCKDUCKGO),
+                defaults.profile(BrowserProfile.EXTERNAL).searchUrls());
+        assertTrue(defaults.profile(BrowserProfile.INTERNAL).searchUrls().isEmpty());
+
+        p.setProperty("browser.access.allow", "public.example");
+        p.setProperty("browser.access.internal.mode", "allow");
+        p.setProperty("browser.access.internal.block", "bad.example");
+        p.setProperty("browser.search.urls", BrowserAccessConfig.NONE);
+        p.setProperty("browser.search.internal.urls", "https://wiki.intern/search?q={query}");
+        BrowserAccessConfig config = AppConfigLoader.fromProperties(p).browserAccess();
+        BrowserAccessConfig external = config.profile(BrowserProfile.EXTERNAL);
+        BrowserAccessConfig internal = config.profile(BrowserProfile.INTERNAL);
+        assertEquals(java.util.Collections.singletonList("public.example"), external.allow());
+        assertTrue(external.searchUrls().isEmpty());
+        assertTrue(!external.allowByDefault());
+        assertTrue(internal.allowByDefault());
+        assertTrue(internal.allow().isEmpty());
+        assertEquals(java.util.Collections.singletonList("bad.example"), internal.block());
+        assertEquals(java.util.Collections.singletonList("https://wiki.intern/search?q={query}"),
+                internal.searchUrls());
+        assertTrue(AppConfigLoader.fromProperties(p).warnings().toString(),
+                !AppConfigLoader.fromProperties(p).warnings().toString().contains("browser."));
+    }
 }

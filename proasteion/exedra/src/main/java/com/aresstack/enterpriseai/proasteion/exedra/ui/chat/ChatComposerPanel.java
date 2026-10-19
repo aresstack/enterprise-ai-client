@@ -177,6 +177,9 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
     private boolean humanEmulation;
     private boolean humanMouse;
     private java.util.function.BiConsumer<Boolean, Boolean> humanListener = (emulation, mouse) -> { };
+    /** Browser profile of the current chat (#141): {@code true} = Intern, {@code false} = Extern. */
+    private boolean browserInternal;
+    private java.util.function.Consumer<Boolean> profileListener = internal -> { };
     /** Composer switch "Wissensquellen" of this chat (#141): latched when on. */
     private final ComposerButton knowledgeButton;
     private final ComposerStatusLine statusLine = new ComposerStatusLine();
@@ -1488,6 +1491,16 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
         this.humanListener = listener == null ? (emulation, mouse) -> { } : listener;
     }
 
+    /** Who hears a switch of the browser profile ({@code true} = Intern). */
+    public void configureBrowserProfile(java.util.function.Consumer<Boolean> listener) {
+        this.profileListener = listener == null ? internal -> { } : listener;
+    }
+
+    /** Shows the browser profile of the current chat ({@code true} = Intern). */
+    public void showBrowserProfile(boolean internal) {
+        this.browserInternal = internal;
+    }
+
     /** Shows Human Emulation and mouse movements of the current chat. */
     public void showHumanEmulation(boolean emulation, boolean mouse) {
         this.humanEmulation = emulation;
@@ -1543,7 +1556,12 @@ public final class ChatComposerPanel extends JPanel implements ChatShellModelLis
                     showHumanEmulation(humanEmulation, on);
                     humanListener.accept(humanEmulation, on);
                 }));
-        lastBudgetPopup = new BrowserBudgetPopup(popupPalette, rows, checks);
+        BrowserBudgetPopup.Check profile = new BrowserBudgetPopup.Check(BrowserBudgetPopup.PROFILE_TITLE,
+                BrowserBudgetPopup.PROFILE_TIP, browserInternal, internal -> {
+                    showBrowserProfile(internal);
+                    profileListener.accept(internal);
+                });
+        lastBudgetPopup = new BrowserBudgetPopup(popupPalette, profile, rows, checks);
         if (budgetButton.isShowing()) {
             lastBudgetPopup.showAbove(budgetButton);
         }

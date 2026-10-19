@@ -42,6 +42,7 @@ public final class ToolSupport {
     private java.util.function.BooleanSupplier browserReady = () -> false;
     private java.util.function.Consumer<String> browserTurnEnd = chatId -> { };
     private BrowserExploration browserExploration = BrowserExploration.none();
+    private Function<String, String> browserRule = chatId -> null;
 
     /** Where a turn's web exploration is recorded (#141); the display only reads it. */
     public interface BrowserExploration {
@@ -123,6 +124,7 @@ public final class ToolSupport {
         this.browserReady = base.browserReady;
         this.browserTurnEnd = base.browserTurnEnd;
         this.browserExploration = base.browserExploration;
+        this.browserRule = base.browserRule;
     }
 
     /**
@@ -172,6 +174,21 @@ public final class ToolSupport {
         ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
         copy.browserExploration = exploration;
         return copy;
+    }
+
+    /** Copy that adds {@code rule} of the turn's chat (browser profile and search URLs, #141) to browser turns. */
+    public ToolSupport withBrowserRule(Function<String, String> rule) {
+        if (rule == null) {
+            throw new IllegalArgumentException("rule must not be null");
+        }
+        ToolSupport copy = new ToolSupport(this, maxRounds, diagnostics, chatTools, alwaysOn);
+        copy.browserRule = rule;
+        return copy;
+    }
+
+    /** The system prompt rule of the chat's browser profile, {@code null} without one. */
+    public String browserRule(String chatId) {
+        return browserRule.apply(chatId);
     }
 
     /** The recording of the browser turns. */

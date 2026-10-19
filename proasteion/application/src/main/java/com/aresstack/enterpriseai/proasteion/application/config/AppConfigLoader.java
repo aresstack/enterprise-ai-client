@@ -298,11 +298,17 @@ public final class AppConfigLoader {
     // ------------------------------------------------------------------ Abschnitte
 
     private static BrowserAccessConfig browserAccess(ConfigReader r) {
+        return browserProfile(r, BrowserProfile.EXTERNAL, BrowserAccessConfig.DUCKDUCKGO)
+                .withInternal(browserProfile(r, BrowserProfile.INTERNAL, BrowserAccessConfig.NONE));
+    }
+
+    private static BrowserAccessConfig browserProfile(ConfigReader r, BrowserProfile profile, String searchDefault) {
         // Anything but "allow" fails safe to "block".
-        String mode = r.text(BrowserAccessConfig.MODE_KEY, BrowserAccessConfig.MODE_BLOCK);
+        String mode = r.text(profile.modeKey(), BrowserAccessConfig.MODE_BLOCK);
         return new BrowserAccessConfig(BrowserAccessConfig.isAllowMode(mode),
-                BrowserAccessConfig.split(r.text(BrowserAccessConfig.ALLOW_KEY, null)),
-                BrowserAccessConfig.split(r.text(BrowserAccessConfig.BLOCK_KEY, null)));
+                BrowserAccessConfig.split(r.text(profile.allowKey(), null)),
+                BrowserAccessConfig.split(r.text(profile.blockKey(), null)),
+                BrowserAccessConfig.splitUrls(r.text(profile.searchKey(), searchDefault)), null);
     }
 
     private static ChatConfig chat(ConfigReader r) {

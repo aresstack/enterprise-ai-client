@@ -187,3 +187,14 @@ Mit eingeschaltetem 🌐 darf eine Antwort mehr Werkzeugrunden verwenden als das
 (`chat.tools.maxRounds`, Standard 8): standardmäßig 20, nie weniger als das allgemeine Limit.
 Der kleine Pfeil rechts neben dem Globus öffnet ein Feld (beliebiger Wert 1–999) und einen
 Schieberegler (4–60). Der Wert gilt je Chat, wird mit dem Chat gespeichert und gilt ab der nächsten Antwort.
+
+### Browserprofile Intern und Extern
+
+Jeder Chat nutzt ein Browserprofil: **Extern** (Standard) oder **Intern**, umschaltbar oben im Browser-Popup am Globus
+und mit dem Chat gespeichert. Beide Profile haben in Einstellungen → Browser dieselben Felder: Modus, Whitelist,
+Blacklist und Such-URLs. Die bisherigen Schlüssel `browser.access.*` sind das Profil Extern; Intern liegt unter
+`browser.access.internal.*`. „Immer erlauben/verbieten“ schreibt in das aktive Profil.
+
+Such-URLs (`browser.search.urls` für Extern, Standard `https://html.duckduckgo.com/html/?q={query}`;
+`browser.search.internal.urls` für Intern, Standard leer; `-` = bewusst keine) bekommt der Chat bei eingeschaltetem
+Browser im Systemprompt, zusammen mit dem Namen des aktiven Profils. `{query}` steht für die Suchbegriffe.
