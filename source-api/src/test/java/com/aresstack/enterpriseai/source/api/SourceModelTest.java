@@ -86,6 +86,17 @@ public class SourceModelTest {
     }
 
     @Test
+    public void hitPartitionIsOptionalAndNormalized() {
+        KnowledgeResourceId id = KnowledgeResourceId.of("wiki:w/A");
+        assertNull(new SourceSearchHit(id, "A", null).partitionKey());
+        assertNull(new SourceSearchHit(id, "A", null, null, null, " ").partitionKey());
+        SourceSearchHit hit = new SourceSearchHit(id, "A", null, null, null, " DEV ");
+        assertEquals("DEV", hit.partitionKey());
+        // Der Bereich ist Zusatzinformation wie Stand und Adresse, keine Identität des Treffers.
+        assertEquals(new SourceSearchHit(id, "A", null), hit);
+    }
+
+    @Test
     public void exceptionCarriesKind() {
         KnowledgeSourceException e = new KnowledgeSourceException(Kind.NOT_FOUND, "weg");
         assertEquals(Kind.NOT_FOUND, e.kind());

@@ -1028,9 +1028,10 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
             public List<SourceSearchHit> run(Session session) throws KnowledgeSourceException {
                 List<SourceSearchHit> hits = new ArrayList<SourceSearchHit>();
                 for (Page page : client.search(session, cql, query.limit()).pages) {
-                    // The search delivers version and URL (expand=content.version): unchanged hits are not loaded.
+                    // The search delivers version, URL and space (expand=content.version,content.space):
+                    // unchanged hits are not loaded, the space is the hit's partition.
                     hits.add(new SourceSearchHit(ConfluenceIds.page(locator, page.id), page.title, page.excerpt,
-                            KnowledgeRevision.of(page.modifiedAt, page.version), location(page.webUi)));
+                            KnowledgeRevision.of(page.modifiedAt, page.version), location(page.webUi), page.spaceKey));
                 }
                 return hits;
             }

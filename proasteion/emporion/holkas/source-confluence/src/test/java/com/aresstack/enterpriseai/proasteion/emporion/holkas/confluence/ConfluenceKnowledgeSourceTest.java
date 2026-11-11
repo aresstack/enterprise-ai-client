@@ -387,6 +387,19 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
+    public void searchHitCarriesTheSpaceOfThePageAsPartition() throws Exception {
+        confluence.page("200", "Runbook", "OPS", "<p>Ops</p>");
+        confluence.searchResults("101", "200");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("x", 5));
+
+        assertEquals(Arrays.asList(page("101"), page("200")), hitIds(hits));
+        assertEquals("DEV", hits.get(0).partitionKey());
+        assertEquals("OPS", hits.get(1).partitionKey());
+        assertTrue(confluence.lastSearchQuery.get("expand").contains("content.space"));
+    }
+
+    @Test
     public void searchFallsBackToTheWrapperUrlAndLastModified() throws Exception {
         confluence.searchContentWithoutVersionAndLinks = true;
         confluence.wrappedSearchResult("101", "Eins");
