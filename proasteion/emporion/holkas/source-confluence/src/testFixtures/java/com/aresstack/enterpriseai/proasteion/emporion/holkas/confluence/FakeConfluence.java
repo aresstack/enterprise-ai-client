@@ -471,6 +471,14 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
             ancestors = before;
         }
         json.add("ancestors", ancestors);
+        // Wie Confluence: Position unter den Geschwistern, "none" ohne manuelle Sortierung.
+        JsonObject extensions = new JsonObject();
+        if (page.position == null) {
+            extensions.addProperty("position", "none");
+        } else {
+            extensions.addProperty("position", page.position);
+        }
+        json.add("extensions", extensions);
         if (expand != null && expand.contains("childTypes.page")) {
             List<String> visible = new ArrayList<String>(page.children);
             visible.removeAll(restricted);
@@ -622,6 +630,11 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
         String storage;
         /** Feste Antwort für Abrufe mit {@code body.storage}, Byte für Byte (Leerraum, Escapes, Reihenfolge). */
         String rawJson;
+        /**
+         * Manuelle Position unter den Geschwistern ({@code extensions.position}); ohne Wert {@code "none"}. Die
+         * Reihenfolge von {@code /child/page} bleibt die von {@link FakeConfluence#child}.
+         */
+        Integer position;
 
         FakePage(String id, String title, String spaceKey, String html) {
             this.id = id;
@@ -637,6 +650,12 @@ public final class FakeConfluence implements ConfluenceHttpTransport {
 
         public FakePage rawJson(String json) {
             this.rawJson = json;
+            return this;
+        }
+
+        /** Setzt die manuelle Position unter den Geschwistern, wie Confluence sie nach Verschieben im Baum führt. */
+        public FakePage position(int value) {
+            this.position = value;
             return this;
         }
 
