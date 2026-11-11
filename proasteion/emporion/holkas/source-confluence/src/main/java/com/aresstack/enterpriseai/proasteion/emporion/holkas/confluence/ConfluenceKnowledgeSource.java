@@ -308,8 +308,8 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
                         attachment.webUi, EnumSet.allOf(PageView.Preview.class)));
             }
         } catch (KnowledgeSourceException e) {
-            LOG.warning("[Confluence] Anhänge der Seite " + pageId + " nicht gelesen (" + e.kind() + "): "
-                    + e.getMessage());
+            // Ohne Seiten-ID und Meldung: beide können Inhalt der Quelle nennen.
+            LOG.warning("[Confluence] Anhänge einer Seite nicht gelesen (" + e.kind() + ")");
         }
         return result;
     }
@@ -487,9 +487,8 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
             // Basis (etwa die Server-Basis-URL in export_view) sofort sichtbar ist.
             String text = "Bild liegt nicht unter der eingestellten Confluence-Adresse " + base
                     + " und wird nicht geladen: " + ConfluenceRestClient.withoutQuery(String.valueOf(src));
-            LOG.warning("[Confluence] Bild nicht geladen: url=" + ConfluenceRestClient.withoutQuery(String.valueOf(src))
-                    + " status=- contentType=- bytes=- fehler="
-                    + Kind.UNSUPPORTED + ": " + text);
+            LOG.warning("[Confluence] Bild nicht geladen: url=" + ConfluenceRestClient.logPath(String.valueOf(src))
+                    + " status=- contentType=- bytes=- fehler=" + Kind.UNSUPPORTED + ": fremde Adresse");
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, text);
         }
         final String path = src.substring(base.length());
