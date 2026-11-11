@@ -500,6 +500,106 @@ final class ConfluenceRestClient {
         return new StoredAttachments(payloads, contentType, firstAnswer, attachments, warnings);
     }
 
+    /** Höchstens so viele Seiten-IDs stehen in einem CQL {@code container in (...)}, damit die Anfrage kurz bleibt. */
+    static final int ATTACHMENT_SEARCH_CHUNK = 50;
+
+    /**
+     * CQL der Anhänge einiger Seiten. Nach Anlagezeitpunkt sortiert, damit während des Blätterns neu angelegte
+     * Anhänge hinten einsortiert werden und keinen noch nicht gelesenen verdrängen.
+     */
+    static String attachmentsOfPagesCql(List<String> pageIds) {
+        StringBuilder cql = new StringBuilder("type=attachment AND container in (");
+        for (int i = 0; i < pageIds.size(); i++) {
+            cql.append(i == 0 ? "" : ",").append(pageIds.get(i));
+        }
+        return cql.append(") ORDER BY created").toString();
+    }
+
+    /** CQL aller Anhänge eines Space, sortiert wie {@link #attachmentsOfPagesCql}. */
+    static String attachmentsInSpaceCql(String spaceKey) {
+        return "space=\"" + spaceKey + "\" AND type=attachment ORDER BY created";
+    }
+
+    /**
+     * Eine CQL-Anhangssuche über {@code /rest/api/content/search} mit demselben {@code expand} wie
+     * {@link #storedAttachments} ({@value #ATTACHMENT_LIST_EXPAND}, also mit der Seite in {@code container}): alle
+     * Antwortseiten unverändert, dazu jeder Eintrag mit seiner Position und seiner Seite. Nicht-Anhänge werden
+     * übersprungen, zählen aber zur Grenze. Es wird nie gekürzt: mehr als {@code max} Einträge (brauchbar oder nicht)
+     * zusammen mit {@code alreadyRead} Einträgen früherer Suchen desselben Aufrufs oder ein sich wiederholender
+     * Folgelink sind {@code INVALID_RESPONSE}. Die Suche liefert nur, was das Konto sehen darf.
+     */
+    AttachmentSearch attachmentSearch(Session session, String cql, int alreadyRead, int max)
+            throws KnowledgeSourceException {
+        String what = "Anhangssuche";
+        List<byte[]> payloads = new ArrayList<byte[]>();
+        List<SearchedAttachment> entries = new ArrayList<SearchedAttachment>();
+        String contentType = null;
+        Instant firstAnswer = null;
+        int count = alreadyRead;
+        Set<String> visited = new HashSet<String>();
+        String next = "/rest/api/content/search?cql=" + query(cql) + "&expand=" + ATTACHMENT_LIST_EXPAND
+                + "&start=0&limit=" + config.pageSize();
+        while (next != null) {
+            if (!visited.add(next)) {
+                throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Folgelink wiederholt sich");
+            }
+            ConfluenceHttpResponse response = send(session, next, what, config.maxResponseBytes());
+            if (firstAnswer == null) {
+                firstAnswer = Instant.now();
+            }
+            JsonObject json = jsonObject(response, what);
+            payloads.add(response.body());
+            if (contentType == null) {
+                contentType = response.contentType();
+            }
+            JsonArray results = array(json, "results");
+            if (results == null) {
+                throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, what + ": Liste ohne results");
+            }
+            int responseIndex = payloads.size() - 1;
+            int index = 0;
+            for (JsonElement element : results) {
+                index++;
+                // Jeder Eintrag zählt zur Grenze, auch ein unbrauchbarer, damit nichts unbegrenzt wächst.
+                if (++count > max) {
+                    throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                            what + ": mehr als " + max + " Einträge, Liste wird nicht gekürzt");
+                }
+                if (!element.isJsonObject()) {
+                    entries.add(new SearchedAttachment(responseIndex, index, null, null, null, "kein JSON-Objekt"));
+                    continue;
+                }
+                JsonObject result = element.getAsJsonObject();
+                JsonObject wrapped = object(result, "content");
+                if (wrapped != null) {
+                    result = wrapped;
+                }
+                String type = string(result, "type");
+                if (type != null && !"attachment".equals(type)) {
+                    continue;
+                }
+                JsonObject container = object(result, "container");
+                String containerId = container == null ? null : string(container, "id");
+                containerId = containerId == null ? null : containerId.trim();
+                if (!ConfluenceIds.isContentId(containerId)) {
+                    entries.add(new SearchedAttachment(responseIndex, index, null, null, null,
+                            "Anhang ohne zuordenbare Seite (Container-ID " + idShape(container) + ")"));
+                    continue;
+                }
+                String containerType = string(container, "type");
+                if (attachmentId(result) == null) {
+                    entries.add(new SearchedAttachment(responseIndex, index, containerId, containerType, null,
+                            "Anhang ohne gültige ID (" + idShape(result) + ")"));
+                    continue;
+                }
+                entries.add(new SearchedAttachment(responseIndex, index, containerId, containerType,
+                        toAttachment(result, containerId), null));
+            }
+            next = nextLink(json, what);
+        }
+        return new AttachmentSearch(payloads, contentType, firstAnswer, entries, count);
+    }
+
     /** Ein Anhang; {@code NOT_FOUND}, wenn es ihn nicht gibt. */
     Attachment attachment(Session session, String attachmentId) throws KnowledgeSourceException {
         JsonObject json = getJson(session, "/rest/api/content/" + attachmentId + "?expand=version,container",
@@ -2246,6 +2346,51 @@ final class ConfluenceRestClient {
             this.retrievedAt = retrievedAt;
             this.attachments = attachments;
             this.warnings = warnings;
+        }
+    }
+
+    /** Antwortkörper aller Seiten einer Anhangssuche, unverändert, mit den daraus gelesenen Einträgen. */
+    static final class AttachmentSearch {
+        final List<byte[]> payloads;
+        final String contentType;
+        /** Zeitpunkt der ersten Antwort, nach Anmeldung und Wiederholungen. */
+        final Instant retrievedAt;
+        /** Alle Anhang-Einträge in Antwortreihenfolge, auch unbrauchbare. */
+        final List<SearchedAttachment> entries;
+        /** Gelesene Einträge einschließlich übersprungener und früherer Suchen ({@code alreadyRead}). */
+        final int read;
+
+        AttachmentSearch(List<byte[]> payloads, String contentType, Instant retrievedAt,
+                         List<SearchedAttachment> entries, int read) {
+            this.payloads = payloads;
+            this.contentType = contentType;
+            this.retrievedAt = retrievedAt;
+            this.entries = entries;
+            this.read = read;
+        }
+    }
+
+    /**
+     * Ein Eintrag einer Anhangssuche: Position (Antwortseite ab 0, Eintrag ab 1), Seite und Anhang. Ohne brauchbare ID
+     * ist {@code attachment} {@code null}, ohne zuordenbare Seite auch {@code containerId}; {@code problem} sagt dann,
+     * was fehlt, ohne Werte, Titel oder Dateinamen.
+     */
+    static final class SearchedAttachment {
+        final int response;
+        final int index;
+        final String containerId;
+        final String containerType;
+        final Attachment attachment;
+        final String problem;
+
+        SearchedAttachment(int response, int index, String containerId, String containerType, Attachment attachment,
+                           String problem) {
+            this.response = response;
+            this.index = index;
+            this.containerId = containerId;
+            this.containerType = containerType;
+            this.attachment = attachment;
+            this.problem = problem;
         }
     }
 
