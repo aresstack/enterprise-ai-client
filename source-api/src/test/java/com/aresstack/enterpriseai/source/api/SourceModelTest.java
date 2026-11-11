@@ -7,7 +7,9 @@ import org.junit.Test;
 import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class SourceModelTest {
@@ -75,6 +77,18 @@ public class SourceModelTest {
                 new SourceQuery("x", 0);
             }
         });
+    }
+
+    @Test
+    public void queryTitleOnlyIsOffByDefaultAndKeptByTheOtherOptions() {
+        assertFalse(SourceQuery.of("x").titleOnly());
+        SourceQuery title = SourceQuery.of("x").withTitleOnly(true);
+        assertTrue(title.titleOnly());
+        assertTrue(title.withIncludedPartitions(Arrays.asList("DEV")).withExcludedPartitions(Arrays.asList("OPS"))
+                .titleOnly());
+        assertFalse(title.equals(SourceQuery.of("x")));
+        assertEquals(SourceQuery.of("x"), title.withTitleOnly(false));
+        assertEquals(SourceQuery.of("x").hashCode(), title.withTitleOnly(false).hashCode());
     }
 
     @Test

@@ -1021,7 +1021,7 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
             // Gewählte Spaces liegen alle außerhalb der konfigurierten Suchspaces.
             return Collections.emptyList();
         }
-        final String cql = cql(query.text(), spaces, query.excludedPartitions());
+        final String cql = cql(query.text(), spaces, query.excludedPartitions(), query.titleOnly());
         return withSession(new Operation<List<SourceSearchHit>>() {
             @Override
             public List<SourceSearchHit> run(Session session) throws KnowledgeSourceException {
@@ -1326,7 +1326,13 @@ public class ConfluenceKnowledgeSource implements SearchableKnowledgeSource, Ima
 
     /** Wie MainframeMate: abgehakte Spaces fallen über {@code space not in (...)} aus der Suche. */
     static String cql(String text, List<String> spaceKeys, Collection<String> excludedSpaces) {
-        StringBuilder cql = new StringBuilder("siteSearch ~ \"").append(escapeCql(text.trim()))
+        return cql(text, spaceKeys, excludedSpaces, false);
+    }
+
+    /** @param titleOnly {@code title ~} statt {@code siteSearch ~}: nur im Seitentitel ({@link SourceQuery#titleOnly}) */
+    static String cql(String text, List<String> spaceKeys, Collection<String> excludedSpaces, boolean titleOnly) {
+        StringBuilder cql = new StringBuilder(titleOnly ? "title ~ \"" : "siteSearch ~ \"")
+                .append(escapeCql(text.trim()))
                 .append("\" AND type=page");
         appendSpaces(cql, " AND space in (", spaceKeys);
         appendSpaces(cql, " AND space not in (", excludedSpaces);

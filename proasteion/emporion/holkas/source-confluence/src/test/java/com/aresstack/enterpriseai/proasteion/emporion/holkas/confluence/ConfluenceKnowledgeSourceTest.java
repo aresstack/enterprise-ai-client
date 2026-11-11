@@ -640,6 +640,22 @@ public class ConfluenceKnowledgeSourceTest {
     }
 
     @Test
+    public void aTitleOnlyQuerySearchesTheTitleWithTheSameRestrictions() throws Exception {
+        confluence.searchResults.addAll(Arrays.asList("101"));
+        config.searchSpaceKey("DEV");
+
+        List<SourceSearchHit> hits = source().search(new SourceQuery("Kapitel \"1\"", 5).withTitleOnly(true)
+                .withExcludedPartitions(Arrays.asList("ARCHIV")));
+
+        assertEquals("title ~ \"Kapitel \\\"1\\\"\" AND type=page AND space in (\"DEV\") AND space not in (\"ARCHIV\")",
+                confluence.lastCql);
+        assertEquals(1, confluence.requestCount("/rest/api/search"));
+        assertEquals(page("101"), hits.get(0).resourceId());
+        assertEquals("siteSearch ~ \"x\" AND type=page",
+                ConfluenceKnowledgeSource.cql("x", new ArrayList<String>(), Collections.<String>emptySet(), false));
+    }
+
+    @Test
     public void cqlWithoutSpaces() {
         assertEquals("siteSearch ~ \"java\" AND type=page", ConfluenceKnowledgeSource.cql(" java ", new ArrayList<String>()));
     }
