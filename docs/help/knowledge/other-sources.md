@@ -20,7 +20,7 @@ Neben Confluence und MediaWiki kann der Enterprise AI Client weitere Systeme als
 
 ## Lokale Dateien
 
-**Was es kann:** „Ein Verzeichnis, rekursiv; PDF, Office, Text, Markdown und HTML über Apache Tika“. Gut für Handbücher, Konzepte und Exporte, die auf deinem Rechner oder einem Netzlaufwerk liegen.
+**Was es kann:** „Ein Verzeichnis, rekursiv; PDF, Office, Text, Markdown und HTML über Apache Tika, Bilder nur mit Name, Typ und Größe“. Gut für Handbücher, Konzepte und Exporte, die auf deinem Rechner oder einem Netzlaufwerk liegen. Bilder (PNG, JPEG, GIF, WebP, ICO) erscheinen als eigene Einträge, ihr Inhalt wird nicht als Text gelesen; SVG-Dateien werden als XML-Quelltext gelesen.
 
 **Einrichten:**
 
