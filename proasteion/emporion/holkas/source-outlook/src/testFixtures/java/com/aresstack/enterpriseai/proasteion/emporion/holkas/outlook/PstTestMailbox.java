@@ -167,6 +167,7 @@ public final class PstTestMailbox {
         private String messageClass = "IPM.Note";
         private Integer messageSize;
         private final List<Attachment> attachments = new ArrayList<Attachment>();
+        private boolean flaggedWithoutTable;
 
         private Message(int nid, String subject, String body) {
             this.nid = nid;
@@ -205,6 +206,15 @@ public final class PstTestMailbox {
         /** PidTagMessageSize; Vorgabe: Bytes der Texte (UTF-16) plus Anhangsgrößen. */
         public Message messageSize(int bytes) {
             this.messageSize = bytes;
+            return this;
+        }
+
+        /**
+         * Kennzeichen „hat Anhänge“ (MSGFLAG_HASATTACH) ohne Anhangstabelle, wie bei einer beschädigten Nachricht:
+         * java-libpst meldet dann null Anhänge.
+         */
+        public Message flaggedWithAttachmentsButNoTable() {
+            this.flaggedWithoutTable = true;
             return this;
         }
 
@@ -404,7 +414,8 @@ public final class PstTestMailbox {
                 }
                 subnodes.add(new Node(NID_ATTACHMENT_TABLE, tableContext(rowIds), NO_NODES, 0));
             }
-            int flags = 0x01 | (message.attachments.isEmpty() ? 0 : 0x10); // MSGFLAG_READ, MSGFLAG_HASATTACH
+            boolean flagged = !message.attachments.isEmpty() || message.flaggedWithoutTable;
+            int flags = 0x01 | (flagged ? 0x10 : 0); // MSGFLAG_READ, MSGFLAG_HASATTACH
             return new Pc()
                     .string(0x001A, message.messageClass)
                     .string(0x0037, message.subject)

@@ -163,12 +163,17 @@ final class OutlookMessageWriter {
         boundary(out, boundary, true);
     }
 
-    private static int attachmentCount(PSTMessage message) {
-        try {
-            return Math.max(0, message.getNumberOfAttachments());
-        } catch (RuntimeException e) {
-            return 0;
+    /**
+     * Die Zahl der Zeilen in der Anhangstabelle. java-libpst meldet eine unlesbare Tabelle als null Anhänge; trägt die
+     * Nachricht dabei das Kennzeichen „hat Anhänge“, ist das ein Lesefehler und kein leerer Anhang, damit nie eine
+     * Nachricht ohne ihre Dateien als vollständig gilt. Laufzeitfehler gehen unverändert an den Aufrufer.
+     */
+    static int attachmentCount(PSTMessage message) throws IOException {
+        int count = message.getNumberOfAttachments();
+        if (count <= 0 && message.hasAttachments()) {
+            throw new IOException("Anhangstabelle nicht lesbar");
         }
+        return Math.max(0, count);
     }
 
     // ── Kopf ───────────────────────────────────────────────────────────────────────────────────────────────

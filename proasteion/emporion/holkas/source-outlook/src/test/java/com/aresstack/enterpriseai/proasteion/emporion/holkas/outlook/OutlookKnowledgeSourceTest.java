@@ -72,6 +72,9 @@ public class OutlookKnowledgeSourceTest {
         twice.attachment(2, "a.txt", "text/plain", note);
         twice.attachment(2, "b.txt", "text/plain", otherNote);
         nest(inbox.message("Tief", "Neun Ebenen"), OutlookMessageWriter.MAX_DEPTH + 1);
+        inbox.message("Beschädigt", "Kennzeichen ohne Tabelle").flaggedWithAttachmentsButNoTable();
+        inbox.message("Beschädigt innen", "Weitergeleitet").embeddedMessage("Innen beschädigt", "Text")
+                .flaggedWithAttachmentsButNoTable();
         nest(inbox.message("Tief genug", "Acht Ebenen"), OutlookMessageWriter.MAX_DEPTH);
         Path file = temp.getRoot().toPath().resolve("archiv.pst");
         mailbox.write(file);
@@ -229,6 +232,33 @@ public class OutlookKnowledgeSourceTest {
 
         assertTrue(list.attachments().isEmpty());
         assertTrue(list.complete());
+    }
+
+    @Test
+    public void anUnreadableAttachmentTableIsAnErrorNeverAnEmptyList() throws Exception {
+        KnowledgeResource broken = message("Beschädigt");
+        try {
+            source.storedAttachments(broken.id().value());
+            fail("unlesbare Anhangstabelle als leere Liste");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(KnowledgeSourceException.Kind.INVALID_RESPONSE, e.kind());
+        }
+        try {
+            source.attachmentsOf(broken.id());
+            fail("unlesbare Anhangstabelle als leere Liste");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(KnowledgeSourceException.Kind.INVALID_RESPONSE, e.kind());
+        }
+        // Die Ansicht bleibt lesbar, nur ohne Anhänge.
+        assertTrue(source.pageView(broken.id()).attachments().isEmpty());
+
+        KnowledgeResource item = source.attachmentsOf(message("Beschädigt innen").id()).get(0);
+        try {
+            source.streamAttachmentFile(item.id(), new ByteArrayOutputStream());
+            fail("angehängtes Element ohne seine Dateien als vollständig geliefert");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(KnowledgeSourceException.Kind.INVALID_RESPONSE, e.kind());
+        }
     }
 
     @Test

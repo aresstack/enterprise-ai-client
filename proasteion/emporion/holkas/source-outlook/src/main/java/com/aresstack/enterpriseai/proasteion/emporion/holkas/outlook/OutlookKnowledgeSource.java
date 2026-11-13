@@ -234,7 +234,15 @@ final class OutlookKnowledgeSource implements KnowledgeSourcePort, AttachmentLis
             }
             html.append("<pre>").append(escape(body)).append("</pre>");
             List<PageView.Attachment> attachments = new ArrayList<PageView.Attachment>();
-            for (KnowledgeResource resource : list(file, message, page).resources) {
+            List<KnowledgeResource> listed;
+            try {
+                listed = list(file, message, page).resources;
+            } catch (KnowledgeSourceException e) {
+                // Wie im Lesebereich üblich: ohne lesbare Anhangstabelle bleibt die Nachricht lesbar, nur ohne Liste;
+                // storedAttachments und attachmentsOf melden den Fehler.
+                listed = Collections.emptyList();
+            }
+            for (KnowledgeResource resource : listed) {
                 String size = resource.metadata().asMap().get(KnowledgeMetadata.FILE_SIZE);
                 attachments.add(new PageView.Attachment(lastSegment(resource.id()), page.value(), resource.title(),
                         resource.contentType(), resource.revision().version(),
@@ -252,7 +260,7 @@ final class OutlookKnowledgeSource implements KnowledgeSourcePort, AttachmentLis
 
     private Listing list(Path file, PSTMessage message, KnowledgeResourceId messageId)
             throws KnowledgeSourceException {
-        int count = message.getNumberOfAttachments();
+        int count = attachmentCount(messageId, message);
         if (count > MAX_ATTACHMENTS) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, messageId + " hat mehr als " + MAX_ATTACHMENTS
                     + " Anhänge");
@@ -276,6 +284,16 @@ final class OutlookKnowledgeSource implements KnowledgeSourcePort, AttachmentLis
             listing.resources.add(attachmentResource(file, message, messageId, attachment, occurrence));
         }
         return listing;
+    }
+
+    private static int attachmentCount(KnowledgeResourceId messageId, PSTMessage message)
+            throws KnowledgeSourceException {
+        try {
+            return OutlookMessageWriter.attachmentCount(message);
+        } catch (IOException | RuntimeException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, messageId + ": Anhangstabelle nicht lesbar ("
+                    + e.getClass().getSimpleName() + ")", e);
+        }
     }
 
     private static PSTAttachment readableAttachment(PSTMessage message, int index) {
@@ -416,7 +434,7 @@ final class OutlookKnowledgeSource implements KnowledgeSourcePort, AttachmentLis
         int number = Integer.parseInt(parts[2]);
         int wanted = parts.length > 3 ? Integer.parseInt(parts[3]) : 0;
         return withMessage(messageId, (file, pst, message) -> {
-            int count = message.getNumberOfAttachments();
+            int count = attachmentCount(messageId, message);
             int occurrence = 0;
             for (int i = 0; i < count; i++) {
                 PSTAttachment attachment = readableAttachment(message, i);
