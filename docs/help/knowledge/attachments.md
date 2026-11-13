@@ -12,11 +12,11 @@ Viele Confluence-Seiten haben Dateianhänge: PDFs, Office-Dokumente, Bilder oder
 
 - **Confluence**: Anhänge werden im Lesebereich angezeigt; textartige Anhänge können zusätzlich in den Index.
 - **MediaWiki**: Dateien und Bilder des Wikis werden weder angezeigt noch indexiert.
-- **Outlook (PST/OST)**: Die Anhänge von E-Mails werden nicht gelesen; nur der Text der Nachricht kommt in den Index.
+- **Outlook (PST/OST)**: Die Anhänge einer E-Mail werden im Lesebereich angezeigt und lassen sich speichern und öffnen; Office-Dateien haben keine Vorschau. In den Index kommt weiter nur der Text der Nachricht.
 - **Lokale Dateien und SharePoint**: Hier sind PDFs und Office-Dateien selbst die Dokumente. Sie werden als ganze Dateien gelesen und durchsucht, nicht als Anhang. Siehe [Weitere Wissensquellen](help:knowledge.other-sources).
 - **FTP, JES, NDV, BetaView**: Diese Quellen kennen keine Anhänge.
 
-Der Rest dieses Kapitels betrifft Confluence.
+Der Rest dieses Kapitels beschreibt Confluence. Bei einer Outlook-Nachricht funktionieren Ansehen, Speichern und Öffnen genauso.
 
 ## Anhänge im Lesebereich ansehen
 

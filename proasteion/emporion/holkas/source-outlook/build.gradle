@@ -1,6 +1,12 @@
 description = 'Adapter: Outlook-Postfachdateien (PST/OST) als Knowledge Source. java-libpst nur adapterintern, Auswahl und Text aus MainframeMate (MailSourceScanner).'
 
+// PstTestMailbox erzeugt kleine PST-Dateien als Testfixture (nur JDK), damit kein binäres Beispielpostfach im
+// Repository liegt; die Tests dieses Moduls sehen sie, andere Module über testFixtures(project(...)).
+apply plugin: 'java-test-fixtures'
+
 dependencies {
     api project(':source-api')
     implementation libs.java.libpst
+    // Tests lesen die erzeugten Dateien mit java-libpst zurück (kommt über implementation, hier ausdrücklich).
+    testImplementation libs.java.libpst
 }

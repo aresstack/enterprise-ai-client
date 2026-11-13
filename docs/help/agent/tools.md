@@ -61,7 +61,7 @@ Listet die Anhänge einer Seite, ohne sie zu laden (seit 0.49.0).
 
 - Parameter: `id` (Pflicht), die Kennung einer Seite wie bei `knowledge_read`.
 - Die Antwort nennt je Anhang Name, Typ, Größe, Version und Kennung. Mit der Kennung liest `knowledge_read` den Anhang.
-- Anhänge kennen heute nur Confluence-Quellen. Mehr dazu: [Anhänge von Wissensquellen](help:knowledge.attachments).
+- Anhänge kennen heute Confluence- und Outlook-Quellen. Mehr dazu: [Anhänge von Wissensquellen](help:knowledge.attachments).
 
 ### knowledge_resolve_url
 
