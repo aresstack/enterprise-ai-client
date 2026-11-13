@@ -11,8 +11,11 @@ dependencies {
     api project(':proasteion:platform:network')
     implementation libs.gson
     implementation libs.jsoup
-    // draw.io-Diagramme als SVG (DrawioDiagramRenderer); das SVG rastert der Lesebereich über Batik.
-    implementation libs.jgraphx
+    // draw.io-Diagramme als SVG (DrawioDiagramRenderer über drawio-java); das SVG rastert der Lesebereich über Batik.
+    implementation libs.drawio.java
+    // draw.io-XML-Schablonen (BPMN-Tasks/-Events, Flowchart, Basic, Pfeile); ohne sie fiele jede solche Form auf die
+    // PNG-Vorschau des Plugins zurück.
+    runtimeOnly libs.drawio.stencils
 
     testFixturesImplementation libs.gson
     // Vertragstest ConfluenceAsyncHttpTransportContract für Implementierungen außerhalb dieses Moduls

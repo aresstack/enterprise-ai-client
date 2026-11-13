@@ -39,6 +39,16 @@ subprojects {
         options.encoding = 'UTF-8'
     }
 
+    // drawio-java (source-confluence) braucht Batik 1.20, mermaid-java bringt 1.17 mit: eine Batik-Linie im Klassenpfad.
+    configurations.configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.apache.xmlgraphics' && details.requested.name.startsWith('batik-')) {
+                details.useVersion '1.20'
+                details.because 'drawio-java needs Batik 1.20; keep one Batik line on the classpath'
+            }
+        }
+    }
+
     dependencies {
         testImplementation libs.junit
     }

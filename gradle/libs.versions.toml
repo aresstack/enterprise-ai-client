@@ -26,7 +26,7 @@ tika = "2.9.1"
 pdfbox = "2.0.29"
 # Dieselbe POI-Linie wie Tika 2.9.1 (tika-parent: poi.version 5.2.3), damit das Fat Jar nur eine Fassung trägt.
 poi = "5.2.3"
-jgraphx = "4.2.2"
+drawioJava = "0.1.0"
 commonsNet = "3.9.0"
 # Last Java 8 line of JGit (6.x needs Java 11); 5.13.4 is miscompiled for Java 8, hence 5.13.5.
 jgit = "5.13.5.202508271544-r"
@@ -83,8 +83,14 @@ mermaid-java = { module = "com.aresstack:mermaid-java", version.ref = "mermaidJa
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 # exedra (chat.ChatDocxWriter): „Chat exportieren …“ als Word-Dokument (XWPF). Nur in exedra.
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
-# source-confluence: draw.io-Diagramme (mxGraphModel) ohne Browser als SVG (JGraphX, BSD, Java-7-Bytecode).
-jgraphx = { module = "com.github.vlsi.mxgraph:jgraphx", version.ref = "jgraphx" }
+# source-confluence: draw.io-Diagramme ohne Browser als SVG (drawio-java: Original-draw.io-JavaScript auf GraalJS 21.3,
+# Java2D/Batik 1.20; MIT, Java-8-Bytecode). drawio-java-stencils (draw.io-XML-Schablonen: BPMN, basic, flowchart,
+# arrows; Apache-2.0 mit dem draw.io-Hinweis zu Atlassian-Produkten) liegt bewusst dabei: EAC ist eine eigenständige
+# Anwendung, kein Atlassian-Produkt und kein Marketplace-Plugin (Entscheidung Angelo, 2026-11-13).
+# GraalJS: Gradle hebt die 21.2 von win-proxy-java und mermaid-java auf drawio-javas 21.3.20.0.3 an (gleiche
+# Polyglot-API); GraalJS-Module nicht auf 21.2 zurückzwingen, gemischte Truffle-Fassungen scheitern zur Laufzeit.
+drawio-java = { module = "com.aresstack:drawio-java", version.ref = "drawioJava" }
+drawio-stencils = { module = "com.aresstack:drawio-java-stencils", version.ref = "drawioJava" }
 
 # document-tika: Dokument-Extraktion (PDF, Office, HTML, Mail) wie MainframeMate; nur in document-tika als implementation.
 tika-core = { module = "org.apache.tika:tika-core", version.ref = "tika" }

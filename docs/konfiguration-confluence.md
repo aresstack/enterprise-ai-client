@@ -122,11 +122,13 @@ source.1.allowInsecureHttp=false
   `/download/attachments/{Seite}/{diagramName}.png`. Je Seite mit draw.io-Makros eine Logzeile
   `[Confluence] draw.io: Seite … Bilder gekennzeichnet aus Diagrammdaten=…, aus Makroparametern=…, Makros im
   Seitenquelltext=…`. Der Lader holt zuerst das Diagramm selbst
-  (`/rest/drawio/1.0/diagram/crud/{Name}/{owningPageId}?revision={revision}`) und zeichnet es mit JGraphX als SVG
-  (`DrawioDiagramRenderer`); enthält es Formen, die JGraphX nicht kennt, oder scheitert der Abruf, kommt die
-  PNG-Vorschau. Angleichungen (kippbar): HTML-Beschriftungen als Text, draw.io-Farbwörter und -Standardfarben,
-  `note` als Rechteck. Selbst gezeichnet, weil JGraphX sie nicht kennt: Blockpfeil `mxgraph.arrows2.arrow` (`dx`,
-  `dy`, `notch`, Richtung, Spiegelung) und UML-Schnittstelle `providedRequiredInterface` (Kugel und Pfanne, Drehung).
+  (`/rest/drawio/1.0/diagram/crud/{Name}/{owningPageId}?revision={revision}`) und zeichnet es mit
+  [drawio-java](https://github.com/aresstack/drawio-java) als SVG (`DrawioDiagramRenderer`): das Original-draw.io-
+  JavaScript auf GraalJS, gezeichnet mit Java2D, ohne Browser und ohne Netz. Dabei sind die draw.io-Formen aus
+  Shapes.js, die BPMN-2-Formen und die XML-Schablonen aus `drawio-java-stencils` (BPMN-Tasks und -Events, Flowchart,
+  Basic, Blockpfeile). Enthält das Diagramm Formen oder Schablonen, die drawio-java nicht kennt (etwa AWS- oder
+  Azure-Symbole), Bilder, die nicht als `data:`-URI eingebettet sind, überschreitet es 20 s, oder scheitert der Abruf,
+  kommt die PNG-Vorschau. Gezeichnet wird die erste Seite des Diagramms.
   Im Bild-Viewer schaltet „Gerendert“/„Original“ je draw.io-Bild um: „Gerendert“ (Standard) ist die Zeichnung
   aus den Diagrammdaten über REST, ohne `/download/`; „Original“ hängt `&view=original` an das Fragment und lädt nur
   die PNG-Vorschau. Scheitert das Original (etwa an der Einmalcode-Abfrage), zeigt der Viewer sofort wieder die
@@ -137,7 +139,8 @@ source.1.allowInsecureHttp=false
   gerendert als `.svg`, Original als `.png`.
   Logzeilen (INFO): `[Confluence] draw.io: rendere Diagramm name=… page=… revision=…`, danach
   `[Confluence] draw.io: SVG erzeugt (… Bytes)` oder
-  `[Confluence] draw.io: JGraphX nicht möglich (Grund), verwende PNG-Vorschau: …`.
+  `[Confluence] draw.io: Zeichnung nicht möglich (Grund), verwende PNG-Vorschau: …`. Der Grund nennt nur Fehlercode
+  und Fähigkeit (etwa `nicht unterstützt: stencil:mxgraph.aws4.lambda`), nie Beschriftungen, IDs oder XML.
 
 ## Grenzen
 
