@@ -75,7 +75,7 @@ Neben Confluence und MediaWiki kann der Enterprise AI Client weitere Systeme als
 
 ## Outlook (PST/OST)
 
-**Was es kann:** „E-Mails aus lokalen Outlook-Postfachdateien (.pst, .ost); jede Nachricht ist ein Dokument“. Gelesen werden Betreff, Absender, Empfänger, Datum, Ordner und der Text der Nachricht.
+**Was es kann:** „E-Mails aus lokalen Outlook-Postfachdateien (.pst, .ost); jede Nachricht ist ein Dokument“. Gelesen werden Betreff, Absender, Empfänger, Datum, Ordner und der Text der Nachricht. Im Lesebereich stehen die Dateianhänge einer Nachricht hinter der Büroklammer; ein angehängtes Outlook-Element kommt dort als E-Mail-Datei (.eml). Siehe [Anhänge von Wissensquellen](help:knowledge.attachments).
 
 **Einrichten:**
 
@@ -85,7 +85,7 @@ Neben Confluence und MediaWiki kann der Enterprise AI Client weitere Systeme als
 
 **Anmeldung:** keine; der Client liest die Datei direkt.
 
-**Grenzen:** Ein Ordner wird nur auf seiner obersten Ebene nach Postfachdateien durchsucht, nicht in Unterordnern. Dateianhänge der E-Mails werden nicht gelesen. Hinweis: Ob sich eine Postfachdatei lesen lässt, während Outlook sie geöffnet hat, ist nicht geprüft.
+**Grenzen:** Ein Ordner wird nur auf seiner obersten Ebene nach Postfachdateien durchsucht, nicht in Unterordnern. Den Text der Dateianhänge nimmt der Client nicht in den Index. Hinweis: Ob sich eine Postfachdatei lesen lässt, während Outlook sie geöffnet hat, ist nicht geprüft.
 
 ## SharePoint
 
