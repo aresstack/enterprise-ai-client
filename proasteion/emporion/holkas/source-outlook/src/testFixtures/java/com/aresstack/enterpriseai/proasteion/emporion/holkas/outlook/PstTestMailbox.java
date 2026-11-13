@@ -269,6 +269,7 @@ public final class PstTestMailbox {
         private final byte[] data;
         private final Message embedded;
         private boolean withoutDataField;
+        private int method = 1;
 
         private Attachment(int number, String fileName, String mimeType, byte[] data, Message embedded) {
             this.number = number;
@@ -291,6 +292,12 @@ public final class PstTestMailbox {
          */
         public Attachment withoutDataField() {
             this.withoutDataField = true;
+            return this;
+        }
+
+        /** Anhangsart (PidTagAttachMethod, 0x3705) statt 1 (Wert), etwa 4 für einen Verweis oder 6 für OLE. */
+        public Attachment attachMethod(int method) {
+            this.method = method;
             return this;
         }
 
@@ -417,7 +424,7 @@ public final class PstTestMailbox {
                             pc.binary(0x3701, attachment.data);
                         }
                         pc.string(0x3704, attachment.shortFilename)
-                                .int32(0x3705, 1)
+                                .int32(0x3705, attachment.method)
                                 .string(0x3707, attachment.longFilename)
                                 .string(0x370E, attachment.mimeType);
                     }
