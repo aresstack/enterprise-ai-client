@@ -128,6 +128,11 @@ final class OutlookMessageWriter {
             String name = OutlookKnowledgeSource.sourceName(attachment);
             if (method == PSTAttachment.ATTACHMENT_METHOD_BY_VALUE) {
                 InputStream in = OutlookKnowledgeSource.fileStream(attachment);
+                if (in == null) {
+                    // Ohne Datenfeld fehlen die Bytes: nie als leere Datei ausgeben (ein leerer Anhang hat ein leeres
+                    // Datenfeld und damit einen Strom).
+                    throw new IOException("Anhang " + (i + 1) + " ohne Dateibytes");
+                }
                 String type = contentType(OutlookKnowledgeSource.mediaType(attachment, name));
                 boundary(out, boundary, false);
                 header(out, "Content-Type", name.isEmpty() ? type : type + "; " + parameter("name", name));
@@ -135,11 +140,6 @@ final class OutlookMessageWriter {
                         : "attachment; " + parameter("filename", name));
                 header(out, "Content-Transfer-Encoding", "base64");
                 out.write(CRLF);
-                if (in == null) {
-                    // Ohne Datenfeld hat der Anhang in der Postfachdatei keine Bytes.
-                    base64(out, new byte[0]);
-                    continue;
-                }
                 try {
                     base64(out, in);
                 } finally {

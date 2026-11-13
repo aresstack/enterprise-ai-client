@@ -73,6 +73,11 @@ public class OutlookKnowledgeSourceTest {
         twice.attachment(2, "b.txt", "text/plain", otherNote);
         nest(inbox.message("Tief", "Neun Ebenen"), OutlookMessageWriter.MAX_DEPTH + 1);
         inbox.message("Beschädigt", "Kennzeichen ohne Tabelle").flaggedWithAttachmentsButNoTable();
+        PstTestMailbox.Message withoutData = inbox.message("Ohne Daten", "Datenfeld fehlt");
+        withoutData.attachment("leer.txt", "text/plain", new byte[0]);
+        withoutData.attachment("fehlt.txt", "text/plain", note).withoutDataField();
+        withoutData.embeddedMessage("Innen ohne Daten", "Text")
+                .attachment("fehlt.txt", "text/plain", note).withoutDataField();
         inbox.message("Beschädigt innen", "Weitergeleitet").embeddedMessage("Innen beschädigt", "Text")
                 .flaggedWithAttachmentsButNoTable();
         nest(inbox.message("Tief genug", "Acht Ebenen"), OutlookMessageWriter.MAX_DEPTH);
@@ -258,6 +263,24 @@ public class OutlookKnowledgeSourceTest {
             fail("angehängtes Element ohne seine Dateien als vollständig geliefert");
         } catch (KnowledgeSourceException e) {
             assertEquals(KnowledgeSourceException.Kind.INVALID_RESPONSE, e.kind());
+        }
+    }
+
+    @Test
+    public void missingAttachmentDataIsAnErrorWhileAnEmptyFileIsEmpty() throws Exception {
+        List<KnowledgeResource> attachments = source.attachmentsOf(message("Ohne Daten").id());
+        assertEquals(3, attachments.size());
+
+        ByteArrayOutputStream empty = new ByteArrayOutputStream();
+        source.streamAttachmentFile(attachments.get(0).id(), empty);
+        assertEquals(0, empty.size());
+        for (KnowledgeResource broken : attachments.subList(1, 3)) {
+            try {
+                source.streamAttachmentFile(broken.id(), new ByteArrayOutputStream());
+                fail("fehlende Dateibytes als leere Datei geliefert");
+            } catch (KnowledgeSourceException e) {
+                assertEquals(KnowledgeSourceException.Kind.INVALID_RESPONSE, e.kind());
+            }
         }
     }
 
