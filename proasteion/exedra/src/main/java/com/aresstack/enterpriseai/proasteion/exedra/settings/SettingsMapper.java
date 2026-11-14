@@ -186,6 +186,7 @@ public final class SettingsMapper {
         b.chatReadTimeoutMillis(text(p, AppConfigLoader.CHAT_READ_TIMEOUT_KEY, String.valueOf(ChatConfig.DEFAULT_READ_TIMEOUT_MILLIS)));
         b.chatRetryCount(text(p, AppConfigLoader.CHAT_RETRY_COUNT_KEY, String.valueOf(ChatConfig.DEFAULT_RETRY_COUNT)));
         b.chatRetryDelayMillis(text(p, AppConfigLoader.CHAT_RETRY_DELAY_KEY, String.valueOf(ChatConfig.DEFAULT_RETRY_DELAY_MILLIS)));
+        b.chatMaxTokens(text(p, AppConfigLoader.CHAT_MAX_TOKENS_KEY, String.valueOf(ChatConfig.DEFAULT_MAX_TOKENS)));
         b.keePassTimeoutMillis(text(p, AppConfigLoader.KEEPASS_TIMEOUT_KEY, String.valueOf(KeePassConfig.DEFAULT_TIMEOUT_MILLIS)));
         b.keePassRetryCount(text(p, AppConfigLoader.KEEPASS_RETRY_COUNT_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_COUNT)));
         b.keePassRetryDelayMillis(text(p, AppConfigLoader.KEEPASS_RETRY_DELAY_KEY, String.valueOf(KeePassConfig.DEFAULT_RETRY_DELAY_MILLIS)));
@@ -354,6 +355,8 @@ public final class SettingsMapper {
                 ChatConfig.DEFAULT_RETRY_COUNT);
         putUnlessDefault(set, AppConfigLoader.CHAT_RETRY_DELAY_KEY, form.chatRetryDelayMillis(),
                 ChatConfig.DEFAULT_RETRY_DELAY_MILLIS);
+        putUnlessDefault(set, AppConfigLoader.CHAT_MAX_TOKENS_KEY, form.chatMaxTokens(),
+                ChatConfig.DEFAULT_MAX_TOKENS);
         put(set, AppConfigLoader.KEEPASS_TIMEOUT_KEY, form.keePassTimeoutMillis());
         putUnlessDefault(set, AppConfigLoader.KEEPASS_RETRY_COUNT_KEY, form.keePassRetryCount(),
                 KeePassConfig.DEFAULT_RETRY_COUNT);
@@ -611,6 +614,8 @@ public final class SettingsMapper {
                 return "Chat: Wiederholungen";
             case AppConfigLoader.CHAT_RETRY_DELAY_KEY:
                 return "Chat: Pause vor Wiederholung (ms)";
+            case AppConfigLoader.CHAT_MAX_TOKENS_KEY:
+                return "Chat: Ausgabelimit (Tokens)";
             case AppConfigLoader.KEEPASS_TIMEOUT_KEY:
                 return "KeePassRPC: Timeout (ms)";
             case AppConfigLoader.KEEPASS_RETRY_COUNT_KEY:

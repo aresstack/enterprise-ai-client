@@ -347,6 +347,24 @@ public class AppConfigLoaderTest {
         }
     }
 
+    /** Ohne Eintrag gilt 8192 statt des knappen Limits des Dienstes; 0 sendet kein max_tokens. */
+    @Test
+    public void maxTokensDefaultsTo8192AndIsConfigurable() throws Exception {
+        Properties p = minimal();
+        assertEquals(Integer.valueOf(8192), AppConfigLoader.fromProperties(p).chat().defaultOptions().maxTokens());
+        p.setProperty("chat.maxTokens", "16384");
+        assertEquals(Integer.valueOf(16384), AppConfigLoader.fromProperties(p).chat().defaultOptions().maxTokens());
+        p.setProperty("chat.maxTokens", "0");
+        assertNull(AppConfigLoader.fromProperties(p).chat().defaultOptions().maxTokens());
+        p.setProperty("chat.maxTokens", "-1");
+        try {
+            AppConfigLoader.fromProperties(p);
+            fail("negatives Limit");
+        } catch (AppConfigException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("chat.maxTokens"));
+        }
+    }
+
     @Test
     public void minimalConfigurationFallsBackToDefaults() throws Exception {
         AppConfig config = AppConfigLoader.fromProperties(minimal());

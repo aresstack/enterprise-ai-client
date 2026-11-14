@@ -184,6 +184,22 @@ public final class ChatShellModel {
         finishStreaming(TranscriptEntry.State.COMPLETE, null);
     }
 
+    /**
+     * Die Antwort endete unvollständig (Ausgabelimit oder Inhaltsfilter, Issue #223): Der empfangene Text bleibt, die
+     * Antwort ist als unvollständig gekennzeichnet, und {@code notice} steht als Hinweiszeile darunter (sie wird mit
+     * dem Chat gespeichert). {@code notice} ist für Menschen bestimmt; leer oder {@code null} beendet die Antwort
+     * regulär.
+     */
+    public void completeAssistantMessage(String notice) {
+        if (notice == null || notice.trim().isEmpty()) {
+            completeAssistantMessage();
+            return;
+        }
+        requireStreaming().markIncomplete();
+        finishStreaming(TranscriptEntry.State.COMPLETE, null);
+        addNotice(notice);
+    }
+
     /** Die Antwort wurde abgebrochen; bereits empfangener Text bleibt sichtbar. */
     public void cancelAssistantMessage() {
         finishStreaming(TranscriptEntry.State.CANCELLED, null);
@@ -549,6 +565,9 @@ public final class ChatShellModel {
             }
             if (section.getState() != TranscriptEntry.State.COMPLETE) {
                 previous.finish(section.getState(), section.getFailureMessage());
+            }
+            if (section.isIncomplete()) {
+                previous.markIncomplete();
             }
             if (section.hasSources() && !previous.hasSources()) {
                 previous.setSources(section.getSources());
