@@ -37,6 +37,11 @@ final class SystemTab {
     private final JComboBox<String> proxyMode;
     private final JTextField testUrl;
     private final JTextArea discoveryScript;
+    static final String CHAT_MAX_TOKENS_LABEL = "Chat: Ausgabelimit (Tokens)";
+    static final String CHAT_MAX_TOKENS_HELP = "chat.maxTokens, 0–1000000; Standard 8192. So viele Tokens darf eine "
+            + "Antwort höchstens lang werden (max_tokens); ist das Limit erreicht, endet sie unvollständig und der Chat "
+            + "weist darauf hin. 0 = kein Limit senden, dann gilt das des KI-Dienstes.";
+
     private final JTextField proxyHost;
     private final JTextField proxyPort;
     private final JTextField resolveTimeout;
@@ -63,6 +68,7 @@ final class SystemTab {
     private final JTextField chatReadTimeout;
     private final JTextField chatRetryCount;
     private final JTextField chatRetryDelay;
+    private final JTextField chatMaxTokens;
     private final JTextField keePassTimeout;
     private final JTextField keePassRetryCount;
     private final JTextField keePassSetupRecheckCount;
@@ -175,6 +181,7 @@ final class SystemTab {
         chatRetryCount = timing.textField("Chat: Wiederholungen",
                 "chat.retryCount, 0–10; je Modellanfrage, nur bevor Antworttext sichtbar ist; Werkzeuge laufen nie doppelt");
         chatRetryDelay = timing.textField("Chat: Pause vor Wiederholung (ms)", "chat.retryDelayMillis, 0–30000");
+        chatMaxTokens = timing.textField(CHAT_MAX_TOKENS_LABEL, CHAT_MAX_TOKENS_HELP);
         keePassTimeout = timing.textField("KeePassRPC: Timeout (ms)", "security.keepass.timeoutMillis, 1–3600000");
         keePassRetryCount = timing.textField("KeePassRPC: Wiederholungen",
                 "security.keepass.retryCount, 0–10; nur wenn KeePass nicht antwortet, nie bei fehlendem Eintrag");
@@ -448,6 +455,7 @@ final class SystemTab {
         chatReadTimeout.setText(form.chatReadTimeoutMillis());
         chatRetryCount.setText(form.chatRetryCount());
         chatRetryDelay.setText(form.chatRetryDelayMillis());
+        chatMaxTokens.setText(form.chatMaxTokens());
         keePassTimeout.setText(form.keePassTimeoutMillis());
         keePassRetryCount.setText(form.keePassRetryCount());
         keePassRetryDelay.setText(form.keePassRetryDelayMillis());
@@ -504,6 +512,7 @@ final class SystemTab {
                 .chatReadTimeoutMillis(chatReadTimeout.getText())
                 .chatRetryCount(chatRetryCount.getText())
                 .chatRetryDelayMillis(chatRetryDelay.getText())
+                .chatMaxTokens(chatMaxTokens.getText())
                 .keePassTimeoutMillis(keePassTimeout.getText())
                 .keePassRetryCount(keePassRetryCount.getText())
                 .keePassRetryDelayMillis(keePassRetryDelay.getText())
@@ -511,6 +520,10 @@ final class SystemTab {
                 .keePassSetupRecheckDelayMillis(keePassSetupRecheckDelay.getText())
                 .sourceRetryCount(sourceRetryCount.getText())
                 .sourceRetryDelayMillis(sourceRetryDelay.getText());
+    }
+
+    JTextField chatMaxTokens() {
+        return chatMaxTokens;
     }
 
     JTextField windowTitle() {

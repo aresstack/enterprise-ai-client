@@ -334,6 +334,7 @@ public class SettingsMapperTest {
         assertEquals("120000", defaults.chatReadTimeoutMillis());
         assertEquals("2", defaults.chatRetryCount());
         assertEquals("500", defaults.chatRetryDelayMillis());
+        assertEquals("8192", defaults.chatMaxTokens());
         assertEquals("15000", defaults.keePassTimeoutMillis());
         assertEquals("2", defaults.keePassRetryCount());
         assertEquals("300", defaults.keePassRetryDelayMillis());
@@ -341,6 +342,12 @@ public class SettingsMapperTest {
         assertEquals("500", defaults.sourceRetryDelayMillis());
         Properties unchanged = SettingsMapper.merge(current, defaults);
         assertNull("Standard-Wiederholungen stehen nicht in der Datei", unchanged.getProperty("chat.retryCount"));
+        assertNull("das Standard-Ausgabelimit auch nicht", unchanged.getProperty("chat.maxTokens"));
+        Properties longer = SettingsMapper.merge(current, defaults.toBuilder().chatMaxTokens("16384").build());
+        assertEquals("16384", longer.getProperty("chat.maxTokens"));
+        assertEquals(Integer.valueOf(16384),
+                AppConfigLoader.fromProperties(longer).chat().defaultOptions().maxTokens());
+        assertEquals("16384", SettingsMapper.fromProperties(longer).chatMaxTokens());
         assertNull(unchanged.getProperty("security.keepass.retryCount"));
         assertNull(unchanged.getProperty("knowledge.sources.retryCount"));
 

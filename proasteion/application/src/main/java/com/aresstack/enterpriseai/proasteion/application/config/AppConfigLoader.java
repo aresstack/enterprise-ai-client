@@ -96,6 +96,13 @@ public final class AppConfigLoader {
     public static final String CHAT_READ_TIMEOUT_KEY = "chat.readTimeoutMillis";
     public static final String CHAT_RETRY_COUNT_KEY = "chat.retryCount";
     public static final String CHAT_RETRY_DELAY_KEY = "chat.retryDelayMillis";
+    /**
+     * Ausgabelimit einer Antwort in Tokens ({@code max_tokens}); Standard {@link ChatConfig#DEFAULT_MAX_TOKENS},
+     * {@code 0} = kein Limit senden (dann gilt das des Dienstes).
+     */
+    public static final String CHAT_MAX_TOKENS_KEY = "chat.maxTokens";
+    /** Obergrenze von {@link #CHAT_MAX_TOKENS_KEY}. */
+    public static final int CHAT_MAX_TOKENS_MAX = 1_000_000;
     /** Frist und Wiederholungen der KeePassRPC-Zugriffe. */
     public static final String KEEPASS_TIMEOUT_KEY = "security.keepass.timeoutMillis";
     public static final String KEEPASS_RETRY_COUNT_KEY = "security.keepass.retryCount";
@@ -329,6 +336,12 @@ public final class AppConfigLoader {
                 BrowserAccessConfig.splitUrls(r.text(profile.searchKey(), searchDefault)), null);
     }
 
+    /** {@code chat.maxTokens}: ohne Eintrag der Standard, {@code 0} = kein {@code max_tokens} senden. */
+    private static Integer maxTokens(ConfigReader r) {
+        int value = r.integer(CHAT_MAX_TOKENS_KEY, ChatConfig.DEFAULT_MAX_TOKENS, 0, CHAT_MAX_TOKENS_MAX);
+        return value == 0 ? null : Integer.valueOf(value);
+    }
+
     private static ChatConfig chat(ConfigReader r) {
         SecretRef apiKeyRef = r.secretRef("chat.apiKeyRef");
         // Mit KeePass-Eintrag darf die URL fehlen: dann gilt die URL des Eintrags (VaultLocations).
@@ -350,7 +363,7 @@ public final class AppConfigLoader {
                     .temperature(r.optionalDecimal("chat.temperature", 0.0, 2.0))
                     .topP(r.optionalDecimal("chat.topP", 0.0, 1.0))
                     .topK(r.optionalInteger("chat.topK", 1, Integer.MAX_VALUE))
-                    .maxTokens(r.optionalInteger("chat.maxTokens", 1, Integer.MAX_VALUE))
+                    .maxTokens(maxTokens(r))
                     .presencePenalty(r.optionalDecimal("chat.presencePenalty", -2.0, 2.0))
                     .frequencyPenalty(r.optionalDecimal("chat.frequencyPenalty", -2.0, 2.0))
                     .endUserId(r.text("chat.user", null));

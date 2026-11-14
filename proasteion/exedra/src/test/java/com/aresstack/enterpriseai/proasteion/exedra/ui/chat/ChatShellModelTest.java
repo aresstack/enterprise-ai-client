@@ -93,6 +93,36 @@ public class ChatShellModelTest {
                 "state:false"), events);
     }
 
+    /** Issue #223: am Ausgabelimit bleibt der Text, die Antwort ist unvollständig, der Hinweis steht darunter. */
+    @Test
+    public void incompleteAnswerKeepsItsTextAndGetsANotice() {
+        model.addUserMessage("Frage");
+        TranscriptEntry answer = model.beginAssistantMessage();
+        model.appendAssistantDelta("<svg><path d=\"M0");
+
+        model.completeAssistantMessage("Die Antwort ist unvollständig.");
+
+        assertEquals(TranscriptEntry.State.COMPLETE, answer.getState());
+        assertTrue(answer.isIncomplete());
+        assertEquals("<svg><path d=\"M0", answer.getText());
+        List<TranscriptEntry> entries = model.getEntries();
+        assertEquals(3, entries.size());
+        assertEquals(TranscriptEntry.Author.NOTICE, entries.get(2).getAuthor());
+        assertEquals("Die Antwort ist unvollständig.", entries.get(2).getText());
+        assertFalse(model.isStreaming());
+        assertTrue(model.canSend("Bitte fortsetzen"));
+    }
+
+    @Test
+    public void regularAnswerIsNotIncomplete() {
+        model.addUserMessage("Frage");
+        TranscriptEntry answer = model.beginAssistantMessage();
+        model.appendAssistantDelta("fertig");
+        model.completeAssistantMessage(null);
+        assertFalse(answer.isIncomplete());
+        assertEquals(2, model.getEntries().size());
+    }
+
     @Test
     public void cancelKeepsPartialTextAndAllowsSendingAgain() {
         model.addUserMessage("Frage");
