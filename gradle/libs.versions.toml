@@ -17,7 +17,7 @@ javaWebsocket = "1.5.2"
 # WD4J (vendored in browser-firefox) discovers its JSON wrapper types with Reflections, as upstream.
 reflections = "0.10.2"
 slf4j = "2.0.17"
-winProxy = "0.2.0"
+winProxy = "0.3.0"
 winTrust = "0.1.0"
 flexmark = "0.62.2"
 mermaidJava = "0.2.0-beta.2"
