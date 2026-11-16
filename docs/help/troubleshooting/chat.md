@@ -33,13 +33,13 @@ Die Blase nennt in der ersten Zeile die Art des Fehlers. Klicke „Details anzei
 
 ### Die Antwort ist leer
 
-Bricht das Modell ab, weil seine Längenbegrenzung erreicht ist, liefert der Dienst unter Umständen keinen Text. Hinweis: Einen eigenen Hinweis für diesen Fall zeigt die Oberfläche nicht; ob das bei jedem Dienst so ist, ist nicht für alle Installationen geprüft. Ist in der Konfigurationsdatei `chat.maxTokens` gesetzt, erhöhe den Wert oder entferne ihn.
+Bricht das Modell ab, weil sein Ausgabelimit erreicht ist, liefert der Dienst unter Umständen keinen Text. Der Chat zeigt dann den Hinweis „Die Antwort ist unvollständig: Das Ausgabelimit wurde erreicht …“. Erhöhe „Chat: Ausgabelimit (Tokens)“ unter Einstellungen → „Netzwerk & Agent“ (`chat.maxTokens`, Standard 8192).
 
 ## Die Antwort bricht ab
 
 - **Du hast „Stop“ gedrückt**: Die Blase behält den bisherigen Text und zeigt „ · abgebrochen“. Das ist kein Fehler.
 - **Die Verbindung ist mitten im Text abgerissen**: Es erscheint „Der KI-Dienst ist nicht erreichbar.“ mit der technischen Ursache „stream ended before [DONE]“ und dem Hinweis „Der Server hat die Antwort beendet, ohne sie abzuschließen (Verbindung unterbrochen oder Proxy puffert den Stream). Erneut versuchen; bleibt es dabei, chat.readTimeoutMillis prüfen.“ Hat der Dienst schon Text geschickt, wiederholt der Client die Anfrage nicht automatisch, damit kein doppelter Text entsteht. Sende die Frage erneut.
-- **Der Text endet mitten im Satz ohne Fehler**: Das Modell hat sein Längenlimit erreicht. Bitte im nächsten Schritt mit „Bitte fortsetzen“ um den Rest oder erhöhe `chat.maxTokens`.
+- **Der Text endet mitten im Satz, die Blase zeigt „ · unvollständig“**: Das Modell hat sein Ausgabelimit erreicht (der Dienst meldet `finish_reason=length`). Unter der Antwort steht der Hinweis „Die Antwort ist unvollständig: Das Ausgabelimit wurde erreicht …“; der bisherige Text bleibt erhalten, und der Client fragt nicht von selbst nach. Bitte im nächsten Schritt mit „Bitte fortsetzen“ um den Rest oder erhöhe „Chat: Ausgabelimit (Tokens)“ unter Einstellungen → „Netzwerk & Agent“ (`chat.maxTokens`, Standard 8192, 0 = kein Limit senden). Hat der Inhaltsfilter des Dienstes die Antwort beendet, steht das ebenso als Hinweis darunter.
 - **Die Werkzeugrunden sind aufgebraucht**: Verlangt das Modell nach „Max. Werkzeugrunden“ (Standard 8) noch weitere Werkzeuge, bekommt es eine letzte Runde ohne Werkzeuge und muss aus den bisherigen Ergebnissen antworten. Liefert es auch dann nichts, erscheint „Unerwartete Antwort des KI-Dienstes.“ mit der Ursache „das Modell hat nach N Werkzeugrunden auch in der Abschlussrunde ohne Werkzeuge keine Antwort gegeben“. Stelle die Frage enger oder erhöhe „Max. Werkzeugrunden“ im Reiter „Tools“.
 
 Proxys, die Antworten puffern, statt sie durchzureichen, lassen den Text oft am Stück statt Wort für Wort erscheinen oder brechen lange Antworten ab. Das liegt nicht am Client.

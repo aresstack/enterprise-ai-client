@@ -22,6 +22,11 @@ public final class ChatConfig {
     public static final int DEFAULT_RETRY_COUNT = 2;
     /** {@code chat.retryDelayMillis}: Pause vor der ersten Wiederholung (jede weitere länger). */
     public static final int DEFAULT_RETRY_DELAY_MILLIS = 500;
+    /**
+     * {@code chat.maxTokens}: Ausgabelimit einer Antwort in Tokens, gesendet als {@code max_tokens}. Ohne Eintrag gilt
+     * dieser Wert statt des oft knappen Limits des Dienstes; {@code 0} sendet kein Limit.
+     */
+    public static final int DEFAULT_MAX_TOKENS = 8192;
 
     /**
      * Standard-System-Prompt des normalen Chats, wenn {@code chat.systemPrompt} fehlt oder leer ist; dieselbe

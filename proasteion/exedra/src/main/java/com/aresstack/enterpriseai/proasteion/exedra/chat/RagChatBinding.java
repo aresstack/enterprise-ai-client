@@ -1432,10 +1432,12 @@ public final class RagChatBinding implements ChatShellActions {
 
         @Override
         public void onCompleted(ChatResponse response) {
+            // Ausgabelimit oder Inhaltsfilter (Issue #223): der Text bleibt, der Verlauf nennt die Antwort unvollständig.
+            final String incomplete = AnswerEnd.incompleteNotice(response);
             finish(new Runnable() {
                 @Override
                 public void run() {
-                    model.completeAssistantMessage();
+                    model.completeAssistantMessage(incomplete);
                 }
             });
         }

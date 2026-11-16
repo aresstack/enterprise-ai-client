@@ -37,6 +37,7 @@ public final class TranscriptEntry {
     private final StringBuilder text = new StringBuilder();
     private State state;
     private String failureMessage = "";
+    private boolean incomplete;
     private String activity = "";
     private List<SourceReference> sources = Collections.emptyList();
     private List<String> attachments = Collections.emptyList();
@@ -81,6 +82,18 @@ public final class TranscriptEntry {
     /** Die für Menschen bestimmte Fehlermeldung bei {@link State#FAILED}, sonst leer. */
     public String getFailureMessage() {
         return failureMessage;
+    }
+
+    /**
+     * Die Antwort endete nicht regulär, sondern am Ausgabelimit oder am Inhaltsfilter des Dienstes (Issue #223): Ihr
+     * Text bleibt stehen und der Zustand {@link State#COMPLETE}, die Oberfläche kennzeichnet sie als unvollständig.
+     */
+    public boolean isIncomplete() {
+        return incomplete;
+    }
+
+    void markIncomplete() {
+        this.incomplete = true;
     }
 
     /**

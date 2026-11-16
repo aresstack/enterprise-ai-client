@@ -25,7 +25,7 @@ chat.developerRolePolicy=REJECT
 #chat.temperature=0.2
 #chat.topP=0.9
 #chat.topK=40
-#chat.maxTokens=2048
+#chat.maxTokens=8192
 #chat.presencePenalty=0.0
 #chat.frequencyPenalty=0.0
 #chat.stop=###,ENDE
@@ -39,7 +39,8 @@ chat.developerRolePolicy=REJECT
 | `chat.apiKeyRef` | Titel des KeePass-Eintrags, dessen Passwortfeld den API-Key enthält. Wird je Anfrage über `SecretProvider.withSecret` aufgelöst und als `Authorization: Bearer …` gesendet; kein Feld hält den Key. |
 | `chat.systemPrompt` | System-Prompt der Konversation; der `ChatService` hält ihn getrennt von der Historie und stellt ihn jeder Anfrage voran. |
 | `chat.developerRolePolicy` | `REJECT` (Standard): Anfragen mit `DEVELOPER`-Nachrichten werden vor dem Senden abgelehnt. `SEND_AS_SYSTEM`: als `system` senden. `SEND_AS_DEVELOPER`: unverändert senden (UNVERIFIED, der getestete Server antwortet mit HTTP 500). |
-| `chat.temperature`, `topP`, `topK`, `maxTokens`, `presencePenalty`, `frequencyPenalty`, `user` | Standardparameter je Anfrage; werden nur gesendet, wenn gesetzt. |
+| `chat.maxTokens` | Ausgabelimit einer Antwort in Tokens, gesendet als `max_tokens`. Standard 8192 (auch ohne Eintrag), 0–1000000; `0` sendet kein Limit, dann gilt das des Dienstes. Der Server beachtet den Wert (geprüft mit `openai/gpt-oss-120b`: 256 ergibt `finish_reason=length`, 8192 ein reguläres `stop`). Bei `finish_reason=length` oder `content_filter` kennzeichnet der Chat die Antwort als unvollständig. Feld in den Einstellungen: „Netzwerk & Agent“ → „Chat: Ausgabelimit (Tokens)“. |
+| `chat.temperature`, `topP`, `topK`, `presencePenalty`, `frequencyPenalty`, `user` | Standardparameter je Anfrage; werden nur gesendet, wenn gesetzt. |
 | `chat.stop` | Kommagetrennte Stop-Sequenzen; werden immer als JSON-Array gesendet. |
 
 ### Beobachtetes Serververhalten

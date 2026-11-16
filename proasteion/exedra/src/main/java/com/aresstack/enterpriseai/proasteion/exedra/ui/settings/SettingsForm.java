@@ -98,6 +98,7 @@ public final class SettingsForm {
     private final String chatReadTimeoutMillis;
     private final String chatRetryCount;
     private final String chatRetryDelayMillis;
+    private final String chatMaxTokens;
     private final String keePassTimeoutMillis;
     private final String keePassRetryCount;
     private final String keePassRetryDelayMillis;
@@ -210,6 +211,7 @@ public final class SettingsForm {
         this.chatReadTimeoutMillis = b.chatReadTimeoutMillis;
         this.chatRetryCount = b.chatRetryCount;
         this.chatRetryDelayMillis = b.chatRetryDelayMillis;
+        this.chatMaxTokens = b.chatMaxTokens;
         this.keePassTimeoutMillis = b.keePassTimeoutMillis;
         this.keePassRetryCount = b.keePassRetryCount;
         this.keePassRetryDelayMillis = b.keePassRetryDelayMillis;
@@ -318,6 +320,7 @@ public final class SettingsForm {
                 .chatReadTimeoutMillis(chatReadTimeoutMillis)
                 .chatRetryCount(chatRetryCount)
                 .chatRetryDelayMillis(chatRetryDelayMillis)
+                .chatMaxTokens(chatMaxTokens)
                 .keePassTimeoutMillis(keePassTimeoutMillis)
                 .keePassRetryCount(keePassRetryCount)
                 .keePassRetryDelayMillis(keePassRetryDelayMillis)
@@ -631,6 +634,11 @@ public final class SettingsForm {
     /** Chat: Pause vor der ersten Wiederholung in ms ({@code chat.retryDelayMillis}). Leer = Standard. */
     public String chatRetryDelayMillis() {
         return chatRetryDelayMillis;
+    }
+
+    /** Chat: Ausgabelimit einer Antwort in Tokens ({@code chat.maxTokens}); 0 = kein Limit senden. Leer = Standard. */
+    public String chatMaxTokens() {
+        return chatMaxTokens;
     }
 
     /** KeePassRPC: Frist je Zugriff in ms ({@code security.keepass.timeoutMillis}). Leer = Standard. */
@@ -987,6 +995,7 @@ public final class SettingsForm {
         private String chatReadTimeoutMillis = "";
         private String chatRetryCount = "";
         private String chatRetryDelayMillis = "";
+        private String chatMaxTokens = "";
         private String keePassTimeoutMillis = "";
         private String keePassRetryCount = "";
         private String keePassRetryDelayMillis = "";
@@ -1321,6 +1330,11 @@ public final class SettingsForm {
 
         public Builder chatRetryDelayMillis(String value) {
             this.chatRetryDelayMillis = text(value);
+            return this;
+        }
+
+        public Builder chatMaxTokens(String value) {
+            this.chatMaxTokens = text(value);
             return this;
         }
 

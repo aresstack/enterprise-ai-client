@@ -21,6 +21,18 @@ public class AssistantNameTranscriptTest {
         assertEquals(TranscriptEntry.Author.ASSISTANT, answer.getAuthor());
     }
 
+    /** Issue #223: eine am Ausgabelimit beendete Antwort heißt im Kopf „unvollständig“. */
+    @Test
+    public void incompleteAnswerSaysSoInTheHeader() {
+        ChatShellModel model = new ChatShellModel(() -> 0L);
+        model.addUserMessage("x");
+        TranscriptEntry answer = model.beginAssistantMessage();
+        model.appendAssistantDelta("<svg><path d=\"M0");
+        model.completeAssistantMessage("Die Antwort ist unvollständig.");
+        assertEquals("Merlins Tochter" + ChatTranscriptPanel.INCOMPLETE_SUFFIX,
+                ChatTranscriptPanel.header(answer, "Merlins Tochter"));
+    }
+
     @Test
     public void renamingRelabelsExistingAnswersButNotTheUser() throws Exception {
         Edt.run(new Runnable() {

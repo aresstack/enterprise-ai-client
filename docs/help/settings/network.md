@@ -85,6 +85,7 @@ Hinweis im Dialog: Vorübergehende Fehler (Verbindung, Zeitüberschreitung, HTTP
 | „Chat: Lese-Timeout (ms)“ | 120000 | 0–3600000 | Frist zwischen zwei Datenstücken der Antwort |
 | „Chat: Wiederholungen“ | 2 | 0–10 | Je Modellanfrage, nur solange noch kein Antworttext sichtbar ist; Werkzeuge laufen nie doppelt |
 | „Chat: Pause vor Wiederholung (ms)“ | 500 | 0–30000 | Pause vor der ersten Wiederholung |
+| „Chat: Ausgabelimit (Tokens)“ | 8192 | 0–1000000, 0 = kein Limit senden | So viele Tokens darf eine Antwort höchstens lang werden (`chat.maxTokens`, gesendet als `max_tokens`). Ist das Limit erreicht, endet die Antwort unvollständig und der Chat weist darauf hin. Bei 0 gilt das Limit des KI-Dienstes |
 | „KeePassRPC: Timeout (ms)“ | 15000 | 1–3600000 | Frist je Zugriff auf KeePass |
 | „KeePassRPC: Wiederholungen“ | 2 | 0–10 | Nur wenn KeePass nicht antwortet, nie bei fehlendem Eintrag |
 | „KeePassRPC: Pause vor Wiederholung (ms)“ | 300 | 0–30000 | Pausen also 300 ms, dann 750 ms |

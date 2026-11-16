@@ -8,6 +8,9 @@ import com.aresstack.enterpriseai.chat.api.ChatCompletionException;
 import com.aresstack.enterpriseai.chat.api.ChatErrorKind;
 import com.aresstack.enterpriseai.chat.api.fake.FakeChatCompletionPort;
 import com.aresstack.enterpriseai.astu.chat.ChatConversationId;
+import com.aresstack.enterpriseai.astu.chat.ChatFinishReason;
+import com.aresstack.enterpriseai.astu.chat.ChatResponse;
+import com.aresstack.enterpriseai.astu.chat.ChatUsage;
 import com.aresstack.enterpriseai.astu.chat.ChatMessage;
 import com.aresstack.enterpriseai.astu.chat.ChatRole;
 import com.aresstack.enterpriseai.ui.comic.bubble.BubblePalette;
@@ -138,6 +141,74 @@ public class ChatServiceBindingTest {
         assertEquals(TranscriptEntry.State.FAILED, answer.getState());
         assertEquals("Fehler im KI-Dienst. (Status 500)\nTechnische Ursache: internal_error",
                 answer.getFailureMessage());
+    }
+
+    /**
+     * Issue #223: Endet die Antwort am Ausgabelimit ({@code finish_reason = length}), bleibt der Teiltext sichtbar und
+     * in der Historie, die Blase ist unvollständig, ein Hinweis steht darunter, und es folgt keine zweite Anfrage.
+     */
+    @Test
+    public void answerCutAtTheTokenLimitIsShownAsIncomplete() throws Exception {
+        port.enqueueAnswerEnding(ChatFinishReason.LENGTH, "<svg>", "<path d=\"M0");
+        final Fixture fixture = onEdt(new Callable<Fixture>() {
+            @Override
+            public Fixture call() {
+                Fixture f = new Fixture();
+                f.binding.sendRequested("Zeichne eine Pfingstrose.", true);
+                return f;
+            }
+        });
+        awaitIdle(fixture.model);
+
+        List<TranscriptEntry> entries = onEdt(new Callable<List<TranscriptEntry>>() {
+            @Override
+            public List<TranscriptEntry> call() {
+                return fixture.model.getEntries();
+            }
+        });
+        assertEquals(3, entries.size());
+        assertEquals("<svg><path d=\"M0", entries.get(1).getText());
+        assertEquals(TranscriptEntry.State.COMPLETE, entries.get(1).getState());
+        assertTrue(entries.get(1).isIncomplete());
+        assertEquals(TranscriptEntry.Author.NOTICE, entries.get(2).getAuthor());
+        assertTrue(entries.get(2).getText(), entries.get(2).getText().startsWith(AnswerEnd.LENGTH_NOTICE));
+        assertEquals("keine automatische zweite Anfrage", 1, port.requests().size());
+        List<ChatMessage> history = service.conversation(conversation).messages();
+        assertEquals("<svg><path d=\"M0", history.get(history.size() - 1).content());
+    }
+
+    @Test
+    public void regularStopIsNotMarkedIncomplete() throws Exception {
+        port.enqueueAnswerEnding(ChatFinishReason.STOP, "fertig");
+        final Fixture fixture = onEdt(new Callable<Fixture>() {
+            @Override
+            public Fixture call() {
+                Fixture f = new Fixture();
+                f.binding.sendRequested("Frage", true);
+                return f;
+            }
+        });
+        awaitIdle(fixture.model);
+        List<TranscriptEntry> entries = onEdt(new Callable<List<TranscriptEntry>>() {
+            @Override
+            public List<TranscriptEntry> call() {
+                return fixture.model.getEntries();
+            }
+        });
+        assertEquals(2, entries.size());
+        assertFalse(entries.get(1).isIncomplete());
+    }
+
+    @Test
+    public void noticeNamesTheTokensWhenTheServiceReportsThem() {
+        ChatResponse cut = new ChatResponse(ChatMessage.assistant("x"), ChatFinishReason.LENGTH,
+                ChatUsage.of(10, 8192, 8202), "m");
+        assertEquals(AnswerEnd.LENGTH_NOTICE + " (8192 Tokens)" + AnswerEnd.LENGTH_ADVICE,
+                AnswerEnd.incompleteNotice(cut));
+        assertEquals(AnswerEnd.FILTER_NOTICE, AnswerEnd.incompleteNotice(new ChatResponse(
+                ChatMessage.assistant("x"), ChatFinishReason.CONTENT_FILTER, null, null)));
+        assertEquals(null, AnswerEnd.incompleteNotice(new ChatResponse(ChatMessage.assistant("x"),
+                ChatFinishReason.UNKNOWN, null, null)));
     }
 
     @Test

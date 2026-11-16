@@ -112,6 +112,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
     /** Kopf einer Antwort, solange kein Anzeigename gesetzt ist ({@link #setAssistantName}). */
     static final String ASSISTANT_HEADER = "Assistent";
     static final String CANCELLED_SUFFIX = " · abgebrochen";
+    static final String INCOMPLETE_SUFFIX = " · unvollständig";
     static final String FAILED_HEADER = "Fehler";
     static final String NOTICE_HEADER = "Hinweis";
     /** Die Infozeile eines leeren Verlaufs (askai arch {@code showEmptyState}). */
@@ -968,7 +969,7 @@ public final class ChatTranscriptPanel extends JPanel implements ChatShellModelL
             case FAILED:
                 return FAILED_HEADER;
             default:
-                return assistantName;
+                return entry.isIncomplete() ? assistantName + INCOMPLETE_SUFFIX : assistantName;
         }
     }
 
