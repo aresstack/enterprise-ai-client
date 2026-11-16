@@ -528,7 +528,7 @@ NetworkServices (HttpRoutes je Ziel, TLS je Verbindung)
   `UnavailableSecretProvider`, zeigt beim Start, dass Secrets fehlen, und jede Anfrage scheitert mit einem
   Authentifizierungsfehler. Bekannte Grenze: der Chat-Adapter verlangt den Token als `String`, der sich nicht
   überschreiben lässt; jede Anfrage holt den Key neu über KeePassRPC (kein Cache erlaubt).
-- **Netz**: `HttpRoutes` implementiert den Port `HttpRoutePort` (Modul `network`) mit win-proxy-java 0.2.0: Route je Ziel, Cache, harter Timeout, nie auf dem EDT, NOT_IMPLEMENTED/ERROR als nicht verfügbare Route statt DIRECT. Jeder Adapter (Chat, Embeddings, MediaWiki, Confluence) übergibt Route, `SSLSocketFactory` (win-trust-java 0.1.0) und User-Agent je `HttpURLConnection`; kein globaler `ProxySelector`. Confluence zusätzlich
+- **Netz**: `HttpRoutes` implementiert den Port `HttpRoutePort` (Modul `network`) mit win-proxy-java 0.3.0: Route je Ziel, Cache, harter Timeout, nie auf dem EDT, NOT_IMPLEMENTED/ERROR als nicht verfügbare Route statt DIRECT. Jeder Adapter (Chat, Embeddings, MediaWiki, Confluence) übergibt Route, `SSLSocketFactory` (win-trust-java 0.1.0) und User-Agent je `HttpURLConnection`; kein globaler `ProxySelector`. Confluence zusätzlich
   mit Timeouts und optionalem Client-Zertifikat (Windows-MY per Alias oder PKCS12 mit Passwort über `SecretRef`,
   `ClientCertificateFactory`). `TrustPolicy` (`network.tls.*`) vereint über win-trust-java JVM-Truststore, unter Windows
   Windows-ROOT und Windows Root+Intermediate sowie optional eine CA-Datei zu einem Trust-Manager; die
@@ -654,7 +654,7 @@ Kurzfassung; die ausführliche Tabelle je Arbeitspaket mit den Änderungen gegen
 | MCP-Werkzeugkatalog als Fabrik von `McpToolContribution`s mit Fehlern als Ergebnis statt Exception und Auflösung des Ziels vor dem Aufruf (`astu.acropolis.mcp`) | Miguel0888/askai-java8 (`ResearchBotDirectoryTools`, `ResearchBotSessionTools`) |
 | Parameter `query`/`maxResults`/`sources`, Snippet-Grenze und Gesamtgrenze 20.000 Zeichen der Wissenswerkzeuge | Miguel0888/MainframeMate (`SearchIndexTool`, `ReadChunksTool`) |
 | Konfiguration als Properties-Datei im Benutzerverzeichnis mit Pfad-Override per System-Property, unveränderliche Snapshots, Proxy-Modi System/keiner/manuell (`proasteion.exedra.config`, `proasteion.exedra.net`) | Miguel0888/askai-java8 (`AppConfigurationRepository`, `AskAiPaths`, `ProxyConfiguration`) |
-| Proxy-Auflösung (`app.net.HttpRoutes`, alle Modi) | Bibliothek aresstack/win-proxy-java 0.2.0 und win-trust-java 0.1.0 (wie in corenth `network-winproxy` und askai-java8 `ProxyConfiguration`); Cache je Host und Rückfall auf Systemeinstellungen sind neu |
+| Proxy-Auflösung (`app.net.HttpRoutes`, alle Modi) | Bibliothek aresstack/win-proxy-java 0.3.0 und win-trust-java 0.1.0 (wie in corenth `network-winproxy` und askai-java8 `ProxyConfiguration`); Cache je Host und Rückfall auf Systemeinstellungen sind neu |
 | Settings-Schlüssel für Proxy, Timeouts, mTLS (Windows-MY-Alias), KeePassRPC-Verdrahtung mit Pairing-Dialog und Zugangsdaten je Aufruf (`proasteion.exedra.security`, `proasteion.exedra.ui.security`) | Miguel0888/MainframeMate (`Settings`, `KeePassProvider`, `KeePassRpcPairingDialog`, `MvsBrowser`-Proxy) |
 | Composition Root als einziger Ort für Adapterkonstruktoren, Secret-Material verlässt den Aufruf nicht (`app.composition`, `CompositionRootBoundaryTest`) | aresstack/corenth (Composition Root, `adyton`) |
 

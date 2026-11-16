@@ -102,7 +102,7 @@ Fehler wirft der Adapter `EmbeddingException`; es gibt keine Teilergebnisse und 
 
 ## Netzwerk (`network.*`)
 
-Proxy-Auflösung über `com.aresstack:win-proxy-java` 0.2.0, TLS-Vertrauen über `com.aresstack:win-trust-java`
+Proxy-Auflösung über `com.aresstack:win-proxy-java` 0.3.0, TLS-Vertrauen über `com.aresstack:win-trust-java`
 0.1.0. Felder und Modi entsprechen dem ProxyPanel von AskAI; die Modusnamen sind die Enum-Werte der Bibliothek.
 
 ```properties
