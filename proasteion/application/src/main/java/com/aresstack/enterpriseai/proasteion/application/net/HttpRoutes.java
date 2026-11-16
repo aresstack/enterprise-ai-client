@@ -49,6 +49,10 @@ public final class HttpRoutes implements HttpRoutePort {
         ProxyResult resolve(String url);
 
         ProxyDiagnostics diagnose(String url);
+
+        /** Lässt PAC-URL und PAC-Skript bei der nächsten Auflösung neu laden (win-proxy-java 0.3.0); Vorgabe: nichts. */
+        default void invalidatePac() {
+        }
     }
 
     static final long SUCCESS_TTL_MILLIS = 10 * 60 * 1000L;
@@ -100,6 +104,11 @@ public final class HttpRoutes implements HttpRoutePort {
             @Override
             public ProxyDiagnostics diagnose(String url) {
                 return library.diagnose(url);
+            }
+
+            @Override
+            public void invalidatePac() {
+                library.invalidatePacCache();
             }
         }, new Clock() {
             @Override
@@ -202,11 +211,12 @@ public final class HttpRoutes implements HttpRoutePort {
         return route;
     }
 
-    /** Vergisst alle zwischengespeicherten Routen (z. B. nach einem Netzwechsel). */
+    /** Vergisst alle zwischengespeicherten Routen und lässt das PAC-Skript neu laden (z. B. nach einem Netzwechsel). */
     public void invalidate() {
         synchronized (cache) {
             cache.clear();
         }
+        resolver.invalidatePac();
     }
 
     /**
