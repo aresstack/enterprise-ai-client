@@ -52,6 +52,7 @@ import com.aresstack.enterpriseai.proasteion.platform.security.keepassrpc.KeePas
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceProvider;
 import com.aresstack.enterpriseai.source.api.files.LocalFileAccessPolicy;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.confluence.ConfluenceSourceProvider;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.jira.JiraSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.FtpSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ftp.JesSourceProvider;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.git.GitSourceProvider;
@@ -466,6 +467,11 @@ public final class AdapterAssembly {
                         new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current()),
                 // HTML-Antworten statt Dateien landen zur Untersuchung neben dem Protokoll.
                 AppPaths.defaultLogDirectory()));
+        // Jira Data Center (nur lesend): Anmeldung, Route, TLS und Client-Zertifikat wie Confluence.
+        providers.add(new JiraSourceProvider(secrets, network.routes(), network.tls(),
+                network.current().userAgent(),
+                (alias, keyStoreFile, passwordRef) -> ClientCertificateFactory.deferred(
+                        new ClientCertificateConfig(alias, keyStoreFile, passwordRef), secrets, network.current())));
         // Markdown und Klartext ohne Tika, alles andere (PDF, Office, HTML, Mail) über den Tika-Adapter.
         providers.add(new LocalFilesSourceProvider(DocumentExtraction.detector(), DocumentExtraction.registry(),
                 fileAccess));

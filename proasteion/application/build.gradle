@@ -26,6 +26,7 @@ dependencies {
     implementation project(':search-run-h2')
     implementation project(':proasteion:emporion:holkas:source-mediawiki')
     implementation project(':proasteion:emporion:holkas:source-confluence')
+    implementation project(':proasteion:emporion:holkas:source-jira')
     implementation project(':proasteion:emporion:holkas:source-localfiles')
     implementation project(':proasteion:emporion:holkas:source-git')
     implementation project(':proasteion:emporion:holkas:source-ftp')

@@ -34,7 +34,8 @@ public class SourceBoundaryTest {
 
     private static final String ROOT = ModuleRegistry.ROOT_PACKAGE;
     private static final List<String> SOURCE_ADAPTER_PACKAGES = Arrays.asList(
-            ROOT + ".proasteion.emporion.holkas.mediawiki", ROOT + ".proasteion.emporion.holkas.confluence", ROOT + ".proasteion.emporion.holkas.ftp",
+            ROOT + ".proasteion.emporion.holkas.mediawiki", ROOT + ".proasteion.emporion.holkas.confluence",
+            ROOT + ".proasteion.emporion.holkas.jira", ROOT + ".proasteion.emporion.holkas.ftp",
             ROOT + ".proasteion.emporion.holkas.ndv",
             ROOT + ".proasteion.emporion.holkas.outlook",
             ROOT + ".proasteion.emporion.holkas.sharepoint", ROOT + ".proasteion.emporion.holkas.betaview",

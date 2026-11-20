@@ -14,6 +14,7 @@ ARCHITECTURE.md.
 | [KeePass-Konfiguration](konfiguration-keepass.md) | KeePassRPC, Pairing, Secret-Referenzen, Betrieb ohne KeePass |
 | [MediaWiki-Konfiguration](konfiguration-mediawiki.md) | Wiki als Wissensquelle: Startseiten, Crawl, Login |
 | [Confluence-Konfiguration](konfiguration-confluence.md) | Confluence Data Center als Wissensquelle, Zugangsdaten, mTLS |
+| [Jira-Konfiguration](konfiguration-jira.md) | Jira Data Center als Wissensquelle: Projekte, JQL, Lese-Ansicht mit Rohdaten, nur lesend |
 | [SharePoint-Konfiguration](konfiguration-sharepoint.md) | Dokumentbibliotheken einer SharePoint-Site über die REST-API |
 | [BetaView-Konfiguration](konfiguration-betaview.md) | BetaView-Dokumentarchiv: Ergebnisliste eines Favoriten |
 | [Metadaten-Katalog](metadaten-katalog.md) | Facts an Ressourcen (H2): Modell, Abfragen, Lebenszyklus, Nebenläufigkeit, Grenzen |
