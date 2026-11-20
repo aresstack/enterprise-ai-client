@@ -58,6 +58,8 @@ include 'search-run-h2'
 include 'source-api'
 include 'proasteion:emporion:holkas:source-mediawiki'
 include 'proasteion:emporion:holkas:source-confluence'
+// Jira Data Center über die REST-API 2 (nur lesend): Projekte als Partitionen, Vorgänge als Ressourcen, JQL als Suche
+include 'proasteion:emporion:holkas:source-jira'
 include 'proasteion:emporion:holkas:source-localfiles'
 // Git repositories (#137): JGit 5.13.5 inside the Java 8 process, read only
 include 'proasteion:emporion:holkas:source-git'

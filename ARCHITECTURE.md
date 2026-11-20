@@ -34,8 +34,8 @@ proasteion                            προάστειον Vorstadt: Ports und A
 ├── help                                         Eingebaute Produkthilfe (docs/help, app_help_*)
 ├── emporion                          ἐμπόριον   Hafen
 │   ├── holkas                        ὁλκάς      Frachtschiff: Connectoren holen Rohressourcen      ← resource-holkas
-│   │   └── source-mediawiki, source-confluence, source-localfiles, source-ftp, source-ndv, source-outlook,
-│   │       source-sharepoint, source-betaview, source-git
+│   │   └── source-mediawiki, source-confluence, source-jira, source-localfiles, source-ftp, source-ndv,
+│   │       source-outlook, source-sharepoint, source-betaview, source-git
 │   └── deigma                        δεῖγμα     Prüfhalle: Erkennung, flache Extraktion            ← document-api
 │       └── document-tika
 └── platform
@@ -128,6 +128,7 @@ Moduls liegen nur dort (geprüft).
 | `source-api` | PORT | `source.api` | astu | E (AP11) |
 | `source-mediawiki` | ADAPTER | `proasteion.emporion.holkas.mediawiki` | astu, source-api, network | E (AP12) |
 | `source-confluence` | ADAPTER | `proasteion.emporion.holkas.confluence` | astu, source-api, adyton, network | F (AP15) |
+| `source-jira` | ADAPTER | `proasteion.emporion.holkas.jira` | astu, source-api, adyton, network | Jira Data Center über die REST-API 2, nur lesend: Projekte als Partitionen, Vorgänge als Ressourcen, JQL als Suche; Anmeldung über adyton wie Confluence (Basic oder Personal Access Token), mTLS und Proxy-Route wie Confluence |
 | `source-localfiles` | ADAPTER | `proasteion.emporion.holkas.localfiles` | astu, source-api, deigma | Dateien (0.1.10) |
 | `source-git` | ADAPTER | `proasteion.emporion.holkas.git` | astu, source-api, deigma, network | Git-Repository (#137): ein Ref, nur lesend, JGit 5.13.5 adapterintern, Bare-Cache der Anwendung; Revision = Blob-ID; Token per Callback der Composition Root, Proxy-Route und TLS der Anwendung |
 | `source-ftp` | ADAPTER | `proasteion.emporion.holkas.ftp` | astu, source-api, adyton | FTP/MVS-Quelle (COBOL in PDS-Membern) und JES-Jobausgaben; Commons Net, Anmeldung über KeePass |
@@ -248,7 +249,7 @@ importieren die kompilierten Produktionsklassen aller Module mit ArchUnit.
 | `RagBoundaryTest.*` | AP10: `astu.acropolis.rag` sieht nur Chat-Use-Case, Embedding- und Index-Port; `astu.acropolis.knowledge` nur Source-, Embedding- und Index-Port; der Chat-Pfad kennt beides nicht |
 | `McpKnowledgeToolsBoundaryTest.*` | AP20: `astu.acropolis.mcp` sieht nur die Use-Case-Pakete `astu.acropolis.rag` und `astu.acropolis.knowledge`, Knowledge-Domain, aus `source.api` allein `KnowledgeSourceException` (Fehlerart) und den MCP-Port-Vertrag; Index-, Embedding- und Quell-Port (samt `SourceScope`) nur über Use Cases; kein Adapter, kein Chat, kein ACP, kein Security-Typ; Use Cases und Chat-Pfad kennen die Werkzeuge nicht |
 | `CompositionRootBoundaryTest.*` | AP23: Konstruktoren von Adaptern (Klassen eines Adaptermoduls, die einen Port implementieren) werden außerhalb der Adaptermodule nur in `proasteion.application.composition` aufgerufen; exedra hängt an keinem Adapter und nicht an holkas, deigma, tamias, anagraphai, pinakes (corenth `EXEDRA_MUST_STAY_THIN_UI_SHELL`) |
-| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `adyton`, `security-keepassrpc`, `source-confluence`, `source-ftp`, `source-ndv` und, paketgenau, in `proasteion.application.security` (Brücken des Kompositionspunkts); nie in Feldern |
+| `SecretBoundaryTest.*` | AP13/AP23: Secret-Material nur in `adyton`, `security-keepassrpc`, `source-confluence`, `source-jira`, `source-ftp`, `source-ndv` und, paketgenau, in `proasteion.application.security` (Brücken des Kompositionspunkts); nie in Feldern |
 | `RulesDetectViolationsTest.*` | Selbsttest: absichtliche Verstöße (Fixtures) werden erkannt, ein neutraler Domain-Wert nicht |
 | `CoreNamingTest.*` | Nachtrag 1/19: keine Provider-Namen (OpenAI, Ollama, Claude, llama.cpp ...) und keine Multi-Provider-Abstraktion in Klassennamen oder Enum-Konstanten des Kerns |
 | `TestCodeIsolationTest.*` | Produktionscode kennt weder JUnit/ArchUnit/Mockito noch Testfixture-Klassen oder Testpakete (`testing`, `testkit`, `fake`); keine `testFixtures(...)` in einer Produktionskonfiguration |

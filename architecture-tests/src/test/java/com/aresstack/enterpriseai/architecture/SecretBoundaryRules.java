@@ -35,7 +35,7 @@ final class SecretBoundaryRules {
      */
     static List<String> modulesAllowedToUseSecretMaterial() {
         return Collections.unmodifiableList(Arrays.asList("adyton", "security-keepassrpc", "source-confluence",
-                "source-ftp", "source-ndv"));
+                "source-jira", "source-ftp", "source-ndv"));
     }
 
     /**

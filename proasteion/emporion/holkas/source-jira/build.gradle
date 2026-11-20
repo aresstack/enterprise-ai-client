@@ -1,0 +1,13 @@
+description = 'Adapter: Jira Data Center als Knowledge Source (REST-API 2, nur lesend). Credentials nur über adyton.'
+
+dependencies {
+    api project(':source-api')
+    api project(':adyton')
+    // Proxy-Route je Ziel (Port); die Umsetzung liefert die Composition Root.
+    api project(':proasteion:platform:network')
+    // Adapter-intern: JSON der Jira-REST-API und HTML der gerenderten Felder.
+    implementation libs.gson
+    implementation libs.jsoup
+
+    testImplementation testFixtures(project(':source-api'))
+}

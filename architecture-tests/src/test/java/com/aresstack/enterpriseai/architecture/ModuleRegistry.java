@@ -101,6 +101,10 @@ final class ModuleRegistry {
                         "network")
                 .module("source-confluence", "proasteion.emporion.holkas.confluence", ModuleKind.ADAPTER, "F",
                         "astu", "source-api", "adyton", "network")
+                // Jira Data Center (REST-API 2, nur lesend): Anmeldung über adyton wie Confluence, Proxy und TLS über
+                // network; Projekte als Partitionen, Vorgänge als Ressourcen, JQL als Suche.
+                .module("source-jira", "proasteion.emporion.holkas.jira", ModuleKind.ADAPTER, "Quellen",
+                        "astu", "source-api", "adyton", "network")
                 // Lokale Dateien: Verzeichnis als Quelle; Erkennung/Extraktion nur über den Port deigma.
                 .module("source-localfiles", "proasteion.emporion.holkas.localfiles", ModuleKind.ADAPTER, "E",
                         "astu", "source-api", "deigma")
@@ -213,7 +217,7 @@ final class ModuleRegistry {
                         "chat-api", "embedding-api", "chalcotheca", "source-api", "adyton",
                         "acp-client-api", "katagogion", "network",
                         "chat-openai", "embedding-openai", "anagraphai", "pinakes", "source-mediawiki",
-                        "source-confluence", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
+                        "source-confluence", "source-jira", "security-keepassrpc", "acp-solon-client", "mcp-solon-runtime",
                         "deigma", "document-tika", "source-localfiles", "source-git", "tamias",
                         "holkas", "model-api", "model-kipitz", "speech-api", "source-ftp",
                         "source-ndv", "source-outlook", "source-sharepoint", "source-betaview", "model-huggingface", "speech-runtime-api", "speech-local", "speech-onnx",
