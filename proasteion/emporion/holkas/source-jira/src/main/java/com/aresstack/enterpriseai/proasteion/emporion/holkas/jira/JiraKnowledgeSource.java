@@ -41,6 +41,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -314,10 +315,12 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
             throw new KnowledgeSourceException(Kind.NOT_FOUND, "Anhang ohne Download-Adresse");
         }
         final URI target = absolute(attachment.downloadPath());
+        final boolean html = attachment.mediaType() != null
+                && attachment.mediaType().toLowerCase(Locale.ROOT).contains("html");
         return withSession(new Operation<byte[]>() {
             @Override
             public byte[] run(Session session) throws KnowledgeSourceException {
-                return client.download(session, target, READER_MAX_BYTES);
+                return client.download(session, target, READER_MAX_BYTES, html);
             }
         });
     }
@@ -523,15 +526,15 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
             if (point.allProjects) {
                 for (Project project : client.projects(session)) {
                     if (!excluded(scope, project.key)) {
-                        list(session, projectJql(project.key), found, scope.maxResources());
+                        list(session, projectJql(project.key), found, scope);
                     }
                 }
             } else if (point.projectKey != null) {
                 if (!excluded(scope, point.projectKey)) {
-                    list(session, projectJql(point.projectKey), found, scope.maxResources());
+                    list(session, projectJql(point.projectKey), found, scope);
                 }
             } else if (point.jql != null) {
-                list(session, withFilter("(" + point.jql + ")") + " ORDER BY key ASC", found, scope.maxResources());
+                list(session, withFilter("(" + point.jql + ")" + exclusionJql(scope)) + " ORDER BY key ASC", found, scope);
             } else {
                 follow(session, point.issueKey, scope, found);
             }
@@ -543,9 +546,20 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
         return scope.selectionApplies() && scope.excludedPartitions().contains(projectKey);
     }
 
-    /** Alle Vorgänge einer JQL-Abfrage, stapelweise, bis {@code max} Ressourcen gefunden sind. */
-    private void list(Session session, String jql, Map<KnowledgeResourceId, KnowledgeResource> found, int max)
+    /** {@code AND project not in (…)} für die abgehakten Projekte, oder leer. */
+    private static String exclusionJql(SourceScope scope) {
+        List<String> excluded = scope.selectionApplies() ? projectKeys(scope.excludedPartitions())
+                : Collections.<String>emptyList();
+        return excluded.isEmpty() ? "" : " AND project not in (" + String.join(", ", excluded) + ")";
+    }
+
+    /**
+     * Alle Vorgänge einer JQL-Abfrage, stapelweise, bis {@code scope.maxResources()} Ressourcen gefunden sind;
+     * Vorgänge abgehakter Projekte werden übersprungen.
+     */
+    private void list(Session session, String jql, Map<KnowledgeResourceId, KnowledgeResource> found, SourceScope scope)
             throws KnowledgeSourceException {
+        int max = scope.maxResources();
         int start = 0;
         while (found.size() < max) {
             SearchResult result = client.search(session, jql, start, Math.min(config.pageSize(), max - found.size()),
@@ -553,6 +567,9 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
             for (Issue issue : result.issues) {
                 if (found.size() >= max) {
                     break;
+                }
+                if (excluded(scope, issue.projectKey)) {
+                    continue;
                 }
                 KnowledgeResource resource = resource(issue);
                 found.put(resource.id(), resource);
@@ -582,6 +599,10 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
                     continue;
                 }
                 throw e;
+            }
+            if (excluded(scope, issue.projectKey)) {
+                LOG.fine("[Jira] Vorgang eines abgehakten Projekts übersprungen");
+                continue;
             }
             KnowledgeResource resource = resource(issue);
             found.put(resource.id(), resource);

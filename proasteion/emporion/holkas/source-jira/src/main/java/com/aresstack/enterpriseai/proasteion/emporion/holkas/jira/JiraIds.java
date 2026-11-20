@@ -1,5 +1,8 @@
 package com.aresstack.enterpriseai.proasteion.emporion.holkas.jira;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.aresstack.enterpriseai.astu.knowledge.KnowledgeResourceId;
 
 import java.util.Locale;
@@ -117,5 +120,56 @@ final class JiraIds {
         static StartPoint jql(String jql) {
             return new StartPoint(null, null, jql, false);
         }
+    }
+
+    /**
+     * Zerlegt den Einstellungswert {@code startPoints} in Startpunkte. Trenner ist das Komma, aber nicht innerhalb
+     * von Klammern oder Anführungszeichen, damit JQL wie {@code jql:project in (DEMO, OPS)} oder
+     * {@code jql:summary ~ "a, b"} ganz bleibt; Zeilenumbrüche und Semikolons trennen immer.
+     */
+    static List<String> splitStartPoints(String value) {
+        List<String> points = new ArrayList<String>();
+        if (value == null) {
+            return points;
+        }
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < value.length()) {
+                    current.append(c).append(value.charAt(++i));
+                    continue;
+                }
+                if (c == quote) {
+                    quote = 0;
+                }
+                current.append(c);
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+                current.append(c);
+            } else if (c == '(') {
+                depth++;
+                current.append(c);
+            } else if (c == ')') {
+                depth = Math.max(0, depth - 1);
+                current.append(c);
+            } else if (c == '\n' || c == ';' || c == ',' && depth == 0) {
+                add(points, current);
+            } else {
+                current.append(c);
+            }
+        }
+        add(points, current);
+        return points;
+    }
+
+    private static void add(List<String> points, StringBuilder current) {
+        String trimmed = current.toString().trim();
+        if (!trimmed.isEmpty()) {
+            points.add(trimmed);
+        }
+        current.setLength(0);
     }
 }

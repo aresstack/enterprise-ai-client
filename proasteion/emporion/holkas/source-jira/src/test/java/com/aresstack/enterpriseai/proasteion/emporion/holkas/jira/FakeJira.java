@@ -37,6 +37,8 @@ final class FakeJira implements JiraHttpTransport {
     final Map<String, FakeProject> projects = new LinkedHashMap<String, FakeProject>();
     final Map<String, FakeIssue> issues = new LinkedHashMap<String, FakeIssue>();
     final Map<String, byte[]> files = new LinkedHashMap<String, byte[]>();
+    /** Content-Type je Datei-Pfad; ohne Eintrag {@code image/png}. */
+    final Map<String, String> fileTypes = new LinkedHashMap<String, String>();
     final List<URI> requests = new ArrayList<URI>();
     final List<Map<String, String>> requestHeaders = new ArrayList<Map<String, String>>();
     final List<String> jqls = new ArrayList<String>();
@@ -130,7 +132,8 @@ final class FakeJira implements JiraHttpTransport {
             return json(200, issue.json(true, inlineCommentLimit, !withoutRenderedFields).toString());
         }
         if (files.containsKey(path)) {
-            return new JiraHttpResponse(200, "image/png", files.get(path));
+            String type = fileTypes.containsKey(path) ? fileTypes.get(path) : "image/png";
+            return new JiraHttpResponse(200, type, files.get(path));
         }
         return json(404, "{}");
     }

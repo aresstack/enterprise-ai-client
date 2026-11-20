@@ -44,4 +44,12 @@ public class JiraIdsTest {
         assertNull(JiraIds.startPoint(LOCATOR, "irgendwas"));
         assertNull(JiraIds.startPoint(LOCATOR, "jql:"));
     }
+
+    @Test
+    public void startPointListKeepsCommasInsideJqlAndQuotes() {
+        assertEquals(java.util.Arrays.asList("project:DEMO", "jql:project in (DEMO, OPS) AND summary ~ \"a, b\"", "OPS-7"),
+                JiraIds.splitStartPoints("project:DEMO, jql:project in (DEMO, OPS) AND summary ~ \"a, b\"\nOPS-7;"));
+        assertTrue(JiraIds.splitStartPoints(null).isEmpty());
+        assertTrue(JiraIds.splitStartPoints(" , ").isEmpty());
+    }
 }

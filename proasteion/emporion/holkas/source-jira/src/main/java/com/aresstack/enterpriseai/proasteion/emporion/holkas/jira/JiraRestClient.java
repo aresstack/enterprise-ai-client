@@ -184,6 +184,14 @@ final class JiraRestClient {
      * keinen Header und werden abgelehnt.
      */
     byte[] download(Session session, URI target, int maxBytes) throws KnowledgeSourceException {
+        return download(session, target, maxBytes, false);
+    }
+
+    /**
+     * @param htmlExpected {@code true}, wenn die Datei selbst HTML ist (Anhang mit Medientyp {@code text/html});
+     *                     sonst gilt eine HTML-Antwort als Anmeldeseite und wird als {@code ACCESS_DENIED} abgelehnt
+     */
+    byte[] download(Session session, URI target, int maxBytes, boolean htmlExpected) throws KnowledgeSourceException {
         if (!underBase(target)) {
             throw new KnowledgeSourceException(Kind.UNSUPPORTED, "Datei außerhalb dieser Jira: " + target.getHost());
         }
@@ -196,7 +204,7 @@ final class JiraRestClient {
         if (!response.isSuccess()) {
             throw statusFailure("Datei", response.status());
         }
-        if (response.contentType().toLowerCase(Locale.ROOT).contains("html")) {
+        if (!htmlExpected && response.contentType().toLowerCase(Locale.ROOT).contains("html")) {
             throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "Datei: HTML statt Datei (Anmeldeseite?)");
         }
         return response.body();

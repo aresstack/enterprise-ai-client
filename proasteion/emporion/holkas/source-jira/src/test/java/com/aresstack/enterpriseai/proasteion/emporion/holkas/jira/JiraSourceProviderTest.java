@@ -78,6 +78,15 @@ public class JiraSourceProviderTest {
         assertEquals(1000000, scope.maxResources());
         assertEquals("project:DEMO", provider.scope(settings("baseUrl", "https://jira.intern", "startPoints",
                 "project:DEMO")).startPoints().get(0));
+        SourceScope jql = provider.scope(settings("baseUrl", "https://jira.intern", "startPoints",
+                "jql:project in (DEMO, OPS), OPS-7", "maxDepth", "2", "maxResources", "500"));
+        assertEquals(java.util.Arrays.asList("jql:project in (DEMO, OPS)", "OPS-7"), jql.startPoints());
+        assertEquals(2, jql.maxDepth());
+        assertEquals(500, jql.maxResources());
+        assertTrue(provider.validate(settings("baseUrl", "https://jira.intern", "startPoints",
+                "jql:project in (DEMO, OPS)")).isEmpty());
+        assertFalse(provider.validate(settings("baseUrl", "https://jira.intern", "startPoints", "irgendwas")).isEmpty());
+        assertFalse(provider.validate(settings("baseUrl", "https://jira.intern", "maxDepth", "x")).isEmpty());
     }
 
     @Test

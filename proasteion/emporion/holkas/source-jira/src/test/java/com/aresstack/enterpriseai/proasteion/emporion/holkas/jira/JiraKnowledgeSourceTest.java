@@ -114,6 +114,38 @@ public class JiraKnowledgeSourceTest {
     }
 
     @Test
+    public void excludedProjectsAreSkippedForJqlAndLinkedStartPoints() throws Exception {
+        jira.link("DEMO-2", "relates to", "OPS-7");
+        SourceScope jql = SourceScope.of("jql:project in (DEMO, OPS)").withExcludedPartitions(Collections.singleton("OPS"));
+        assertEquals(Arrays.asList(id("DEMO-1"), id("DEMO-2"), id("DEMO-3")), ids(source.discover(jql)));
+        assertEquals("(project in (DEMO, OPS)) AND project not in (OPS) ORDER BY key ASC", jira.jqls.get(0));
+
+        SourceScope linked = SourceScope.builder().startPoint("DEMO-2").maxDepth(2).build()
+                .withExcludedPartitions(Collections.singleton("OPS"));
+        // DEMO-2 verweist nur auf OPS-7 (abgehakt); der Vorgang wird gelesen, aber nicht aufgenommen.
+        assertEquals(Collections.singletonList(id("DEMO-2")), ids(source.discover(linked)));
+
+        SourceScope ignoring = SourceScope.builder().startPoint("DEMO-2").maxDepth(1).ignoringSelection().build()
+                .withExcludedPartitions(Collections.singleton("OPS"));
+        assertTrue(ids(source.discover(ignoring)).contains(id("OPS-7")));
+    }
+
+    @Test
+    public void htmlAttachmentsAreDownloadedWhileHtmlImagesAreTreatedAsLoginPages() throws Exception {
+        FakeJira.FakeIssue issue = jira.issues.get("DEMO-1");
+        issue.attachment("901", "bericht.html", "text/html", 20);
+        issue.attachment("902", "bild.png", "image/png", 20);
+        jira.files.put("/secure/attachment/901/bericht.html", "<html>x</html>".getBytes(StandardCharsets.UTF_8));
+        jira.files.put("/secure/attachment/902/bild.png", "<html>login</html>".getBytes(StandardCharsets.UTF_8));
+        jira.fileTypes.put("/secure/attachment/901/bericht.html", "text/html;charset=UTF-8");
+        jira.fileTypes.put("/secure/attachment/902/bild.png", "text/html");
+        PageView view = source.pageView(id("DEMO-1"));
+        assertEquals("<html>x</html>", new String(source.loadAttachment(view.attachments().get(0)), StandardCharsets.UTF_8));
+        assertKind(Kind.ACCESS_DENIED, () -> source.loadAttachment(view.attachments().get(1)));
+        assertKind(Kind.ACCESS_DENIED, () -> source.loadViewImage("/jira/secure/attachment/901/bericht.html"));
+    }
+
+    @Test
     public void loadRendersTitleMetadataDescriptionAndComments() throws Exception {
         jira.issues.get("DEMO-1").descriptionHtml = "<p>Nach dem <b>Update</b> klappt die Anmeldung nicht mehr.</p>"
                 + "<ul><li>Schritt eins</li><li>Schritt zwei</li></ul>";

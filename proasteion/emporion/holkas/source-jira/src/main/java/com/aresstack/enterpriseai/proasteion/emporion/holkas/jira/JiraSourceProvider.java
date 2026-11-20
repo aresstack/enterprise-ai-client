@@ -128,13 +128,35 @@ public final class JiraSourceProvider implements KnowledgeSourceProvider, Addres
         timeouts(reader);
         certificate(reader);
         reader.bool(CERTIFICATE_USE, true);
-        reader.scope(JiraIds.ALL_PROJECTS, 1, UNLIMITED);
+        scope(reader, settings);
         return reader.problems();
     }
 
     @Override
     public SourceScope scope(SourceSettings settings) {
-        return new SourceSettingsReader(TYPE, settings).scope(JiraIds.ALL_PROJECTS, 1, UNLIMITED);
+        return scope(new SourceSettingsReader(TYPE, settings), settings);
+    }
+
+    /**
+     * Wie {@link SourceSettingsReader#scope}, aber die Startpunkte zerlegt {@link JiraIds#splitStartPoints}: JQL
+     * enthält Kommas in Klammern und Anführungszeichen, die der allgemeine Leser als Trenner nähme.
+     */
+    private static SourceScope scope(SourceSettingsReader reader, SourceSettings settings) {
+        List<String> startPoints = JiraIds.splitStartPoints(settings.get("startPoints"));
+        SourceScope limits = new SourceSettingsReader(TYPE, settings.with("startPoints", ""))
+                .scope(JiraIds.ALL_PROJECTS, 1, UNLIMITED);
+        reader.integer("maxDepth", 1, 0, 100);
+        reader.integer("maxResources", UNLIMITED, 1, UNLIMITED);
+        if (startPoints.isEmpty()) {
+            return limits;
+        }
+        for (String point : startPoints) {
+            if (JiraIds.startPoint("", point) == null && !point.startsWith(JiraIds.SCHEME + ":")) {
+                reader.problem("startPoints", "unbekannte Form: Projekt-Schlüssel, project:KEY, Vorgangs-Schlüssel oder jql:…");
+            }
+        }
+        return SourceScope.builder().startPoints(startPoints).maxDepth(limits.maxDepth())
+                .maxResources(limits.maxResources()).build();
     }
 
     /** Kanonische Basis-URL ohne Schema ({@code jira.intern/jira}); zwei Kontextpfade sind zwei Quellen. */
