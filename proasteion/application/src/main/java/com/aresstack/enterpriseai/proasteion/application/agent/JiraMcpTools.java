@@ -52,6 +52,12 @@ public final class JiraMcpTools {
 
     private final Supplier<KnowledgeSourceCatalog> catalog;
     private final Predicate<SourceAddress> enabled;
+    /**
+     * Vorgang und Übergang ({@code KEY#id}), die das Gate zuletzt in diesem Thread als Ziel bestimmt hat ({@code write}); {@code null} nach
+     * einem Auflisten. {@code ApprovingMcpToolHandler} prüft und führt im selben Thread aus; ausgeführt wird nur genau
+     * dieser Übergang, auch wenn er erst nach dem Auflisten verfügbar wurde (sonst liefe er ohne Freigabe).
+     */
+    private final ThreadLocal<String> resolvedTransition = new ThreadLocal<String>();
 
     /**
      * @param catalog   die Quellen unter Wissensquellen (dieselben wie die der Wissenswerkzeuge)
@@ -189,7 +195,12 @@ public final class JiraMcpTools {
             Target target = target(call.getArguments());
             List<JiraIssueOperations.Transition> available = target.jira.operations.transitions(target.key);
             String wanted = trimmed(call.getString("transition"));
+            String approved = resolvedTransition.get();
+            resolvedTransition.remove();
             JiraIssueOperations.Transition chosen = wanted.isEmpty() ? null : match(available, wanted);
+            if (chosen != null && !(target.key + "#" + chosen.id()).equals(approved)) {
+                chosen = null;
+            }
             if (chosen == null) {
                 StringBuilder out = new StringBuilder(wanted.isEmpty() ? "" : "No transition '" + wanted
                         + "' available. ");
@@ -227,6 +238,7 @@ public final class JiraMcpTools {
      * aus Jira ({@value #WRITE}).
      */
     private ApprovalTarget transitionTarget(Map<String, Object> arguments) {
+        resolvedTransition.remove();
         Target target = target(arguments);
         String wanted = trimmed(arguments.get("transition") == null ? null
                 : String.valueOf(arguments.get("transition")));
@@ -245,6 +257,7 @@ public final class JiraMcpTools {
                     "Übergänge von " + target.key + " auflisten");
         }
         JiraIssueOperations.IssueSummary issue = summary(target);
+        resolvedTransition.set(issue.key() + "#" + chosen.id());
         return new ApprovalTarget(WRITE, null, target.jira.source.value() + "/" + issue.key(),
                 version(issue, chosen.id()), "Jira-Vorgang " + title(issue) + " von „" + issue.status()
                 + "“ über „" + chosen.name() + "“" + (chosen.toStatus() == null ? "" : " nach „"

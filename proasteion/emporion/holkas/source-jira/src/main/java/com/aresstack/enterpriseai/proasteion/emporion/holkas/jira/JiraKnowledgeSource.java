@@ -233,6 +233,24 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
         return withFilter(String.join(" AND ", clauses)) + " ORDER BY updated DESC";
     }
 
+    /** Am Schluss einer freien JQL-Abfrage: {@code ORDER BY …} ohne Anführungszeichen. */
+    private static final Pattern ORDER_BY = Pattern.compile("(?i)\\s*\\bORDER\\s+BY\\b[^\"']*$");
+
+    /**
+     * Eine freie JQL-Abfrage (Werkzeug {@code jira_search}) mit der Einschränkung der Quelle: die Bedingung in Klammern,
+     * damit ein {@code OR} darin die Einschränkung nicht aufhebt; {@code ORDER BY} bleibt am Schluss.
+     */
+    private String restricted(String jql) {
+        Matcher order = ORDER_BY.matcher(jql);
+        boolean sorted = order.find();
+        String condition = sorted ? jql.substring(0, order.start()).trim() : jql;
+        String sort = sorted ? " " + jql.substring(order.start()).trim() : "";
+        if (condition.isEmpty()) {
+            return config.jqlFilter().isEmpty() ? sort.trim() : config.jqlFilter() + sort;
+        }
+        return withFilter("(" + condition + ")") + sort;
+    }
+
     private String withFilter(String jql) {
         return config.jqlFilter().isEmpty() ? jql : "(" + config.jqlFilter() + ") AND " + jql;
     }
@@ -726,7 +744,7 @@ public class JiraKnowledgeSource implements SearchableKnowledgeSource, PageViewS
         return withSession(new Operation<JiraIssueOperations.IssueSearch>() {
             @Override
             public JiraIssueOperations.IssueSearch run(Session session) throws KnowledgeSourceException {
-                SearchResult result = client.search(session, withFilter(jql.trim()), 0, max,
+                SearchResult result = client.search(session, restricted(jql.trim()), 0, max,
                         JiraRestClient.LIST_FIELDS);
                 List<IssueSummary> issues = new ArrayList<IssueSummary>();
                 for (Issue issue : result.issues) {

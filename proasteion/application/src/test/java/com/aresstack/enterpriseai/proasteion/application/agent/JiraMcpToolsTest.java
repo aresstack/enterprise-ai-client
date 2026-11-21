@@ -133,6 +133,18 @@ public class JiraMcpToolsTest {
     }
 
     @Test
+    public void aTransitionThatAppearsOnlyAfterTheCheckIsNotDoneWithoutApproval() {
+        jira.lateTransition = new JiraIssueOperations.Transition("41", "Schließen", "Closed");
+
+        McpToolResult result = invoke(tools(ApprovalDecision.Outcome.REJECTED), JiraMcpTools.TRANSITION,
+                "issue", "DEMO-2", "transition", "Schließen");
+
+        assertTrue(result.getText(), result.isError());
+        assertTrue(asked.isEmpty());
+        assertFalse(jira.calls.toString(), jira.calls.toString().contains("transition DEMO-2"));
+    }
+
+    @Test
     public void anIssueOfAnotherJiraIsRefused() {
         McpToolResult result = invoke(tools(ApprovalDecision.Outcome.APPROVED), JiraMcpTools.COMMENT,
                 "issue", "https://other.example.org/browse/DEMO-2", "body", "Text");
@@ -181,6 +193,9 @@ public class JiraMcpToolsTest {
 
         final List<String> calls = new ArrayList<String>();
         String status = "Open";
+        /** Ein Übergang, den Jira erst ab der zweiten Abfrage anbietet (zwischen Prüfung und Ausführung). */
+        Transition lateTransition;
+        int transitionQueries;
 
         @Override
         public SourceAddress sourceId() {
@@ -233,8 +248,12 @@ public class JiraMcpToolsTest {
 
         @Override
         public List<Transition> transitions(String issueKey) {
-            return Arrays.asList(new Transition("21", "In Arbeit nehmen", "In Progress"),
-                    new Transition("31", "Erledigen", "Done"));
+            List<Transition> offered = new ArrayList<Transition>(Arrays.asList(
+                    new Transition("21", "In Arbeit nehmen", "In Progress"), new Transition("31", "Erledigen", "Done")));
+            if (lateTransition != null && transitionQueries++ > 0) {
+                offered.add(lateTransition);
+            }
+            return offered;
         }
 
         @Override

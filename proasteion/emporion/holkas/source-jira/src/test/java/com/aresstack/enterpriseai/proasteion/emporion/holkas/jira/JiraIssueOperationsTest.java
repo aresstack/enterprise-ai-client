@@ -47,8 +47,18 @@ public class JiraIssueOperationsTest {
         assertEquals("Server neu starten", issue.summary());
         assertEquals("Open", issue.status());
         assertEquals(FakeJira.BASE + "/browse/OPS-7", issue.url().toString());
-        assertTrue(jira.jqls.toString(), jira.jqls.contains("(resolution = Unresolved) AND project = \"OPS\""));
+        assertTrue(jira.jqls.toString(), jira.jqls.contains("(resolution = Unresolved) AND (project = \"OPS\")"));
         assertTrue(jira.posts.isEmpty());
+    }
+
+    @Test
+    public void anOrInTheQueryDoesNotLiftTheRestrictionAndTheSortStaysAtTheEnd() throws Exception {
+        source.searchIssues("project = DEMO OR project = OPS order by updated DESC", 10);
+        source.searchIssues("ORDER BY key ASC", 10);
+
+        assertEquals("(resolution = Unresolved) AND (project = DEMO OR project = OPS) order by updated DESC",
+                jira.jqls.get(jira.jqls.size() - 2));
+        assertEquals("resolution = Unresolved ORDER BY key ASC", jira.jqls.get(jira.jqls.size() - 1));
     }
 
     @Test
