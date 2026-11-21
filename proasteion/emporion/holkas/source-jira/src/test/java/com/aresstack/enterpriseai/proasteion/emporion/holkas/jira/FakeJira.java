@@ -32,6 +32,7 @@ final class FakeJira implements JiraHttpTransport {
     private static final Pattern PROJECT_NOT_IN = Pattern.compile("project not in \\(([^)]*)\\)");
     private static final Pattern TEXT = Pattern.compile("(text|summary) ~ \"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final Pattern KEY_IN = Pattern.compile("key in \\(([^)]*)\\)");
+    private static final Pattern KEY_EQ = Pattern.compile("\\bkey = ([A-Z][A-Z0-9_]*-[0-9]+)");
     private static final Pattern RESOLUTION = Pattern.compile("resolution = Unresolved");
 
     final Map<String, FakeProject> projects = new LinkedHashMap<String, FakeProject>();
@@ -247,6 +248,10 @@ final class FakeJira implements JiraHttpTransport {
         }
         Matcher keys = KEY_IN.matcher(jql);
         if (keys.find() && !list(keys.group(1)).contains(issue.key)) {
+            return false;
+        }
+        Matcher key = KEY_EQ.matcher(jql);
+        if (key.find() && !key.group(1).equals(issue.key)) {
             return false;
         }
         if (RESOLUTION.matcher(jql).find() && issue.resolution != null) {
