@@ -59,6 +59,7 @@ import com.aresstack.enterpriseai.astu.acropolis.knowledge.OneTimeCodePrompt;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.SourceAttachmentReader;
 import com.aresstack.enterpriseai.astu.acropolis.knowledge.UnlockingDocumentReader;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeMcpTools;
+import com.aresstack.enterpriseai.proasteion.application.agent.JiraMcpTools;
 import com.aresstack.enterpriseai.astu.acropolis.mcp.KnowledgeToolSettings;
 import com.aresstack.enterpriseai.proasteion.application.knowledge.DocumentSourceFileTextExtractor;
 import com.aresstack.enterpriseai.astu.acropolis.rag.PromptContextAssembler;
@@ -129,6 +130,7 @@ public final class CompositionRoot {
     static final String ORIGIN_BROWSER_MISSING =
             "Browser des Chats: Firefox nicht gefunden (Pfad mit -Denterpriseai.firefox=... angeben)";
     static final String ORIGIN_MEMORY = "Erinnerungen je Chat, Projekt und global (MemoryTools)";
+    static final String ORIGIN_JIRA = "Jira-Werkzeuge über die Jira-Quellen (JiraMcpTools)";
 
     /** Analysierte Dokumentnavigation je Fassung, neben der Konfiguration. */
     static final String NAVIGATION_DIRECTORY = "navigation";
@@ -426,6 +428,12 @@ public final class CompositionRoot {
             }
             return tools;
         });
+        // Jira-Werkzeuge (Schritt 3 der Jira-Anbindung) über die angehakten Jira-Quellen: jira_search lesend für Chat
+        // und Agent, jira_comment und jira_transition nur im Chat; jeder schreibende Aufruf fragt am Freigabe-Gate.
+        final JiraMcpTools jira = new JiraMcpTools(documents::catalog, selection::isSearchable,
+                toolCatalog.approvals());
+        toolCatalog.register(ORIGIN_JIRA, EnumSet.of(ToolChannel.CHAT), jira::contributions);
+        toolCatalog.register(ORIGIN_JIRA, EnumSet.of(ToolChannel.AGENT), jira::readOnly);
         toolCatalog.registerDefinitions(ORIGIN_ATTACHMENTS, EnumSet.of(ToolChannel.CHAT),
                 AttachmentTools::definitions);
         // Memories (#144): chat only, built per turn with the trusted chat id (memoryChatTools). The agent endpoint

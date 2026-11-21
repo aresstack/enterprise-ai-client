@@ -77,16 +77,39 @@ source.1.allowInsecureHttp=false
   `ResourceMetadataSource`, `StoredContentSource` (JSON-Antwort eines Vorgangs unverändert, Format
   `jira-rest-issue+json;expand=renderedFields`), `RestQuerySource` (GET unter `/rest/`, etwa Übergänge, Verlauf oder
   Arbeitsprotokolle eines Vorgangs für die KI-Werkzeuge).
-- **Transport** (`UrlConnectionJiraTransport`): nur GET, keine Weiterleitungen (der Authorization-Header verlässt den
+- **Transport** (`UrlConnectionJiraTransport`): GET für die Wissensquelle; POST nur für die schreibenden
+  Jira-Werkzeuge (siehe unten), genau einmal, ohne Wiederholung, mit `X-Atlassian-Token: no-check`; keine Weiterleitungen (der Authorization-Header verlässt den
   Server nie; eine Weiterleitung auf die Anmeldeseite ist `ACCESS_DENIED`), Antwortgröße begrenzt, Proxy-Route, TLS
   und Client-Zertifikat aus der Composition Root.
 - **Fehlerabbildung**: 401/403/3xx → `ACCESS_DENIED`, 404 → `NOT_FOUND`, 429/5xx/IO → `UNAVAILABLE` (429 als
   `RateLimitedException`), HTML statt JSON oder zu große Antwort → `INVALID_RESPONSE`. Meldungen nennen Vorgang und
   Status, nie Antwortkörper, Header oder Zugangsdaten.
 
+## Jira-Werkzeuge im Chat (`JiraMcpTools`)
+
+Über die angehakten Jira-Quellen, keine eigene Anbindung (`JiraIssueOperations`, umgesetzt von
+`JiraKnowledgeSource`). Ohne angehakte Jira-Quelle gibt es die Werkzeuge nicht.
+
+| Werkzeug | Kanal | Wirkung | Freigabe |
+|---|---|---|---|
+| `jira_search` | Chat und Agent | JQL-Suche mit der Einschränkung `jql` der Quelle; Schlüssel, Titel, Typ, Status, Bearbeiter, Link | keine (nur lesend) |
+| `jira_comment` | Chat | schreibt einen Kommentar (`POST /issue/KEY/comment`) | `write` = **ASK** |
+| `jira_transition` | Chat | ohne `transition`: nennt die Übergänge; mit `transition` (ID oder Name): führt ihn aus (`POST /issue/KEY/transitions`) | `list` = ALLOW, `write` = **ASK** |
+
+Schreiben nur mit ausdrücklicher Freigabe: Vor jedem Kommentar und jedem Übergang fragt das gemeinsame Freigabe-Gate
+(`ToolApprovalGate`) den Benutzer und zeigt Vorgang, Titel und Inhalt bzw. Status vorher → Übergang → Status
+nachher. Das Ziel bestimmt der Resolver aus Jira selbst (Schlüssel, Titel, letzte Änderung als Version, der echte
+Übergang), nie aus den Angaben des Modells; ändert sich der Vorgang zwischen Frage und Ausführung, gilt die Freigabe
+nicht. Ohne jemanden zum Fragen, bei Ablehnung oder Zeitablauf wird nichts geschrieben. Wer will, kann unter
+Einstellungen › Tools `jira_comment:write` bzw. `jira_transition:write` umstellen; die Vorgabe bleibt ASK.
+
+Lesen, Volltext und Seitenbaum laufen weiter über die Wissenswerkzeuge (`knowledge_read` mit dem Link oder der
+Adresse eines Vorgangs).
+
 ## Grenzen
 
-- Nur lesend: Anlegen, Kommentieren und Bearbeiten von Vorgängen sind nicht Teil dieses Adapters.
+- Die Wissensquelle bleibt nur lesend; geschrieben wird nur über `jira_comment` und `jira_transition` nach Freigabe.
+  Vorgänge anlegen oder Felder bearbeiten gibt es nicht.
 - Jira-Makros und Vorgangs-Links in Confluence-Seiten werden hier noch nicht erkannt (eigener Schritt).
 - Die Live-Prüfung gegen eine echte Jira-Instanz (Proxy mit Anmeldung, mTLS, Einmalcode) steht noch aus; der
   Adapter wurde gegen eine Fake-Jira mit den Antwortformen der REST-API 2 getestet.
