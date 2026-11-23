@@ -69,7 +69,7 @@ Neben Confluence und MediaWiki kann der Enterprise AI Client weitere Systeme als
 2. **„Host“ ***: „Name oder Adresse des NDV-Servers“.
 3. **„KeePass-Eintrag“ ***: Pflicht, „Eintrag mit Benutzer, Passwort und Adresse des NDV-Servers“.
 4. **„Bibliotheken“ ***: „Kommagetrennt, optional mit Filter: MYLIB oder MYLIB/CUST*“.
-5. Unter „Erweitert“: „Port“ (Vorgabe 2700), „Höchstzahl Objekte (optional)“ (leer = 5000).
+5. Unter „Erweitert“: „Port“ (Vorgabe 8011), „Höchstzahl Objekte (optional)“ (leer = 5000).
 
 **Anmeldung:** Benutzer und Passwort holt der Client nur beim Verbinden; die Verbindung wird für weitere Zugriffe wiederverwendet.
 
