@@ -1,5 +1,6 @@
 package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
 
+import com.aresstack.enterpriseai.ui.comic.bubble.MessageCopyButton;
 import com.aresstack.enterpriseai.astu.approval.ApprovalDecision;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.CachingMermaidImageRenderer;
 import com.aresstack.enterpriseai.proasteion.exedra.ui.markdown.DesktopLinkOpener;
