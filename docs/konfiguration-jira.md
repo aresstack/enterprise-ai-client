@@ -71,8 +71,8 @@ source.1.allowInsecureHttp=false
   `project not in (…)` für die abgehakten Projekte, dazu die `jql`-Zusatzbedingung, `ORDER BY updated DESC`. Jeder
   Treffer nennt Titel, Typ, Status und den Anfang der Beschreibung, trägt sein Projekt als Partition und die
   `browse`-Adresse.
-- **Adressen** (`AddressableKnowledgeSource`): `…/browse/KEY-1`, `…/projects/X/issues/KEY-1`, `…?selectedIssue=KEY-1`
-  und `jira://<locator>/issue/KEY-1` werden ohne Netzzugriff zur Ressourcen-ID.
+- **Adressen** (`AddressableKnowledgeSource`): `…/browse/KEY-1`, `…/projects/X/issues/KEY-1`, `…?selectedIssue=KEY-1`,
+  das Kundenportal des Service Desk `…/servicedesk/customer/portal/<n>/KEY-1` und `jira://<locator>/issue/KEY-1` werden ohne Netzzugriff zur Ressourcen-ID.
 - **Weitere Ports**: `PartitionListingSource` (alle Vorgänge eines Projekts flach, Cursor `p1.<KEY>.<startAt>`),
   `ResourceMetadataSource`, `StoredContentSource` (JSON-Antwort eines Vorgangs unverändert, Format
   `jira-rest-issue+json;expand=renderedFields`), `RestQuerySource` (GET unter `/rest/`, etwa Übergänge, Verlauf oder
