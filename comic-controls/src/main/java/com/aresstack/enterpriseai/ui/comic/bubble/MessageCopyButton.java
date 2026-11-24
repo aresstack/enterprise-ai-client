@@ -1,4 +1,4 @@
-package com.aresstack.enterpriseai.proasteion.exedra.ui.chat;
+package com.aresstack.enterpriseai.ui.comic.bubble;
 
 import com.aresstack.enterpriseai.ui.comic.paint.StrokeIcon;
 
@@ -24,19 +24,20 @@ import java.util.function.Supplier;
  * ursprünglichen Text bzw. Markdown, ohne Kopfzeile, Zeitstempel und Quellenleiste) in die Zwischenablage. Danach
  * zeigt er kurz einen Haken mit „Kopiert“ und kehrt dann zum Klemmbrett zurück. Er nimmt der Blase nie den Fokus,
  * Markieren und Link-Klicks im Text bleiben unberührt. Die Glyphen sind Java2D-Striche, keine Unicode-Zeichen.
+ * Gehört zu den Blasen ({@link SpeechBubblePanel#setHeaderAccessory}), damit jede App ihn wiederverwendet.
  */
-final class MessageCopyButton extends JButton {
+public final class MessageCopyButton extends JButton {
 
-    static final String TOOLTIP = "Nachricht kopieren";
-    static final String COPIED = "Kopiert";
-    static final int CONFIRMATION_MILLIS = 1500;
+    public static final String TOOLTIP = "Nachricht kopieren";
+    public static final String COPIED = "Kopiert";
+    public static final int CONFIRMATION_MILLIS = 1500;
 
     private final Icon clipboardIcon = new ClipboardIcon();
     private final Icon checkIcon = new CheckIcon();
     private final Color overlay;
     private final Timer reset;
 
-    MessageCopyButton(Color foreground, final Supplier<String> text, final Consumer<String> clipboard) {
+    public MessageCopyButton(Color foreground, final Supplier<String> text, final Consumer<String> clipboard) {
         setIcon(clipboardIcon);
         setForeground(foreground);
         this.overlay = new Color(foreground.getRed(), foreground.getGreen(), foreground.getBlue(), 36);
@@ -86,11 +87,11 @@ final class MessageCopyButton extends JButton {
     }
 
     /** Ob gerade die Bestätigung „Kopiert“ steht. */
-    boolean isConfirming() {
+    public boolean isConfirming() {
         return COPIED.equals(getText());
     }
 
-    void showIdle() {
+    public void showIdle() {
         reset.stop();
         setText("");
         setIcon(clipboardIcon);
