@@ -165,7 +165,7 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
 
     /** Die Site-Konfiguration oder {@code null} (dann sind Probleme vermerkt). */
     private MediaWikiSiteConfig site(SourceSettingsReader r) {
-        URI apiUrl = r.httpUri("apiUrl", true);
+        URI apiUrl = r.httpUri("apiUrl", true, true);
         SecretRef credentialRef = r.secretRef("credentialRef");
         String displayName = r.text("displayName", null);
         boolean requiresLogin = r.bool("requiresLogin", credentialRef != null);
