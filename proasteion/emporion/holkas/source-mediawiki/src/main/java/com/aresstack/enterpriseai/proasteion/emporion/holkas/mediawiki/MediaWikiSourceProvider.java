@@ -38,7 +38,7 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
                     "KeePass-Eintrag", "Eintrag mit Benutzername, Passwort und URL des Wikis; leer = anonym"))
             .field(SourceSettingField.text("startPoints", "Startpunkte (optional)",
-                    "Kommagetrennte Seitentitel; leer = Hauptseite automatisch ermitteln"))
+                    "Nur für begrenzte Synchronisation; leer = alle Inhaltsseiten"))
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
                     "Nur für Link-Crawls: Tiefe ab Startpunkten; keine Begrenzung der Seitenliste").withDefault("1").advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
@@ -156,7 +156,10 @@ public final class MediaWikiSourceProvider implements KnowledgeSourceProvider {
     }
 
     static String siteLocator(String apiUrl) {
-        String locator = SourceLocators.url(apiUrl);
+        if (SourceLocators.url(apiUrl).isEmpty()) {
+            return "";
+        }
+        String locator = SourceLocators.url(MediaWikiSiteConfig.endpoint(URI.create(apiUrl.trim())).toString());
         return locator.endsWith("/api.php") ? locator.substring(0, locator.length() - "/api.php".length()) : locator;
     }
 

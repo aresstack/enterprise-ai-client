@@ -60,11 +60,19 @@ public final class MediaWikiSiteConfig {
 
     /** Die URL von {@code api.php}, abgeleitet wie in MainframeMate {@code JwbfWikiContentService.buildApiUrl}. */
     public String apiEndpoint() {
-        String base = apiUrl.toString();
-        if (base.endsWith("api.php")) {
-            return base;
+        return endpoint(apiUrl).toString();
+    }
+
+    static URI endpoint(URI address) {
+        String path = address.getRawPath();
+        path = path == null ? "" : path;
+        java.util.regex.Matcher script = Pattern.compile("(^|/)(?:index|api)\\.php(?:/.*)?$").matcher(path);
+        if (script.find()) {
+            path = path.substring(0, script.start()) + script.group(1) + "api.php";
+        } else {
+            path = path.endsWith("/") ? path + "api.php" : path + "/api.php";
         }
-        return base.endsWith("/") ? base + "api.php" : base + "/api.php";
+        return URI.create(address.getScheme() + "://" + address.getRawAuthority() + path);
     }
 
     public boolean requiresLogin() {
