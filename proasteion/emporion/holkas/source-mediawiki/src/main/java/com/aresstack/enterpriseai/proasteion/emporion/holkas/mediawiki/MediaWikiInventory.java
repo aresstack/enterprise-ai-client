@@ -27,7 +27,7 @@ final class MediaWikiInventory {
                 Math.max(1, Math.min(BATCH_SIZE, limit)), position.token);
         String next = !batch.continuation.isEmpty() ? encode(key, position.index, batch.continuation)
                 : position.index + 1 < namespaces.size() ? encode(key, position.index + 1, "") : "";
-        if (next.equals(cursor)) {
+        if (!next.isEmpty() && next.equals(cursor)) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "MediaWiki inventory did not advance");
         }
         return new Batch(batch.titles, next);

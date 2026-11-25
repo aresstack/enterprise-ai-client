@@ -19,6 +19,15 @@ public class MediaWikiInventoryNavigationTest {
             MediaWikiCredentialsProvider.anonymous());
 
     @Test
+    public void singleBatchAndEmptyInventoryFinishNormally() throws Exception {
+        assertTrue(source.resources(source.partitionKey(), "", 100).complete());
+        wiki.page("Hauptseite", "<p>Start</p>", 1, 1);
+        PartitionResources only = source.resources(source.partitionKey(), "", 100);
+        assertTrue(only.complete());
+        assertEquals(1, only.resources().size());
+    }
+
+    @Test
     public void inventoryFindsUnlinkedPagesAcrossContinuationWithoutLoadingContents() throws Exception {
         wiki.page("Hauptseite", "<p>Start</p>", 1, 1, "B");
         wiki.page("B", "<p>Linked</p>", 2, 2);
