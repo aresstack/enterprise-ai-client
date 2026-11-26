@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException.Kind;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourcePort;
 import com.aresstack.enterpriseai.source.api.LibraryListingSource;
+import com.aresstack.enterpriseai.source.api.InventoryCoverageSource;
 import com.aresstack.enterpriseai.source.api.NavigationResourceSource;
 import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -50,7 +51,7 @@ import java.util.function.LongSupplier;
  * {@code NdvService.findObject}, {@code NdvClient.readSource}). Eine Verbindung je Quelle wird wiederverwendet;
  * Benutzer und Passwort kommen nur beim (Wieder-)Verbinden über den {@link SecretProvider}.
  */
-final class NdvKnowledgeSource implements KnowledgeSourcePort, LibraryListingSource, NavigationResourceSource {
+final class NdvKnowledgeSource implements KnowledgeSourcePort, LibraryListingSource, NavigationResourceSource, InventoryCoverageSource {
 
     static final String SCHEME = "ndv";
 
@@ -86,6 +87,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort, LibraryListingSou
     private final boolean ddmsEnabled;
     private final boolean allLibraries;
     private final boolean navigationFill;
+    private volatile NdvInventoryCoverage coverage = NdvInventoryCoverage.empty();
 
     // Bound the reuse to one recent inventory and one download per object.
     private static final int MAX_INVENTORY_METADATA = 10000;
@@ -170,6 +172,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort, LibraryListingSou
 
     @Override
     public List<KnowledgeResource> discover(final SourceScope scope) throws KnowledgeSourceException {
+        coverage = NdvInventoryCoverage.empty();
         if (!allLibraries && scope.startPoints().isEmpty()) {
             return Collections.emptyList();
         }
@@ -213,8 +216,18 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort, LibraryListingSou
                     addResource(scope, found, library, object);
                 }
             }
+            coverage = new NdvInventoryCoverage(startPoints);
             return new ArrayList<KnowledgeResource>(found.values());
         });
+    }
+
+    @Override
+    public boolean inventoryCovers(KnowledgeResourceId resourceId) {
+        try {
+            return coverage.covers(pathOf(resourceId));
+        } catch (KnowledgeSourceException e) {
+            return false;
+        }
     }
 
     private void discoverDdms(NdvClient client, SourceScope scope, Map<String, KnowledgeResource> found)
