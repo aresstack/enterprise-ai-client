@@ -76,6 +76,11 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
             Deque<Object[]> queue = new ArrayDeque<Object[]>();
             for (String startPoint : scope.startPoints()) {
                 String path = normalize(session, startPoint);
+                if (session.mvs() && (path.isEmpty() || path.equals("/") || path.startsWith("*")
+                        || path.startsWith("?"))) {
+                    throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                            "FTP-Synchronisierung benötigt einen konkreten HLQ oder Datasetnamen");
+                }
                 if (path.isEmpty()) {
                     continue;
                 }

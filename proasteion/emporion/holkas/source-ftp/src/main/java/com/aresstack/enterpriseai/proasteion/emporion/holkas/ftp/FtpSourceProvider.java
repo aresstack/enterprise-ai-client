@@ -15,6 +15,7 @@ import com.aresstack.enterpriseai.source.api.SourceSettingsReader;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -22,7 +23,7 @@ import java.util.Locale;
  * Quelltyp „FTP (Mainframe)“ ({@code source.<n>.type=ftp}, Ressourcenschema {@code ftp}): COBOL- und andere
  * Textquellen aus MVS-Datasets bzw. Dateien eines FTP-Servers. Schlüssel: {@code host}, {@code port} (Standard 21),
  * {@code credentialRef} (KeePass-Eintrag mit Benutzer und Passwort; leer = anonym), {@code startPoints},
- * {@code maxDepth} (Standard 1), {@code maxResources}, {@code encoding} (Standard ISO-8859-1 wie MainframeMate);
+ * {@code maxDepth} (standardmäßig unbegrenzt), {@code maxResources}, {@code encoding} (Standard ISO-8859-1 wie MainframeMate);
  * nur in der Datei: {@code recordStructure} ({@code auto}, {@code on}, {@code off}), {@code connectTimeoutMillis},
  * {@code readTimeoutMillis}, {@code tls} ({@code none} wie bisher, {@code explicit} = {@code AUTH TLS},
  * {@code implicit} = TLS ab Verbindungsbeginn, Standardport dann 990) und {@code trustBundle} (PEM- oder DER-Datei mit
@@ -44,20 +45,20 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
                     .withDefault("21").advanced())
             .field(SourceSettingField.of("credentialRef", SourceSettingField.Kind.SECRET_REF,
                     "KeePass-Eintrag", "Eintrag mit Benutzer, Passwort und Adresse des FTP-Servers; leer = anonym"))
-            .field(SourceSettingField.text("startPoints", "Startpunkte",
-                    "Kommagetrennt: Datasets/PDS wie HLQ.COBOL.SRC oder Member wie HLQ.COBOL.SRC(PGM1)").required())
+            .field(SourceSettingField.text("startPoints", "HLQs / Startpunkte",
+                    "Manuell, durch Semikolon oder Komma getrennt: HLQ, Dataset/PDS oder Member").required())
             .field(SourceSettingField.of("maxDepth", SourceSettingField.Kind.NUMBER, "Tiefe",
-                    "Wie viele Ebenen Datasets unter den Startpunkten verfolgt werden (0 = nur die Member darin)")
-                    .withDefault("1").advanced())
+                    "Optional: Tiefe begrenzen (0 = nur direkte Einträge; leer = vollständig)")
+                    .advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
-                    "Höchstzahl Member (optional)", "Obergrenze je Lauf; leer = 2000").advanced())
+                    "Höchstzahl Member (optional)", "Optionaler Umfang; leer = keine Begrenzung").advanced())
             .field(SourceSettingField.text("encoding", "Zeichensatz", "Zeichensatz der Textübertragung")
                     .withDefault("ISO-8859-1").advanced())
             .build();
 
     private static final int DEFAULT_PORT = 21;
     private static final int DEFAULT_IMPLICIT_TLS_PORT = 990;
-    private static final int DEFAULT_MAX_RESOURCES = 2000;
+    private static final int DEFAULT_MAX_RESOURCES = Integer.MAX_VALUE;
     private static final int MAX_TIMEOUT = 600000;
 
     private final SecretProvider secrets;
@@ -195,6 +196,20 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
     }
 
     private static SourceScope scope(SourceSettingsReader r) {
-        return r.scope(null, 1, DEFAULT_MAX_RESOURCES);
+        List<String> startPoints = new ArrayList<String>();
+        for (String value : r.text("startPoints", "").split("[;,\\r\\n]+")) {
+            String point = value.trim();
+            if (!point.isEmpty()) {
+                startPoints.add(point);
+            }
+        }
+        if (startPoints.isEmpty()) {
+            r.problem("startPoints", "mindestens ein HLQ, Dataset oder Pfad erforderlich");
+            return SourceScope.of("-");
+        }
+        int depth = r.integer("maxDepth", Integer.MAX_VALUE, 0, Integer.MAX_VALUE);
+        int resources = r.integer("maxResources", DEFAULT_MAX_RESOURCES, 1, Integer.MAX_VALUE);
+        return SourceScope.builder().startPoints(startPoints)
+                .maxDepth(depth).maxResources(resources).build();
     }
 }
