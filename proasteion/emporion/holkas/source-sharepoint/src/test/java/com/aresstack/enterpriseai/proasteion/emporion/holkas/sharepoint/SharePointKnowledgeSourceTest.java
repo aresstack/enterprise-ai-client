@@ -22,6 +22,7 @@ import org.junit.Test;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -201,10 +202,16 @@ public class SharePointKnowledgeSourceTest {
                 source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), "", 1);
         assertEquals(1, first.resources().size());
         assertFalse(first.complete());
-        com.aresstack.enterpriseai.source.api.PartitionResources last =
-                source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), first.nextCursor(), 1);
-        assertEquals(1, last.resources().size());
-        assertTrue(last.complete());
+        // The structural fallback is the full inventory: both files and their two folders, page by page.
+        List<String> titles = new ArrayList<String>(Collections.singletonList(first.resources().get(0).title()));
+        com.aresstack.enterpriseai.source.api.PartitionResources last = first;
+        while (!last.complete()) {
+            last = source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1),
+                    last.nextCursor(), 1);
+            assertTrue(last.resources().size() <= 1);
+            for (KnowledgeResource resource : last.resources()) titles.add(resource.title());
+        }
+        assertEquals(java.util.Arrays.asList("Dokumente", "IAR Handbuch.txt", "Unter", "NIZZA.txt"), titles);
     }
 
     /**
@@ -337,9 +344,38 @@ public class SharePointKnowledgeSourceTest {
         List<KnowledgeResource> found = new ArrayList<KnowledgeResource>();
         java.util.concurrent.atomic.AtomicInteger checkpoints = new java.util.concurrent.atomic.AtomicInteger();
         source.visitInventory(source.sourceId().value(), checkpoints::incrementAndGet, found::add);
-        assertEquals(2002, found.size());
+        assertEquals("2002 files and their 2 folders", 2004, found.size());
         assertTrue(checkpoints.get() > 2000);
         assertTrue(found.stream().anyMatch(r -> r.title().equals("large.txt")));
+    }
+
+    @Test
+    public void inventoryReportsFoldersWithTheirParentsSoTheHierarchyCanBeRebuilt() throws Exception {
+        SharePointKnowledgeSource source = source();
+        List<KnowledgeResource> found = new ArrayList<KnowledgeResource>();
+        source.visitInventory(source.sourceId().value(), () -> { }, found::add);
+        Map<String, KnowledgeResource> byTitle = new HashMap<String, KnowledgeResource>();
+        for (KnowledgeResource resource : found) byTitle.put(resource.title(), resource);
+
+        KnowledgeResource library = byTitle.get("Dokumente");
+        KnowledgeResource folder = byTitle.get("Unter");
+        assertEquals("folder", library.metadata().asMap().get("resource.kind"));
+        assertFalse("a library root hangs below the site", library.parentId().isPresent());
+        assertEquals(library.id(), folder.parentId().get());
+        assertEquals(library.id(), byTitle.get("IAR Handbuch.txt").parentId().get());
+        assertEquals(folder.id(), byTitle.get("NIZZA.txt").parentId().get());
+        assertTrue("folder before its files", found.indexOf(folder) < found.indexOf(byTitle.get("NIZZA.txt")));
+
+        // Same id as the navigation node; a folder has no content of its own.
+        com.aresstack.enterpriseai.source.api.NavigationNode root =
+                com.aresstack.enterpriseai.source.api.NavigationNode.root("root", "root", "root",
+                        com.aresstack.enterpriseai.source.api.NavigationNode.Children.UNKNOWN);
+        assertEquals(library.id(), source.children(root, "").nodes().get(0).resource());
+        com.aresstack.enterpriseai.source.api.StoredContent stored = source.storedContent(source.localId(folder.id()));
+        assertEquals(SharePointKnowledgeSource.FOLDER_FORMAT, stored.nativeFormat());
+        assertEquals(0, stored.payload().length);
+        assertEquals(library.id(), source.resourceMetadata(source.localId(folder.id())).parentId().get());
+        assertEquals("", source.load(folder.id()).text());
     }
 
     @Test
