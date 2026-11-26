@@ -160,6 +160,44 @@ final class CommonsNetFtpSession implements FtpClientSession {
         return out.toByteArray();
     }
 
+    @Override
+    public boolean isSequentialDataset(String path) throws IOException {
+        if (!mvs) {
+            return false;
+        }
+        String dataset = MvsQuoteNormalizer.unquote(path);
+        if (dataset.indexOf('(') >= 0) {
+            return false;
+        }
+        String exact = dialect.toAbsolutePath(dataset);
+        if (sequentialDataset(client.listFiles(exact), dataset)) {
+            return true;
+        }
+        int dot = dataset.lastIndexOf('.');
+        if (dot < 0) {
+            return false;
+        }
+        return sequentialDataset(client.listFiles(dialect.toAbsolutePath(dataset.substring(0, dot + 1) + "*")),
+                dataset);
+    }
+
+    static boolean sequentialDataset(FTPFile[] files, String dataset) {
+        if (files == null) {
+            return false;
+        }
+        for (FTPFile file : files) {
+            if (file == null || file.getRawListing() == null) {
+                continue;
+            }
+            String[] columns = file.getRawListing().trim().split("\\s+");
+            if (columns.length >= 3 && "PS".equalsIgnoreCase(columns[columns.length - 2])
+                    && dataset.equalsIgnoreCase(MvsQuoteNormalizer.unquote(columns[columns.length - 1]))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private List<FtpEntry> listUnix(String resolved) throws IOException {
         FTPFile[] files = client.listFiles(resolved);
         if (files == null || files.length == 0) {
