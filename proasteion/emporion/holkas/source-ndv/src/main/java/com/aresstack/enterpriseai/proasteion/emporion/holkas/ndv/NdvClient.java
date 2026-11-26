@@ -29,13 +29,20 @@ class NdvClient implements Closeable {
     private volatile boolean connected;
 
     public NdvClient() {
-        this.pal = new NdvTransaction();
+        this(new NdvTransaction());
+    }
+
+    NdvClient(IPalTransactions pal) {
+        this.pal = Objects.requireNonNull(pal, "pal");
     }
 
     /**
      * Connect to the NDV server.
      */
     public void connect(String host, int port, String user, String password) throws IOException, NdvException {
+        currentLibrary = null;
+        cachedSystemFiles = null;
+        cachedDownloadSysFile = null;
         this.host = host;
         this.port = port;
         this.user = user.toUpperCase();
@@ -88,6 +95,7 @@ class NdvClient implements Closeable {
             this.currentLibrary = library;
             LOG.fine("[NdvClient] Logged on to library: " + library);
         } catch (PalResultException e) {
+            currentLibrary = null;
             throw new NdvException("Logon to library '" + library + "' failed: " + e.getMessage(), e);
         }
     }
@@ -105,7 +113,10 @@ class NdvClient implements Closeable {
     public IPalTypeSystemFile[] getSystemFiles() throws IOException, NdvException {
         checkConnected();
         try {
-            return pal.getSystemFiles();
+            if (cachedSystemFiles == null) {
+                cachedSystemFiles = pal.getSystemFiles();
+            }
+            return cachedSystemFiles == null ? null : cachedSystemFiles.clone();
         } catch (PalResultException e) {
             throw new NdvException("Failed to get system files: " + e.getMessage(), e);
         }
@@ -187,7 +198,9 @@ class NdvClient implements Closeable {
                     // Ende der Daten ist ein leeres Array; eine PalResultException ist ein echter Fehler und darf
                     // keine verkürzte Auflistung ergeben (sonst räumt der Index gültige Objekte ab).
                     IPalTypeObject[] more = pal.getObjectsNext();
-                    if (more == null || more.length == 0) break;
+                    if (more == null || more.length == 0) {
+                        return total;
+                    }
                     List<NdvObjectInfo> morePage = toInfoList(more);
                     total += morePage.size();
                     LOG.fine("[NdvClient] getObjectsNext page " + (p + 1) + " returned " + morePage.size() + " objects");
@@ -195,6 +208,7 @@ class NdvClient implements Closeable {
                         return total;
                     }
                 }
+                throw new NdvException("Object listing exceeded the page limit for library '" + library + "'");
             }
         } catch (PalResultException e) {
             throw new NdvException("Failed to list objects in library '" + library + "': " + e.getMessage(), e);
@@ -486,12 +500,11 @@ class NdvClient implements Closeable {
             return cachedSystemFiles;
         }
         try {
-            cachedSystemFiles = pal.getSystemFiles();
-        } catch (PalResultException e) {
+            return getSystemFiles();
+        } catch (NdvException e) {
             LOG.warning("[NdvClient] getSystemFiles failed: " + e.getMessage());
             return null;
         }
-        return cachedSystemFiles;
     }
 
     private String joinLines(String[] lines) {
@@ -520,6 +533,9 @@ class NdvClient implements Closeable {
 
     @Override
     public void close() throws IOException {
+        currentLibrary = null;
+        cachedSystemFiles = null;
+        cachedDownloadSysFile = null;
         if (pal != null && connected) {
             try {
                 pal.disconnect();

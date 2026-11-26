@@ -30,6 +30,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 /**
  * Natural-Quellen eines NDV-Servers (Natural Development Server, NATSPOD) als {@link KnowledgeSourcePort}.
@@ -76,9 +78,21 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     private final SecretProvider secrets;
     private final Connector connector;
     private NdvClient client;
+    private IPalTypeSystemFile listing;
+    private final NdvInventoryMetadata inventory;
+
+    // Bound the reuse to one recent inventory and one download per object.
+    private static final int MAX_INVENTORY_METADATA = 10000;
+    private static final long METADATA_AGE_NANOS = TimeUnit.MINUTES.toNanos(5);
 
     NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
                        SecretProvider secrets, Connector connector) {
+        this(sourceId, host, port, credentialRef, secrets, connector, System::nanoTime);
+    }
+
+    NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
+                       SecretProvider secrets, Connector connector, LongSupplier nanoTime) {
+        this.inventory = new NdvInventoryMetadata(MAX_INVENTORY_METADATA, METADATA_AGE_NANOS, nanoTime);
         if (sourceId == null || host == null || credentialRef == null || secrets == null || connector == null) {
             throw new IllegalArgumentException("sourceId, host, credentialRef, secrets and connector are required");
         }
@@ -99,6 +113,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     @Override
     public List<KnowledgeResource> discover(final SourceScope scope) throws KnowledgeSourceException {
         return run(client -> {
+            inventory.clear();
             Map<String, KnowledgeResource> found = new LinkedHashMap<String, KnowledgeResource>();
             for (String startPoint : scope.startPoints()) {
                 String[] parts = startPoint(startPoint);
@@ -106,12 +121,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
                     continue;
                 }
                 String library = parts[0];
-                try {
-                    client.logon(library);
-                } catch (NdvException e) {
-                    // Bibliothek nicht vorhanden oder gesperrt: überspringen.
-                    continue;
-                }
+                ensureLibrary(client, library);
                 List<NdvObjectInfo> objects = client.listObjects(listingSystemFile(client), library, parts[1],
                         ObjectKind.SOURCE, 0);
                 for (NdvObjectInfo object : objects) {
@@ -124,8 +134,8 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
                     String path = library + "/" + object.getName() + "." + object.getTypeExtension();
                     if (!found.containsKey(path.toUpperCase(Locale.ROOT))) {
                         try {
-                            found.put(path.toUpperCase(Locale.ROOT), resource(path, object,
-                                    revision(object.getSourceDate())));
+                            found.put(path.toUpperCase(Locale.ROOT), resource(path, object, revision(object)));
+                            inventory.remember(path, object);
                         } catch (IllegalArgumentException e) {
                             // Name ergibt keine gültige Ressourcen-ID: überspringen.
                         }
@@ -148,14 +158,13 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         final String name = path.substring(slash + 1, dot);
         final String extension = path.substring(dot + 1);
         return run(client -> {
-            try {
-                client.logon(library);
-            } catch (NdvException e) {
-                throw new KnowledgeSourceException(Kind.NOT_FOUND, "Bibliothek " + library + ": " + e.getMessage());
+            ensureLibrary(client, library);
+            NdvObjectInfo object = inventory.take(path);
+            if (object == null) {
+                object = find(client, library, name, extension);
             }
-            NdvObjectInfo object = find(client, library, name, extension);
             String text = client.readSource(library, object);
-            KnowledgeRevision revision = revision(object.getSourceDate());
+            KnowledgeRevision revision = revision(object);
             KnowledgeResource resource = resource(path, object, revision.isKnown() ? revision
                     : KnowledgeRevision.version(sha256(text)));
             return KnowledgeDocument.of(resource, "# " + path + "\n\n```natural\n" + text + "\n```");
@@ -184,8 +193,12 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
             try {
                 return operation.run(client);
             } catch (NdvException e) {
+                inventory.clear();
                 throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
                         "NDV-Quelle " + sourceId + ": " + e.getMessage(), e);
+            } catch (KnowledgeSourceException e) {
+                inventory.clear();
+                throw e;
             } catch (IOException e) {
                 closeClient();
                 if (attempt > 0) {
@@ -219,6 +232,8 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     }
 
     private void closeClient() {
+        inventory.clear();
+        listing = null;
         if (client != null) {
             try {
                 client.close();
@@ -230,6 +245,12 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     }
 
     // --- Objekte ------------------------------------------------------------------------------------------
+
+    private static void ensureLibrary(NdvClient client, String library) throws IOException, NdvException {
+        if (!library.equals(client.getCurrentLibrary())) {
+            client.logon(library);
+        }
+    }
 
     /** Wie {@code NdvService.findObject}: mit dem Namen als Filter auflisten, sonst Objekt aus der Endung. */
     private NdvObjectInfo find(NdvClient client, String library, String name, String extension)
@@ -245,7 +266,14 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     }
 
     /** Systemdatei für Auflistungen wie {@code NdvService.getListingSysFile}: FUSER, sonst erste gültige. */
-    private static IPalTypeSystemFile listingSystemFile(NdvClient client) throws IOException, NdvException {
+    private IPalTypeSystemFile listingSystemFile(NdvClient client) throws IOException, NdvException {
+        if (listing == null) {
+            listing = selectListingSystemFile(client);
+        }
+        return listing;
+    }
+
+    private static IPalTypeSystemFile selectListingSystemFile(NdvClient client) throws IOException, NdvException {
         IPalTypeSystemFile[] files = client.getSystemFiles();
         if (files == null || files.length == 0) {
             return client.getDefaultSystemFile();
@@ -288,9 +316,12 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
                 .build();
     }
 
-    private static KnowledgeRevision revision(String sourceDate) {
-        return sourceDate == null || sourceDate.trim().isEmpty() ? KnowledgeRevision.unknown()
-                : KnowledgeRevision.version(sourceDate.trim());
+    private static KnowledgeRevision revision(NdvObjectInfo object) {
+        String date = object.getSourceDate();
+        if (date == null || date.trim().isEmpty()) {
+            return KnowledgeRevision.unknown();
+        }
+        return KnowledgeRevision.version(date.trim() + "|size=" + object.getSourceSize());
     }
 
     /** {@code [Bibliothek, Filter]} oder {@code null}. */
