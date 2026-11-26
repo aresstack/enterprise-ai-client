@@ -167,6 +167,11 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
         walk(configuredScope, checkpoint, found, true);
     }
 
+    /**
+     * Walk the configured folders. The strict inventory also reports every visited folder as its own resource
+     * ({@code resource.kind=folder}, same id as its navigation node) before its files, so consumers can rebuild the
+     * folder hierarchy from {@link KnowledgeResource#parentId()} like the navigation shows it.
+     */
     private void walk(SourceScope scope, Runnable checkpoint, Consumer<KnowledgeResource> found, boolean strict)
             throws KnowledgeSourceException {
         String authorization = authorization();
@@ -194,6 +199,7 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
             if (!seenFolders.add(folder.toLowerCase(Locale.ROOT))) {
                 continue;
             }
+            if (strict) found.accept(folderResource(folder));
             URI files = resourceApi("Folder", folder, "/Files?$select=Name,ServerRelativeUrl,TimeLastModified,Length,UIVersionLabel");
             try {
                 visitCollection(files, authorization, checkpoint, element -> {
@@ -453,6 +459,8 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
     }
 
     private static final String FOLDER_SCHEME = "sharepoint-folder";
+    /** {@link StoredContent#nativeFormat()} of a folder: no content of its own. */
+    static final String FOLDER_FORMAT = "sharepoint-folder";
 
     private KnowledgeResourceId folderId(String path) {
         return KnowledgeResourceId.of(FOLDER_SCHEME, locator + "/" + path.substring(sitePath.length() + 1));
@@ -473,9 +481,27 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
     }
 
     private KnowledgeResource folderResource(String path) {
-        return KnowledgeResource.builder(folderId(path), sourceId)
+        Map<String, String> metadata = new LinkedHashMap<String, String>();
+        metadata.put("sharepoint.path", path);
+        metadata.put("resource.kind", "folder");
+        KnowledgeResource.Builder builder = KnowledgeResource.builder(folderId(path), sourceId)
                 .title(path.substring(path.lastIndexOf('/') + 1))
-                .scope(sourceId.value()).revision(KnowledgeRevision.unknown()).build();
+                .scope(sourceId.value()).revision(KnowledgeRevision.unknown())
+                .metadata(KnowledgeMetadata.of(metadata));
+        String parent = parentFolder(path);
+        if (parent != null) builder.parentId(folderId(parent));
+        return builder.build();
+    }
+
+    /**
+     * The folder that contains {@code path} as the navigation shows it, {@code null} for a library root: its parent is
+     * the site itself, which the navigation shows as the root.
+     */
+    private String parentFolder(String path) {
+        int slash = path.lastIndexOf('/');
+        if (slash <= sitePath.length()) return null;
+        String parent = path.substring(0, slash);
+        return insideSite(parent) ? parent : null;
     }
 
     private NavigationNode folderNode(String path) {
@@ -643,7 +669,11 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
     @Override
     public StoredContent storedContent(String localId) throws KnowledgeSourceException {
         KnowledgeResourceId id = decodeLocalId(localId);
-        if (isFolderId(id)) throw new KnowledgeSourceException(Kind.UNSUPPORTED, "SharePoint: Ordner ist kein Dokument");
+        if (isFolderId(id)) {
+            // A folder has no content of its own, only children: an empty payload, like other folder sources.
+            return new StoredContent(folderResource(folderPath(id)), new byte[0], "text/plain", FOLDER_FORMAT,
+                    Instant.now());
+        }
         KnowledgeResource before = resourceMetadata(localId);
         long length = Long.parseLong(before.metadata().asMap().get("file.size"));
         if (length > maxFileBytes) throw new ResponseTooLargeException("SharePoint: Datei überschreitet das Limit", maxFileBytes);
@@ -660,6 +690,7 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
 
     @Override
     public KnowledgeDocument load(KnowledgeResourceId resourceId) throws KnowledgeSourceException {
+        if (isFolderId(resourceId)) return KnowledgeDocument.of(folderResource(folderPath(resourceId)), "");
         String path = serverRelativeOf(resourceId);
         String authorization = authorization();
         JsonObject metadata = get(resourceApi("File", path, "?$select=Name,ServerRelativeUrl,TimeLastModified,Length,UIVersionLabel"),
@@ -750,6 +781,10 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
         URI location = location(path);
         if (location != null) {
             builder.location(location);
+        }
+        String parent = parentFolder(path);
+        if (parent != null) {
+            builder.parentId(folderId(parent));
         }
         return builder.build();
     }
