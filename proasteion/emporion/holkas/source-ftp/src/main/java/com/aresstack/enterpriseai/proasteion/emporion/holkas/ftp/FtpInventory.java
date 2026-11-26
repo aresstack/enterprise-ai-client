@@ -23,9 +23,11 @@ final class FtpInventory {
     }
 
     private final FtpSessionPool<FtpClientSession> sessions;
+    private final boolean programSourcesOnly;
 
-    FtpInventory(FtpSessionPool<FtpClientSession> sessions) {
+    FtpInventory(FtpSessionPool<FtpClientSession> sessions, boolean programSourcesOnly) {
         this.sessions = sessions;
+        this.programSourcesOnly = programSourcesOnly;
     }
 
     List<KnowledgeResource> discover(SourceScope scope, ResourceFactory resources) throws KnowledgeSourceException {
@@ -33,6 +35,7 @@ final class FtpInventory {
         List<String> starts = normalizeStartPoints(scope, mvs);
         Map<String, KnowledgeResource> found = new LinkedHashMap<String, KnowledgeResource>();
         Set<String> visited = new LinkedHashSet<String>();
+        Set<String> examined = new LinkedHashSet<String>();
         Deque<Location> pending = new ArrayDeque<Location>();
         for (String path : starts) {
             pending.add(new Location(path, 0, true));
@@ -44,13 +47,13 @@ final class FtpInventory {
                 continue;
             }
             if (mvs && new MvsPathDialect().isMemberPath(location.path)) {
-                add(found, resources, mvs, location.path, name(location.path, mvs), 0L);
+                add(found, examined, resources, mvs, location.path, name(location.path, mvs), 0L);
                 continue;
             }
             List<FtpClientSession.FtpEntry> children = sessions.run(session -> session.list(location.path));
             if (children.isEmpty() && ((!mvs && location.start) || (mvs
                     && sessions.run(session -> session.isSequentialDataset(location.path))))) {
-                add(found, resources, mvs, location.path, name(location.path, mvs), 0L);
+                add(found, examined, resources, mvs, location.path, name(location.path, mvs), 0L);
             }
             for (FtpClientSession.FtpEntry child : children) {
                 checkpoint();
@@ -58,9 +61,11 @@ final class FtpInventory {
                     break;
                 }
                 if (!child.directory()) {
-                    add(found, resources, mvs, child.path(), child.name(), child.modifiedMillis());
+                    add(found, examined, resources, mvs, child.path(), child.name(), child.modifiedMillis());
                 } else if (location.depth < scope.maxDepth()) {
                     pending.add(new Location(child.path(), location.depth + 1, false));
+                } else if (mvs && sessions.run(session -> session.isSequentialDataset(child.path()))) {
+                    add(found, examined, resources, mvs, child.path(), child.name(), child.modifiedMillis());
                 }
             }
         }
@@ -101,16 +106,21 @@ final class FtpInventory {
         return stripped.substring(stripped.lastIndexOf('/') + 1);
     }
 
-    private static void add(Map<String, KnowledgeResource> found, ResourceFactory resources, boolean mvs,
-                            String path, String name, long modifiedMillis) {
+    private void add(Map<String, KnowledgeResource> found, Set<String> examined, ResourceFactory resources, boolean mvs,
+                            String path, String name, long modifiedMillis) throws KnowledgeSourceException {
         String idPath = mvs ? MvsQuoteNormalizer.unquote(path) : path.replaceFirst("^/+", "");
         if (idPath.isEmpty()) {
             return;
         }
         String identity = key(idPath, mvs);
-        if (!found.containsKey(identity)) {
-            found.put(identity, resources.create(idPath, name, modifiedMillis));
+        if (!examined.add(identity)) {
+            return;
         }
+        if (programSourcesOnly && mvs && FtpProgramClassifier.classify(
+                sessions.run(session -> session.sampleText(idPath))) == FtpProgramClassifier.Kind.UNKNOWN) {
+            return;
+        }
+        found.put(identity, resources.create(idPath, name, modifiedMillis));
     }
 
     private static String key(String path, boolean mvs) {

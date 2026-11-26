@@ -46,9 +46,15 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
     /** {@code host:port} klein, Teil jeder Ressourcen-ID ({@code ftp:host:port/HLQ.DATASET(MEMBER)}). */
     private final String locator;
     private final FtpSessionPool<FtpClientSession> sessions;
+    private final boolean programSourcesOnly;
 
     FtpKnowledgeSource(SourceAddress sourceId, FtpConnectionSettings settings,
                        FtpSessionPool<FtpClientSession> sessions) {
+        this(sourceId, settings, sessions, false);
+    }
+
+    FtpKnowledgeSource(SourceAddress sourceId, FtpConnectionSettings settings,
+                       FtpSessionPool<FtpClientSession> sessions, boolean programSourcesOnly) {
         if (sourceId == null || settings == null || sessions == null) {
             throw new IllegalArgumentException("sourceId, settings and sessions are required");
         }
@@ -56,6 +62,7 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
         this.settings = settings;
         this.locator = SourceLocators.hostPort(settings.host, settings.port);
         this.sessions = sessions;
+        this.programSourcesOnly = programSourcesOnly;
     }
 
     @Override
@@ -65,7 +72,7 @@ final class FtpKnowledgeSource implements KnowledgeSourcePort {
 
     @Override
     public List<KnowledgeResource> discover(final SourceScope scope) throws KnowledgeSourceException {
-        return new FtpInventory(sessions).discover(scope, this::resource);
+        return new FtpInventory(sessions, programSourcesOnly).discover(scope, this::resource);
     }
 
     @Override

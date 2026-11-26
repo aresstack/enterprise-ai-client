@@ -133,6 +133,65 @@ final class CommonsNetFtpSession implements FtpClientSession {
         return !closed && client.isConnected();
     }
 
+    @Override
+    public boolean usable() {
+        return connected();
+    }
+
+    @Override
+    public String sampleText(String path) throws IOException {
+        List<String> candidates = mvs ? dialect.resolveCandidates(path) : Collections.singletonList(unixPath(path));
+        IOException last = null;
+        for (String candidate : candidates) {
+            try {
+                return RecordStructureText.decode(retrieveSample(candidate), settings.encoding, recordStructure);
+            } catch (FtpNotFoundException e) {
+                last = e;
+            }
+        }
+        throw last != null ? last : new FtpNotFoundException("Not found: " + path);
+    }
+
+    private byte[] retrieveSample(String path) throws IOException {
+        final int sampleBytes = 64 * 1024;
+        InputStream stream = client.retrieveFileStream(path);
+        if (stream == null) {
+            throw new FtpNotFoundException("Not found: " + path + " (" + client.getReplyCode() + ")");
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        boolean complete = false;
+        try (InputStream in = stream) {
+            byte[] buffer = new byte[8192];
+            int remaining = sampleBytes;
+            while (remaining > 0) {
+                int read = in.read(buffer, 0, Math.min(buffer.length, remaining));
+                if (read == -1) {
+                    complete = true;
+                    break;
+                }
+                remaining -= read;
+                for (int i = 0; i < read; i++) {
+                    if (buffer[i] != PADDING) {
+                        out.write(buffer[i]);
+                    }
+                }
+            }
+            if (remaining == 0) {
+                complete = in.read() == -1;
+            }
+        } finally {
+            if (!complete) {
+                // Discard the control connection with a pending transfer instead of reusing it.
+                closed = true;
+                client.disconnect();
+            }
+        }
+        if (complete && !client.completePendingCommand()) {
+            throw new IOException("Incomplete FTP sample: " + path);
+        }
+        return out.toByteArray();
+    }
+
     private byte[] retrieve(String resolvedPath) throws IOException {
         InputStream in = client.retrieveFileStream(resolvedPath);
         if (in == null) {

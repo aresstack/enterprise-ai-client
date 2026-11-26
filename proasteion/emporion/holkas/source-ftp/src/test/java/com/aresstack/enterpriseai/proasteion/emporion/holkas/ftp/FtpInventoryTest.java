@@ -68,13 +68,43 @@ public class FtpInventoryTest {
         assertFalse(CommonsNetFtpSession.sequentialDataset(new FTPFile[]{sequential}, "HLQ.OTHER"));
     }
 
+    @Test
+    public void optionalFilterRecognizesProgramSourcesWithoutDownloadingTheWholeDocument() throws Exception {
+        FakeSession session = new FakeSession();
+        session.children.put("HLQ.DATA", Arrays.asList(file("HLQ.DATA(ABC)"), file("HLQ.DATA(DEF)"),
+                file("HLQ.DATA(GHI)"), file("HLQ.DATA(JKL)")));
+        session.samples.put("HLQ.DATA(ABC)", "000100 IDENTIFICATION DIVISION.\n000200 PROGRAM-ID. SAMPLE.");
+        session.samples.put("HLQ.DATA(DEF)", "//RUN JOB CLASS=A\n//STEP EXEC PGM=TEST");
+        session.samples.put("HLQ.DATA(GHI)", "       01 CUSTOMER-RECORD.\n          05 CUSTOMER-ID PIC 9(8).");
+        session.samples.put("HLQ.DATA(JKL)", "Ordinary documentation with the words PROGRAM-ID and JOB");
+        List<KnowledgeResource> result = source(session, true).discover(SourceScope.of("HLQ.DATA"));
+        assertEquals(3, result.size());
+        assertFalse(result.stream().anyMatch(r -> r.id().value().endsWith("(JKL)")));
+    }
+
+    @Test
+    public void directScanIncludesSequentialDatasetButDoesNotOpenChildDirectories() throws Exception {
+        FakeSession session = new FakeSession();
+        session.children.put("HLQ", Arrays.asList(directory("HLQ.SRC"), directory("HLQ.PDS")));
+        session.sequential.add("HLQ.SRC");
+        List<KnowledgeResource> result = source(session).discover(SourceScope.builder()
+                .startPoints("HLQ").maxDepth(0).build());
+        assertEquals(1, result.size());
+        assertTrue(result.get(0).id().value().endsWith("/HLQ.SRC"));
+        assertEquals(Collections.singletonList("HLQ"), session.listed);
+    }
+
     private static FtpKnowledgeSource source(FakeSession session) {
+        return source(session, false);
+    }
+
+    private static FtpKnowledgeSource source(FakeSession session, boolean programsOnly) {
         SourceAddress address = SourceAddress.of("ftp");
         FtpConnectionSettings settings = FtpSourceProvider.connection(new SourceSettingsReader(
                 FtpSourceProvider.sourceType(), SourceSettings.empty().with("host", "localhost")));
         FtpSessionPool<FtpClientSession> pool = new FtpSessionPool<FtpClientSession>(address, settings,
                 null, (ignored, user, password) -> session);
-        return new FtpKnowledgeSource(address, settings, pool);
+        return new FtpKnowledgeSource(address, settings, pool, programsOnly);
     }
 
     private static FtpClientSession.FtpEntry directory(String path) {
@@ -89,6 +119,7 @@ public class FtpInventoryTest {
         private final Map<String, List<FtpEntry>> children = new LinkedHashMap<String, List<FtpEntry>>();
         private final List<String> listed = new ArrayList<String>();
         private final List<String> sequential = new ArrayList<String>();
+        private final Map<String, String> samples = new LinkedHashMap<String, String>();
 
         @Override
         public boolean mvs() {
@@ -99,6 +130,11 @@ public class FtpInventoryTest {
         public List<FtpEntry> list(String path) {
             listed.add(path);
             return children.getOrDefault(path, Collections.<FtpEntry>emptyList());
+        }
+
+        @Override
+        public String sampleText(String path) {
+            return samples.get(path);
         }
 
         @Override

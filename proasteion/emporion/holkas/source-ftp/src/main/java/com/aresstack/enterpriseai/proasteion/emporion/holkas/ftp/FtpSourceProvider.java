@@ -52,6 +52,9 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
                     .advanced())
             .field(SourceSettingField.of("maxResources", SourceSettingField.Kind.NUMBER,
                     "Höchstzahl Member (optional)", "Optionaler Umfang; leer = keine Begrenzung").advanced())
+            .field(SourceSettingField.of("programSourcesOnly", SourceSettingField.Kind.FLAG,
+                    "Nur Programmquellen", "MVS: COBOL, Copybooks und JCL anhand einer Inhaltsprobe erkennen")
+                    .withDefault("false"))
             .field(SourceSettingField.text("encoding", "Zeichensatz", "Zeichensatz der Textübertragung")
                     .withDefault("ISO-8859-1").advanced())
             .build();
@@ -86,6 +89,7 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         connection(reader);
         scope(reader);
+        reader.bool("programSourcesOnly", false);
         return reader.problems();
     }
 
@@ -98,11 +102,12 @@ public final class FtpSourceProvider implements KnowledgeSourceProvider {
     public KnowledgeSourcePort open(SourceAddress sourceId, SourceSettings settings) {
         SourceSettingsReader reader = new SourceSettingsReader(TYPE, settings);
         FtpConnectionSettings connection = connection(reader);
+        boolean programSourcesOnly = reader.bool("programSourcesOnly", false);
         if (reader.hasProblems() || connection == null) {
             throw new IllegalArgumentException("FTP-Quelle " + sourceId + " ist fehlerhaft: " + reader.problems());
         }
         return new FtpKnowledgeSource(sourceId, connection,
-                new FtpSessionPool<FtpClientSession>(sourceId, connection, secrets, CommonsNetFtpSession::open));
+                new FtpSessionPool<FtpClientSession>(sourceId, connection, secrets, CommonsNetFtpSession::open), programSourcesOnly);
     }
 
     /** {@code host:port} des FTP-Servers, klein ({@code ftp:host:21/HLQ.DATASET(MEMBER)}). */
