@@ -513,8 +513,20 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
         if (rows == null || !rows.isJsonArray()) {
             throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "SharePoint: OData-Ergebnisliste fehlt");
         }
+        URI next = continuation(first, current, data);
+        if (next == null && current.equals(first) && rows.getAsJsonArray().size() >= SharePointNavigationPages.BATCH_SIZE) {
+            // $top is only the batch size. Folder/Files collections may cut at $top without __next; a full first page
+            // without continuation therefore never counts as the complete folder: read it completely instead.
+            return new SharePointNavigationPages.Page(navigationNodes(folder, folders,
+                    collection(withoutTop(first), authorization)), null);
+        }
+        return new SharePointNavigationPages.Page(navigationNodes(folder, folders, rows.getAsJsonArray()), next);
+    }
+
+    private List<NavigationNode> navigationNodes(String folder, boolean folders, JsonArray rows)
+            throws KnowledgeSourceException {
         List<NavigationNode> nodes = new ArrayList<NavigationNode>();
-        for (JsonElement element : rows.getAsJsonArray()) {
+        for (JsonElement element : rows) {
             if (!element.isJsonObject()) {
                 throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "SharePoint: ungültiger OData-Eintrag");
             }
@@ -530,7 +542,19 @@ final class SharePointKnowledgeSource implements SearchableKnowledgeSource, Sour
                 if (resource != null && !resource.title().startsWith("~$")) nodes.add(fileNode(resource));
             }
         }
-        return new SharePointNavigationPages.Page(nodes, continuation(first, current, data));
+        return nodes;
+    }
+
+    /** The same collection request without the batch size; server continuations are still followed. */
+    static URI withoutTop(URI uri) {
+        String[] parts = uri.toString().split("\\?", 2);
+        if (parts.length < 2) return uri;
+        StringBuilder query = new StringBuilder();
+        for (String parameter : parts[1].split("&")) {
+            if (parameter.isEmpty() || parameter.startsWith("$top=")) continue;
+            query.append(query.length() == 0 ? '?' : '&').append(parameter);
+        }
+        return URI.create(parts[0] + query);
     }
 
 
