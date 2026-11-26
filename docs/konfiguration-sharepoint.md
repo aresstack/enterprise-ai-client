@@ -23,6 +23,7 @@ source.8.maxFileMegabytes=50
 | `maxDepth` | Optionale Ordnerebenen unter den Startpunkten (leer = unbegrenzt, `0` = nur die Dateien im Startordner). |
 | `maxResources` | Optionale Obergrenze je Lauf (leer = unbegrenzt). |
 | `maxFileMegabytes` | Inhaltsabruf begrenzen (Standard 50 MiB); Metadaten größerer Dateien bleiben sichtbar. |
+| `navigationBatchSize` | Einträge je Explorer-Abruf beim Aufklappen eines Ordners, zugleich REST-`$top` (Standard 100, 1 bis 5000). Nur Stapelgröße: Liefert der Server bei voller erster Seite keinen `__next`, wird der Ordner ohne `$top` vollständig gelesen; eine unvollständige Liste gilt nie als vollständig. |
 | `connectTimeoutMillis`, `readTimeoutMillis`, `userAgent` | Nur in der Datei; Standard 15 s, 60 s und der User-Agent der Anwendung. |
 
 ## Verhalten
