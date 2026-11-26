@@ -18,6 +18,7 @@ import com.aresstack.enterpriseai.source.api.SourceLink;
 import com.aresstack.enterpriseai.source.api.SourceScope;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.IPalTypeSystemFile;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.ObjectKind;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.ObjectType;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -80,6 +81,7 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
     private NdvClient client;
     private IPalTypeSystemFile listing;
     private final NdvInventoryMetadata inventory;
+    private final boolean ddmsEnabled;
 
     // Bound the reuse to one recent inventory and one download per object.
     private static final int MAX_INVENTORY_METADATA = 10000;
@@ -87,11 +89,17 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
 
     NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
                        SecretProvider secrets, Connector connector) {
-        this(sourceId, host, port, credentialRef, secrets, connector, System::nanoTime);
+        this(sourceId, host, port, credentialRef, secrets, connector, false, System::nanoTime);
     }
 
     NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
                        SecretProvider secrets, Connector connector, LongSupplier nanoTime) {
+        this(sourceId, host, port, credentialRef, secrets, connector, false, nanoTime);
+    }
+
+    NdvKnowledgeSource(SourceAddress sourceId, String host, int port, SecretRef credentialRef,
+                       SecretProvider secrets, Connector connector, boolean ddmsEnabled, LongSupplier nanoTime) {
+        this.ddmsEnabled = ddmsEnabled;
         this.inventory = new NdvInventoryMetadata(MAX_INVENTORY_METADATA, METADATA_AGE_NANOS, nanoTime);
         if (sourceId == null || host == null || credentialRef == null || secrets == null || connector == null) {
             throw new IllegalArgumentException("sourceId, host, credentialRef, secrets and connector are required");
@@ -116,6 +124,13 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
             inventory.clear();
             Map<String, KnowledgeResource> found = new LinkedHashMap<String, KnowledgeResource>();
             for (String startPoint : scope.startPoints()) {
+                if (NdvDdmScope.isStartPoint(startPoint)) {
+                    if (!ddmsEnabled) {
+                        throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "FDDM ist nicht für diese Quelle konfiguriert");
+                    }
+                    discoverDdms(client, scope, found);
+                    continue;
+                }
                 String[] parts = startPoint(startPoint);
                 if (parts == null) {
                     continue;
@@ -125,25 +140,46 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
                 List<NdvObjectInfo> objects = client.listObjects(listingSystemFile(client), library, parts[1],
                         ObjectKind.SOURCE, 0);
                 for (NdvObjectInfo object : objects) {
-                    if (found.size() >= scope.maxResources()) {
-                        return new ArrayList<KnowledgeResource>(found.values());
-                    }
-                    if (!isNaturalSource(object)) {
+                    if (!isNaturalSource(object) || object.getType() == ObjectType.DDM) {
                         continue;
                     }
-                    String path = library + "/" + object.getName() + "." + object.getTypeExtension();
-                    if (!found.containsKey(path.toUpperCase(Locale.ROOT))) {
-                        try {
-                            found.put(path.toUpperCase(Locale.ROOT), resource(path, object, revision(object)));
-                            inventory.remember(path, object);
-                        } catch (IllegalArgumentException e) {
-                            // Name ergibt keine gültige Ressourcen-ID: überspringen.
-                        }
-                    }
+                    addResource(scope, found, library, object);
                 }
             }
             return new ArrayList<KnowledgeResource>(found.values());
         });
+    }
+
+    private void discoverDdms(NdvClient client, SourceScope scope, Map<String, KnowledgeResource> found)
+            throws IOException, NdvException, KnowledgeSourceException {
+        for (IPalTypeSystemFile file : NdvDdmScope.systemFiles(client)) {
+            String area = NdvDdmScope.area(file);
+            for (NdvObjectInfo object : client.listObjects(file, "", "*", ObjectKind.SOURCE, ObjectType.DDM)) {
+                if (object.getType() == ObjectType.DDM) {
+                    addResource(scope, found, area, NdvDdmScope.inFile(object, file));
+                }
+            }
+        }
+    }
+
+    private void addResource(SourceScope scope, Map<String, KnowledgeResource> found, String area,
+                             NdvObjectInfo object) throws KnowledgeSourceException {
+        String path = area + "/" + object.getEffectiveName() + "." + object.getTypeExtension();
+        String key = path.toUpperCase(Locale.ROOT);
+        if (found.containsKey(key)) {
+            return;
+        }
+        if (found.size() >= scope.maxResources()) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE,
+                    "NDV-Inventur überschreitet maxResources (" + scope.maxResources()
+                            + "). Bereich verkleinern oder Grenze erhöhen.");
+        }
+        try {
+            found.put(key, resource(path, object, revision(object)));
+            inventory.remember(path, object);
+        } catch (IllegalArgumentException e) {
+            throw new KnowledgeSourceException(Kind.INVALID_RESPONSE, "Ungültige NDV-Objektidentität", e);
+        }
     }
 
     @Override
@@ -158,12 +194,21 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         final String name = path.substring(slash + 1, dot);
         final String extension = path.substring(dot + 1);
         return run(client -> {
-            ensureLibrary(client, library);
+            boolean ddm = NdvDdmScope.isArea(library);
+            if (ddm && (!ddmsEnabled || !ObjectType.DDM_EXT.equalsIgnoreCase(extension))) {
+                throw new KnowledgeSourceException(Kind.ACCESS_DENIED, "DDM ist nicht im konfigurierten Bereich");
+            }
+            if (!ddm) {
+                if (ObjectType.DDM_EXT.equalsIgnoreCase(extension)) {
+                    throw new KnowledgeSourceException(Kind.UNSUPPORTED, "DDMs benötigen eine FDDM-Identität");
+                }
+                ensureLibrary(client, library);
+            }
             NdvObjectInfo object = inventory.take(path);
             if (object == null) {
-                object = find(client, library, name, extension);
+                object = ddm ? NdvDdmScope.find(client, library, name) : find(client, library, name, extension);
             }
-            String text = client.readSource(library, object);
+            String text = client.readSource(ddm ? "" : library, object);
             KnowledgeRevision revision = revision(object);
             KnowledgeResource resource = resource(path, object, revision.isKnown() ? revision
                     : KnowledgeRevision.version(sha256(text)));
@@ -304,11 +349,13 @@ final class NdvKnowledgeSource implements KnowledgeSourcePort {
         Map<String, String> metadata = new LinkedHashMap<String, String>();
         metadata.put("ndv.library", path.substring(0, path.indexOf('/')));
         metadata.put("ndv.type", object.getTypeName());
+        metadata.put("ndv.dbid", Integer.toString(object.getDatabaseId()));
+        metadata.put("ndv.fnr", Integer.toString(object.getFileNumber()));
         if (object.getUser() != null && !object.getUser().isEmpty()) {
             metadata.put("ndv.user", object.getUser());
         }
         return KnowledgeResource.builder(KnowledgeResourceId.of(SCHEME, locator + "/" + path), sourceId)
-                .title(object.getName() + "." + object.getTypeExtension())
+                .title(object.getEffectiveName() + "." + object.getTypeExtension())
                 .contentType(KnowledgeResource.DEFAULT_CONTENT_TYPE)
                 .revision(revision)
                 .scope(sourceId.value())

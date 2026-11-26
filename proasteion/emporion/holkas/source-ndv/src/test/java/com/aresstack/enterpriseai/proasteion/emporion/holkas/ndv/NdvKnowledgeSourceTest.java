@@ -7,6 +7,7 @@ import com.aresstack.enterpriseai.astu.knowledge.SourceAddress;
 import com.aresstack.enterpriseai.astu.security.SecretRef;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.IPalTypeSystemFile;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.ObjectKind;
+import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.ObjectType;
 import com.aresstack.enterpriseai.proasteion.emporion.holkas.ndv.pal.core.api.PalTypeSystemFileFactory;
 import com.aresstack.enterpriseai.source.api.KnowledgeSourceException;
 import com.aresstack.enterpriseai.source.api.SourceScope;
@@ -111,6 +112,46 @@ public class NdvKnowledgeSourceTest {
     }
 
     @Test
+    public void exactLimitIsCompleteButOverflowFailsInsteadOfTruncating() throws Exception {
+        first.objects.add(object("ONE", "NSP", "date", 20));
+        first.objects.add(object("TWO", "NSP", "date", 20));
+        assertEquals(2, source.discover(SourceScope.builder().startPoint("LIB").maxResources(2).build()).size());
+        try {
+            source.discover(SourceScope.builder().startPoint("LIB").maxResources(1).build());
+            fail("Expected incomplete inventory to fail");
+        } catch (KnowledgeSourceException expected) {
+            assertTrue(expected.getMessage().contains("maxResources"));
+        }
+    }
+
+    @Test
+    public void ddmsRequireExplicitScopeAndUseLongNameAndSystemFile() throws Exception {
+        first.objects.add(object("BOOK", "NSP", "date", 20));
+        first.ddms.add(new NdvObjectInfo("SHORT", "LONG-ACCOUNT-NAME", ObjectKind.SOURCE,
+                ObjectType.DDM, "DDM", "NSD", 15, "USER", "date", 33, 44));
+        assertEquals(1, source.discover(SourceScope.of("LIB")).size());
+        try {
+            source.discover(SourceScope.of("FDDM:"));
+            fail("DDM scope was not configured");
+        } catch (KnowledgeSourceException expected) {
+            assertEquals(KnowledgeSourceException.Kind.ACCESS_DENIED, expected.kind());
+        }
+        NdvKnowledgeSource optedIn = new NdvKnowledgeSource(SourceAddress.of("ndv", "host:8011"),
+                "host", 8011, SecretRef.of("test"), ref -> new SecretMaterial(ref, "user", new char[0]),
+                (host, port, user, password) -> first, true, clock::get);
+        List<KnowledgeResource> resources = optedIn.discover(SourceScope.of("LIB", "FDDM:"));
+        assertEquals(2, resources.size());
+        KnowledgeResource ddm = resources.get(1);
+        assertTrue(ddm.id().value().endsWith("/FDDM:33-44/LONG-ACCOUNT-NAME.NSD"));
+        assertEquals("LONG-ACCOUNT-NAME.NSD", ddm.title());
+        int before = first.listings;
+        assertTrue(optedIn.load(ddm.id()).text().contains("LONG-ACCOUNT-NAME"));
+        assertEquals(before, first.listings);
+        assertTrue(optedIn.load(ddm.id()).text().contains("LONG-ACCOUNT-NAME"));
+        assertEquals(before + 1, first.listings);
+    }
+
+    @Test
     public void failedLibraryLogonIsNotAnEmptyInventory() throws Exception {
         first.failLogon = true;
         try {
@@ -128,6 +169,7 @@ public class NdvKnowledgeSourceTest {
 
     private static final class FakeClient extends NdvClient {
         private final List<NdvObjectInfo> objects = new ArrayList<>();
+        private final List<NdvObjectInfo> ddms = new ArrayList<>();
         private final List<String> read = new ArrayList<>();
         private String library;
         private int logons;
@@ -162,7 +204,8 @@ public class NdvKnowledgeSourceTest {
         public IPalTypeSystemFile[] getSystemFiles() {
             systemFiles++;
             return new IPalTypeSystemFile[] {
-                    PalTypeSystemFileFactory.newInstance(11, 22, IPalTypeSystemFile.FUSER)
+                    PalTypeSystemFileFactory.newInstance(11, 22, IPalTypeSystemFile.FUSER),
+                    PalTypeSystemFileFactory.newInstance(33, 44, IPalTypeSystemFile.FDDM)
             };
         }
 
@@ -171,7 +214,7 @@ public class NdvKnowledgeSourceTest {
                                                String filter, int kind, int type) {
             listings++;
             List<NdvObjectInfo> result = new ArrayList<>();
-            for (NdvObjectInfo object : objects) {
+            for (NdvObjectInfo object : type == ObjectType.DDM ? ddms : objects) {
                 if ("*".equals(filter) || object.getName().equals(filter)) {
                     result.add(object);
                 }
@@ -185,9 +228,13 @@ public class NdvKnowledgeSourceTest {
             if (failDownload) {
                 throw new IOException("disconnected");
             }
-            assertEquals(11, object.getDatabaseId());
-            assertEquals(22, object.getFileNumber());
-            String identity = object.getName() + "." + object.getTypeExtension();
+            boolean ddm = object.getType() == ObjectType.DDM;
+            assertEquals(ddm ? 33 : 11, object.getDatabaseId());
+            assertEquals(ddm ? 44 : 22, object.getFileNumber());
+            if (ddm) {
+                assertEquals("", library);
+            }
+            String identity = object.getEffectiveName() + "." + object.getTypeExtension();
             read.add(identity);
             return identity + contentSuffix;
         }

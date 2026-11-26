@@ -346,17 +346,17 @@ class NdvClient implements Closeable {
     public String readSource(String library, NdvObjectInfo objInfo)
             throws IOException, NdvException {
         checkConnected();
-        if (library == null || library.isEmpty()) {
-            throw new NdvException("readSource: library is null or empty");
-        }
         if (objInfo == null) {
             throw new NdvException("readSource: objInfo is null");
         }
 
         boolean isDdm = objInfo.getType() == ObjectType.DDM;
+        if (!isDdm && (library == null || library.isEmpty())) {
+            throw new NdvException("readSource: library is null or empty");
+        }
 
-        // Ensure we are logged on to the correct library
-        if (!library.equals(currentLibrary)) {
+        // Log on only for library-bound objects.
+        if (!isDdm && !library.equals(currentLibrary)) {
             logon(library);
         }
 
@@ -430,18 +430,16 @@ class NdvClient implements Closeable {
 
         // DDMs: always use FDDM system file
         if (objInfo.getType() == ObjectType.DDM) {
+            if (dbid > 0 && fnr > 0) {
+                return PalTypeSystemFileFactory.newInstance(dbid, fnr, IPalTypeSystemFile.FDDM);
+            }
             IPalTypeSystemFile fddm = findFddmSystemFile();
             if (fddm != null) {
                 LOG.fine("[NdvClient] resolveSystemFileForObject: DDM -> using FDDM: "
                         + fddm.getDatabaseId() + "/" + fddm.getFileNumber());
                 return fddm;
             }
-            // If no FDDM found but we have DATENBANK_NUMMER/DATEI_NUMMER from listing, use those with FDDM kind
-            if (dbid > 0 && fnr > 0) {
-                LOG.fine("[NdvClient] resolveSystemFileForObject: DDM, no FDDM in sysfiles, "
-                        + "using obj DATENBANK_NUMMER/DATEI_NUMMER with FDDM kind: " + dbid + "/" + fnr);
-                return PalTypeSystemFileFactory.newInstance(dbid, fnr, IPalTypeSystemFile.FDDM);
-            }
+            throw new NdvException("No FDDM system file available for DDM");
         }
 
         if (dbid > 0 && fnr > 0) {
