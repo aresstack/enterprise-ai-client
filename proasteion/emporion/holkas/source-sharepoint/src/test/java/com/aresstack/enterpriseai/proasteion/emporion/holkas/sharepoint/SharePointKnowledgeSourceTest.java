@@ -44,6 +44,8 @@ public class SharePointKnowledgeSourceTest {
 
     private final List<String> postBodies = new ArrayList<String>();
     private final Map<String, String> posts = new HashMap<String, String>();
+    /** Answers GetChanges from the request body, if set (continuation after a token). */
+    private java.util.function.Function<String, String> changeLog;
 
     private final SharePointTransport fake = new SharePointTransport() {
         @Override
@@ -51,7 +53,8 @@ public class SharePointKnowledgeSourceTest {
             String key = uri.toString();
             postBodies.add(new String(body, StandardCharsets.UTF_8));
             if (key.endsWith("/GetChanges")) assertEquals("test-digest", digest);
-            String payload = posts.get(key);
+            String payload = key.endsWith("/GetChanges") && changeLog != null
+                    ? changeLog.apply(new String(body, StandardCharsets.UTF_8)) : posts.get(key);
             return payload == null ? new Response(404, "application/json", null)
                     : new Response(200, "application/json", payload.getBytes(StandardCharsets.UTF_8),
                     java.time.Instant.parse("2026-11-25T20:00:00Z").toEpochMilli());
@@ -190,8 +193,8 @@ public class SharePointKnowledgeSourceTest {
         assertEquals(1, changed.resources().size());
         assertEquals("IAR Handbuch.txt", changed.resources().get(0).title());
         assertTrue(requestedUris.contains(item));
-        assertTrue(postBodies.get(1).contains("ChangeTokenStart"));
-        assertTrue(postBodies.get(1).contains("1;3;" + list + ";"));
+        assertTrue(postBodies.stream().anyMatch(body -> body.contains("ChangeTokenStart")
+                && body.contains("1;3;" + list + ";")));
         assertTrue(requestedUris.stream().noneMatch(uri -> uri.contains("GetFolderByServerRelativeUrl")));
         posts.put(listApi + "/GetChanges", "{\"d\":{\"results\":[" + event.replace("\"ChangeType\":2", "\"ChangeType\":3") + "]}}");
         com.aresstack.enterpriseai.source.api.PartitionResources first =
@@ -202,6 +205,61 @@ public class SharePointKnowledgeSourceTest {
                 source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), first.nextCursor(), 1);
         assertEquals(1, last.resources().size());
         assertTrue(last.complete());
+    }
+
+    /**
+     * ADR 0042, point 6: the cursor continues after the token the server delivered, and no register limits the number
+     * of listings; the first of six listings still continues after the other five started.
+     */
+    @Test
+    public void changeListingsContinueAfterTheServerTokenWithoutARegister() throws Exception {
+        SharePointKnowledgeSource source = source();
+        String list = "11111111-2222-3333-4444-555555555555";
+        String listApi = API + "lists(guid'" + list + "')";
+        json.put(API + "lists?$select=Id,Hidden,RootFolder/ServerRelativeUrl&$expand=RootFolder&$filter=BaseTemplate%20eq%20101",
+                "{\"d\":{\"results\":[{\"Id\":\"" + list + "\",\"Hidden\":false,\"RootFolder\":{\"ServerRelativeUrl\":\"/sites/team/Dokumente\"}}]}}");
+        posts.put(SITE + "/_api/contextinfo", "{\"d\":{\"GetContextWebInformation\":{\"FormDigestValue\":\"test-digest\"}}}");
+        String[] names = {"Eins.txt", "Zwei.txt"};
+        String[] tokens = new String[names.length];
+        String[] events = new String[names.length];
+        for (int i = 0; i < names.length; i++) {
+            int item = i + 1;
+            json.put(listApi + "/items(" + item + ")?$select=FileSystemObjectType,File/Name,File/ServerRelativeUrl,File/TimeLastModified,File/Length,File/UIVersionLabel&$expand=File",
+                    "{\"d\":{\"FileSystemObjectType\":0,\"File\":" + file("/sites/team/Dokumente/" + names[i], 5) + "}}");
+            tokens[i] = "1;3;" + list + ";63900000000000000" + item + ";" + item;
+            events[i] = "{\"__metadata\":{\"type\":\"SP.ChangeItem\"},\"ChangeType\":2,\"ItemId\":" + item
+                    + ",\"ListId\":\"" + list + "\",\"ChangeToken\":{\"StringValue\":\"" + tokens[i] + "\"}}";
+        }
+        // Wie der Server: nach dem ersten Token nur noch die zweite Änderung, nach dem zweiten keine.
+        changeLog = body -> {
+            if (body.contains(tokens[1] + "\"")) return "{\"d\":{\"results\":[]}}";
+            if (body.contains(tokens[0] + "\"")) return "{\"d\":{\"results\":[" + events[1] + "]}}";
+            return "{\"d\":{\"results\":[" + events[0] + "," + events[1] + "]}}";
+        };
+        List<com.aresstack.enterpriseai.source.api.PartitionResources> firsts =
+                new ArrayList<com.aresstack.enterpriseai.source.api.PartitionResources>();
+        for (int i = 0; i < 6; i++) {
+            firsts.add(source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), "", 1));
+        }
+        com.aresstack.enterpriseai.source.api.PartitionResources first = firsts.get(0);
+        assertEquals("Eins.txt", first.resources().get(0).title());
+        assertFalse(first.complete());
+
+        postBodies.clear();
+        com.aresstack.enterpriseai.source.api.PartitionResources second =
+                source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), first.nextCursor(), 1);
+        assertEquals("Zwei.txt", second.resources().get(0).title());
+        assertTrue(postBodies.stream().anyMatch(body -> body.contains("ChangeTokenStart") && body.contains(tokens[0])));
+        com.aresstack.enterpriseai.source.api.PartitionResources last =
+                source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), second.nextCursor(), 1);
+        assertTrue(last.resources().isEmpty());
+        assertTrue(last.complete());
+        try {
+            source.changedResources(source.sourceId().value(), java.time.Duration.ofHours(1), first.nextCursor() + "x", 1);
+            fail("Foreign cursor accepted");
+        } catch (KnowledgeSourceException e) {
+            assertEquals(KnowledgeSourceException.Kind.UNSUPPORTED, e.kind());
+        }
     }
 
     @Test
